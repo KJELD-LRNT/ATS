@@ -1,0 +1,17 @@
+@model AssetTracker.Web.Pages.Reports.ReportPageModel
+<form method="get" class="filters">
+    <label>Search<br /><input name="q" value="@Model.Q" placeholder="@Model.SearchPlaceholder" size="32" /></label>
+    <label>Site<br />
+        <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
+    </label>
+    <label>Type<br />
+        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+    </label>
+    @if (Model.DateRangeLabel is not null)
+    {
+        <label>@Model.DateRangeLabel from<br /><input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" /></label>
+        <label>to<br /><input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" /></label>
+    }
+    <button type="submit">Filter</button>
+    <a class="button" asp-all-route-data="Model.ExportRoute()">Export CSV</a>
+</form>

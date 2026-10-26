@@ -1,0 +1,14 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home";
+}
+<h1>Asset Tracker</h1>
+@if (Model.Roles == AppRoles.None)
+{
+    <p>You do not have access to this application. Contact IT if you believe this is wrong.</p>
+}
+else
+{
+    <p>Signed in as <strong>@Model.UserName</strong>. Roles: @Model.Roles.</p>
+}

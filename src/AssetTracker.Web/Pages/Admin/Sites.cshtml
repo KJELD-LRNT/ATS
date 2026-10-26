@@ -1,0 +1,53 @@
+@page
+@model AssetTracker.Web.Pages.Admin.SitesModel
+@{
+    ViewData["Title"] = "Sites";
+}
+<h1>Sites</h1>
+<p>Each site's <em>AD site value</em> maps the directory site attribute to the site. People whose value matches no site are synced without a site and reported in the sync log.</p>
+
+@if (Model.Message is not null)
+{
+    <p class="notice">@Model.Message</p>
+}
+
+<table>
+    <thead><tr><th>Key</th><th>Name</th><th>AD site value</th><th>Active</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var s in Model.Sites)
+    {
+        <tr>
+            <td>@s.Key</td>
+            <td>@s.Name</td>
+            <td>@(s.DirectoryValue ?? "(unmapped)")</td>
+            <td>@(s.IsActive ? "Yes" : "No")</td>
+            <td><a asp-page="/Admin/Sites" asp-route-editId="@s.Id">Edit</a></td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+@if (Model.Editing is { } editing)
+{
+    <h2>Edit site @editing.Key</h2>
+    <form method="post" asp-page-handler="Update" asp-route-id="@editing.Id">
+        <div asp-validation-summary="All" class="error"></div>
+        <p>Key: <strong>@editing.Key</strong> (cannot be changed)</p>
+        <p><label asp-for="Input.Name"></label> <input asp-for="Input.Name" /></p>
+        <p><label asp-for="Input.DirectoryValue"></label> <input asp-for="Input.DirectoryValue" /></p>
+        <p><label><input asp-for="Input.IsActive" /> Active</label></p>
+        <button type="submit">Save</button> <a asp-page="/Admin/Sites">Cancel</a>
+    </form>
+}
+else
+{
+    <h2>New site</h2>
+    <form method="post" asp-page-handler="Create">
+        <div asp-validation-summary="All" class="error"></div>
+        <p><label asp-for="Input.Key"></label> <input asp-for="Input.Key" /> <small>Stable short key, e.g. HQ; cannot be changed later.</small></p>
+        <p><label asp-for="Input.Name"></label> <input asp-for="Input.Name" /></p>
+        <p><label asp-for="Input.DirectoryValue"></label> <input asp-for="Input.DirectoryValue" /></p>
+        <p><label><input asp-for="Input.IsActive" /> Active</label></p>
+        <button type="submit">Create</button>
+    </form>
+}

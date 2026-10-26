@@ -1,0 +1,89 @@
+@page
+@model AssetTracker.Web.Pages.Admin.GrantsModel
+@{
+    ViewData["Title"] = "Manager site grants";
+}
+<h1>Manager site grants</h1>
+<p>A grant gives a manager read access to one site's inventory. It only takes effect while the person is a member of the manager AD group.</p>
+
+@if (Model.Message is not null)
+{
+    <p class="notice">@Model.Message</p>
+}
+<div asp-validation-summary="ModelOnly" class="error"></div>
+
+<h2>Current grants</h2>
+@if (Model.Grants.Count == 0)
+{
+    <p>No grants.</p>
+}
+else
+{
+    <table>
+        <thead><tr><th>Site</th><th>Person</th><th>Username</th><th>Granted</th><th>By</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var g in Model.Grants)
+        {
+            <tr>
+                <td>@g.SiteKey - @g.SiteName</td>
+                <td>@(g.PersonDisplayName ?? "(not in directory snapshot)")@(g.PersonActive == false ? " (inactive)" : "")</td>
+                <td>@(g.PersonUsername ?? g.PrincipalName)</td>
+                <td>@g.GrantedAt.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                <td>@g.GrantedBy</td>
+                <td>
+                    <form method="post" asp-page-handler="Remove" asp-route-grantId="@g.Id">
+                        <button type="submit">Remove</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+<h2>Add a grant</h2>
+<form method="get">
+    <label for="q">Find person (name or username)</label>
+    <input id="q" name="q" value="@Model.Q" minlength="2" />
+    <button type="submit">Search</button>
+</form>
+
+@if (!string.IsNullOrWhiteSpace(Model.Q))
+{
+    @if (Model.People.Count == 0)
+    {
+        <p>No matching people.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Name</th><th>Username</th><th>Job title</th><th>AD site</th><th>Grant site</th></tr></thead>
+            <tbody>
+            @foreach (var p in Model.People)
+            {
+                <tr>
+                    <td>@p.DisplayName@(p.IsActive ? "" : " (inactive)")</td>
+                    <td>@p.Username</td>
+                    <td>@p.JobTitle</td>
+                    <td>@p.SiteKey</td>
+                    <td>
+                        @if (p.IsActive)
+                        {
+                            <form method="post" asp-page-handler="Add" asp-route-q="@Model.Q">
+                                <input type="hidden" name="personId" value="@p.Id" />
+                                <select name="siteId">
+                                    @foreach (var s in Model.Sites)
+                                    {
+                                        <option value="@s.Id">@s.Key - @s.Name</option>
+                                    }
+                                </select>
+                                <button type="submit">Grant</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+}

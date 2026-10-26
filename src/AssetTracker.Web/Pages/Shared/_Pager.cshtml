@@ -1,0 +1,12 @@
+@model AssetTracker.Web.Pages.Shared.PagerModel
+<nav class="pager">
+    @if (Model.Page > 1)
+    {
+        <a asp-all-route-data="Model.For(Model.Page - 1)">&laquo; Previous</a>
+    }
+    <span>Page @Model.Page of @Model.PageCount (@Model.TotalCount total)</span>
+    @if (Model.Page < Model.PageCount)
+    {
+        <a asp-all-route-data="Model.For(Model.Page + 1)">Next &raquo;</a>
+    }
+</nav>

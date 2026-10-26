@@ -1,0 +1,49 @@
+@inject ICurrentUser CurrentUser
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Asset Tracker</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script src="~/js/site.js" asp-append-version="true" defer></script>
+</head>
+<body>
+<header>
+    <nav class="topnav">
+        <a class="brand" asp-page="/Index">Asset Tracker</a>
+        @* Feature work packages add nav links here, gated on role. *@
+        @if (CurrentUser.IsIt || CurrentUser.IsManager)
+        {
+            <a asp-page="/Assets/Index">Assets</a>
+            <a asp-page="/Pools/Index">Pools</a>
+            <a asp-page="/Loans/Index">Loans</a>
+            <a asp-page="/Reports/Index">Reports</a>
+        }
+        @if (CurrentUser.IsIt)
+        {
+            <a asp-page="/Ops/Index">Ops</a>
+            <a asp-page="/Ops/Mail">Mail queue</a>
+        }
+        @if (CurrentUser.IsIt)
+        {
+            <a asp-page="/Audit/Index">Audit</a>
+        }
+        @if (CurrentUser.IsAdmin)
+        {
+            <a asp-page="/Admin/Sites">Sites</a>
+            <a asp-page="/Admin/Grants">Grants</a>
+            <a asp-page="/Admin/Settings">Settings</a>
+            <a asp-page="/Admin/Sync">Directory sync</a>
+            <a asp-page="/Admin/Privacy">Privacy</a>
+        }
+        <span class="user">@CurrentUser.Name (@CurrentUser.Roles)</span>
+    </nav>
+</header>
+<main>
+    @await Component.InvokeAsync("SyncStatus")
+    @RenderBody()
+</main>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

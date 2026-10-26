@@ -1,0 +1,61 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Assets.DetailsModel
+@{
+    var a = Model.Asset;
+    ViewData["Title"] = a.Tag;
+}
+@if (Model.Message is not null)
+{
+    <p class="flash">@Model.Message</p>
+}
+<h1>@a.Tag <span class="muted">@a.Type</span></h1>
+<dl class="form-grid">
+    <dt>State</dt><dd>@a.State@(a.RetiredAt is { } r ? $" (retired {r:yyyy-MM-dd})" : "")</dd>
+    <dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd>
+    <dt>Description</dt><dd>@a.Description</dd>
+    <dt>Condition</dt><dd>@a.Condition</dd>
+    <dt>Serial number</dt><dd>@a.SerialNumber</dd>
+    @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
+    {
+        <dt>Phone number</dt><dd>@a.PhoneNumber</dd>
+    }
+    @if (a.Type == AssetType.Phone)
+    {
+        <dt>IMEI</dt><dd>@a.Imei</dd>
+    }
+    <dt>Created</dt><dd>@a.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd>
+</dl>
+@if (Model.CanEdit)
+{
+    <p><a asp-page="Edit" asp-route-id="@a.Id">Edit / change state</a>
+        @if (a.State == AssetState.Available)
+        {
+            <text> · </text><a asp-page="/Loans/Checkout" asp-route-assetId="@a.Id">Check out</a>
+        }
+        @if (Model.Loans.FirstOrDefault(l => l.IsOpen) is { } open)
+        {
+            <text> · </text><a asp-page="/Loans/Return" asp-route-id="@open.Id">Return</a>
+        }
+    </p>
+}
+<h2>Assignment history</h2>
+<table>
+    <thead><tr><th>Loan</th><th>Holder</th><th>Started</th><th>Due</th><th>Returned</th></tr></thead>
+    <tbody>
+    @foreach (var l in Model.Loans)
+    {
+        <tr>
+            <td><a asp-page="/Loans/Details" asp-route-id="@l.Id">#@l.Id</a></td>
+            <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</td>
+            <td>@l.StartedAt.ToString("yyyy-MM-dd")</td>
+            <td>@l.DueDate</td>
+            <td>@(l.ClosedAt?.ToString("yyyy-MM-dd") ?? "open")</td>
+        </tr>
+    }
+    @if (Model.Loans.Count == 0)
+    {
+        <tr><td colspan="5" class="muted">Never assigned.</td></tr>
+    }
+    </tbody>
+</table>
+<p><a asp-page="Index">Back to assets</a></p>

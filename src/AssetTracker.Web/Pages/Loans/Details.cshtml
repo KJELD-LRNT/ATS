@@ -1,0 +1,91 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Loans.DetailsModel
+@{
+    var h = Model.History;
+    var l = h.Loan;
+    ViewData["Title"] = $"Loan #{l.Id}";
+}
+@if (Model.Message is not null)
+{
+    <p class="flash">@Model.Message</p>
+}
+<h1>Loan #@l.Id <span class="muted">@(l.IsOpen ? "open" : "returned")</span></h1>
+@if (h.AnyDirectoryStale)
+{
+    <p class="warning">The people directory snapshot was stale when this loan was checked out.</p>
+}
+<dl class="form-grid">
+    @if (l.Asset is { } a)
+    {
+        <dt>Asset</dt><dd><a asp-page="/Assets/Details" asp-route-id="@a.Id">@a.Tag</a> – @a.Description (@a.Type)</dd>
+        <dt>Site (current)</dt><dd>@a.Site?.Key – @a.Site?.Name</dd>
+    }
+    else if (l.Pool is { } p)
+    {
+        <dt>Pool</dt><dd><a asp-page="/Pools/Details" asp-route-id="@p.Id">@p.Sku</a> – @p.Description (@p.Type)</dd>
+        <dt>Site</dt><dd>@p.Site?.Key – @p.Site?.Name</dd>
+    }
+    <dt>Holder</dt>
+    <dd>
+        @(l.Holder?.DisplayName ?? l.HolderNameSnapshot)
+        @if (l.Holder is { } holder)
+        {
+            <span class="muted">@holder.Username · @holder.Email · @holder.JobTitle@(holder.IsActive ? "" : " · inactive")</span>
+        }
+    </dd>
+    <dt>Quantity</dt><dd><strong>@l.Quantity</strong> (returned @l.ReturnedQuantity, outstanding <strong>@l.OutstandingQuantity</strong>)</dd>
+    <dt>Started</dt><dd>@l.StartedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd>
+    <dt>Due date</dt><dd>@(l.DueDate?.ToString("yyyy-MM-dd") ?? "none")</dd>
+    <dt>Returned</dt><dd>@(l.ClosedAt?.ToString("yyyy-MM-dd HH:mm") + (l.ClosedAt is null ? "not yet" : " UTC"))</dd>
+    <dt>Checkout condition / note</dt><dd>@l.CheckoutCondition @l.CheckoutNote</dd>
+    <dt>Return condition / note</dt><dd>@l.ReturnCondition @l.ReturnNote</dd>
+    <dt>Checked out by</dt><dd>@l.CreatedBy</dd>
+</dl>
+@if (Model.CanEdit)
+{
+    <p>
+        @if (l.IsOpen)
+        {
+            <a asp-page="Return" asp-route-id="@l.Id">Return</a>
+            <text> · </text>
+        }
+        <a asp-page="Correct" asp-route-id="@l.Id">Correct</a>
+    </p>
+}
+<h2>History</h2>
+<table>
+    <thead>
+    <tr><th>#</th><th>Event</th><th>When (UTC)</th><th>Recorded by</th><th>Holder</th><th class="num">Qty</th><th>Due</th><th>Details</th></tr>
+    </thead>
+    <tbody>
+    @foreach (var e in h.Events)
+    {
+        var ev = e.Event;
+        <tr id="event-@ev.Id" class="@(e.IsSuperseded ? "muted" : "")">
+            <td>@ev.Id</td>
+            <td>
+                @ev.Type
+                @if (ev.DirectoryStale) { <span class="warning">directory stale</span> }
+                @if (e.SupersededByEventId is { } by) { <br /><small>superseded by <a href="#event-@by">#@by</a></small> }
+            </td>
+            <td>@ev.OccurredAt.ToString("yyyy-MM-dd HH:mm")</td>
+            <td>@ev.Actor</td>
+            <td>@h.PersonName(ev.HolderId)</td>
+            <td class="num">@ev.Quantity</td>
+            <td>@ev.DueDate</td>
+            <td>
+                @if (ev.SupersedesEventId is { } s) { <span>Corrects <a href="#event-@s">#@s</a>. </span> }
+                @if (ev.Reason is not null) { <span>Reason: @ev.Reason</span> }
+                @if (e.Changes.Count > 0)
+                {
+                    <ul>
+                        @foreach (var c in e.Changes) { <li>@Model.Describe(c)</li> }
+                    </ul>
+                }
+                @ev.Condition @ev.Note
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+<p><a asp-page="Index">Back to loans</a></p>
