@@ -23,6 +23,52 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
 
+    /// <summary>Entities whose rows may only ever be inserted (audit trail and event ledgers).</summary>
+    private static readonly Type[] AppendOnlyTypes = [typeof(AuditEvent), typeof(LoanEvent), typeof(StockEvent)];
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        EnsureAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// Append-only enforcement for tracked changes: audit, loan and stock events can be added but never modified
+    /// or deleted. (Bulk <c>ExecuteUpdate</c>/<c>ExecuteDelete</c> bypass the change tracker; never use them on these sets.)
+    /// </summary>
+    private void EnsureAppendOnly()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted &&
+                AppendOnlyTypes.Contains(entry.Metadata.ClrType) &&
+                !IsTransferLinkOnce(entry))
+            {
+                throw new InvalidOperationException(
+                    $"{entry.Metadata.ClrType.Name} is append-only; it cannot be {entry.State.ToString().ToLowerInvariant()}.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The single permitted update: linking a transfer event to its counterpart, once (null → id), inside the
+    /// transaction that created the pair. Ids are only known after insert, so the link cannot be set up front.
+    /// </summary>
+    private static bool IsTransferLinkOnce(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        if (entry.State != EntityState.Modified || entry.Entity is not StockEvent) return false;
+        var modified = entry.Properties.Where(p => p.IsModified).ToList();
+        return modified.Count == 1 &&
+               modified[0].Metadata.Name == nameof(StockEvent.CounterpartEventId) &&
+               modified[0].OriginalValue is null;
+    }
+
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
         // SQLite (tests only) cannot compare/order DateTimeOffset in SQL; store as sortable binary there.

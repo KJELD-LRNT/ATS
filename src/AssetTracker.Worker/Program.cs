@@ -14,6 +14,7 @@ builder.Services.AddScoped<ICurrentUser, SystemCurrentUser>();
 // Background jobs (AD sync, outbox sender, daily overdue reminders) are registered by their work packages.
 builder.Services.AddHostedService<OutboxSenderJob>();
 builder.Services.AddHostedService<OverdueReminderJob>();
+builder.Services.AddHostedService<AssetTracker.Worker.Jobs.DirectorySyncJob>();
 
 var host = builder.Build();
 host.Run();

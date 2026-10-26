@@ -1,0 +1,53 @@
+@page
+@model AssetTracker.Web.Pages.Audit.IndexModel
+@{
+    ViewData["Title"] = "Audit log";
+}
+<h1>Audit log</h1>
+<p>Read-only. Audit records cannot be edited or deleted. Times and date filters are UTC.</p>
+
+<form method="get" class="filters">
+    <label>Action <input name="action" value="@Model.Action" placeholder="e.g. grant.add or grant.*" /></label>
+    <label>Entity
+        <select name="entity">
+            <option value="">(any)</option>
+            @foreach (var t in Model.EntityTypes)
+            {
+                <option value="@t" selected="@(t == Model.Entity)">@t</option>
+            }
+        </select>
+    </label>
+    <label>Entity id <input name="entityId" value="@Model.EntityId" size="8" /></label>
+    <label>Actor <input name="actor" value="@Model.Actor" placeholder="DOMAIN\user" /></label>
+    <label>From <input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" /></label>
+    <label>To <input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" /></label>
+    <button type="submit">Filter</button>
+    <a asp-page="/Audit/Index">Clear</a>
+</form>
+
+<p>@Model.Result.TotalCount event(s).</p>
+<table>
+    <thead><tr><th>#</th><th>When (UTC)</th><th>Actor</th><th>Action</th><th>Entity</th><th>Site</th><th>Reason</th><th>Details</th><th>Correlation</th></tr></thead>
+    <tbody>
+    @foreach (var e in Model.Result.Items)
+    {
+        <tr>
+            <td>@e.Id</td>
+            <td>@e.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+            <td>@e.Actor</td>
+            <td>@e.Action</td>
+            <td>@e.EntityType @e.EntityId</td>
+            <td>@e.SiteId</td>
+            <td>@e.Reason</td>
+            <td><code class="details">@e.DetailsJson</code></td>
+            <td><small>@e.CorrelationId</small></td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<p>
+    @if (Model.Result.HasPrevious) { <a asp-page="/Audit/Index" asp-all-route-data="Model.RouteFor(Model.Result.Page - 1)">Newer</a> }
+    Page @Model.Result.Page of @Model.Result.PageCount
+    @if (Model.Result.HasNext) { <a asp-page="/Audit/Index" asp-all-route-data="Model.RouteFor(Model.Result.Page + 1)">Older</a> }
+</p>

@@ -1,6 +1,8 @@
+using AssetTracker.Core.Admin;
 using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Notifications;
+using AssetTracker.Core.Directory;
 using AssetTracker.Core.Security;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,6 +24,9 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<OutboxSender>();
         services.AddScoped<OutboxMonitor>();
         services.AddScoped<OverdueReminderService>();
+        services.AddScoped<AuditQueryService>();
+        services.AddScoped<DirectorySyncService>();
+        services.AddScoped<AdminService>();
         return services;
     }
 }

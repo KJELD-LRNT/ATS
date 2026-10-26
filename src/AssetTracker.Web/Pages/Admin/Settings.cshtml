@@ -1,0 +1,21 @@
+@page
+@model AssetTracker.Web.Pages.Admin.SettingsModel
+@{
+    ViewData["Title"] = "Settings";
+}
+<h1>Settings</h1>
+
+@if (Model.Message is not null)
+{
+    <p class="notice">@Model.Message</p>
+}
+
+<form method="post">
+    <div asp-validation-summary="All" class="error"></div>
+    <p>
+        <label asp-for="ItMailbox"></label><br />
+        <input asp-for="ItMailbox" type="email" size="50" />
+        <br /><small>Receives a copy of checkout, return, correction and overdue emails.</small>
+    </p>
+    <button type="submit">Save</button>
+</form>
