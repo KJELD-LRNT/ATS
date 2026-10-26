@@ -7,10 +7,11 @@ public class FakeClock : IClock
 {
     public DateTimeOffset UtcNow { get; set; } = new(2026, 3, 2, 9, 0, 0, TimeSpan.Zero);
 
-    /// <summary>Tests use UTC as the client timezone unless they set one explicitly.</summary>
-    public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
-
-    public DateOnly LocalToday => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(UtcNow, TimeZone).DateTime);
+    /// <summary>
+    /// The UTC calendar day. <c>AppFactory</c> sets the default timezone (<c>Clock:TimeZoneId</c>) to UTC, so this is
+    /// every site's local day unless a test gives the site its own <c>Site.TimeZoneId</c>.
+    /// </summary>
+    public DateOnly UtcToday => DateOnly.FromDateTime(UtcNow.UtcDateTime);
 
     public void Advance(TimeSpan by) => UtcNow = UtcNow.Add(by);
 }

@@ -13,4 +13,10 @@ public class Site
     public string? DirectoryValue { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// IANA or Windows timezone id for this site's calendar (due dates, overdue rule, reminder time).
+    /// Null = the default timezone (<c>Clock:TimeZoneId</c>). See <c>SiteCalendar</c>.
+    /// </summary>
+    public string? TimeZoneId { get; set; }
 }

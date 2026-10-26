@@ -5,6 +5,13 @@
 }
 <h1>Sites</h1>
 <p>Each site's <em>AD site value</em> maps the directory site attribute to the site. People whose value matches no site are synced without a site and reported in the sync log.</p>
+<p>Each site's <em>timezone</em> decides its calendar: due dates, when a loan becomes overdue and when its daily reminders are sent. Leave it empty to use the default timezone (<strong>@Model.DefaultTimeZoneLabel</strong>).</p>
+<datalist id="timezones">
+    @foreach (var id in SitesModel.TimeZoneIds)
+    {
+        <option value="@id"></option>
+    }
+</datalist>
 
 @if (Model.Message is not null)
 {
@@ -12,7 +19,7 @@
 }
 
 <table>
-    <thead><tr><th>Key</th><th>Name</th><th>AD site value</th><th>Active</th><th></th></tr></thead>
+    <thead><tr><th>Key</th><th>Name</th><th>AD site value</th><th>Timezone</th><th>Active</th><th></th></tr></thead>
     <tbody>
     @foreach (var s in Model.Sites)
     {
@@ -20,6 +27,7 @@
             <td>@s.Key</td>
             <td>@s.Name</td>
             <td>@(s.DirectoryValue ?? "(unmapped)")</td>
+            <td>@(s.TimeZoneId ?? "(default)")</td>
             <td>@(s.IsActive ? "Yes" : "No")</td>
             <td><a asp-page="/Admin/Sites" asp-route-editId="@s.Id">Edit</a></td>
         </tr>
@@ -35,6 +43,7 @@
         <p>Key: <strong>@editing.Key</strong> (cannot be changed)</p>
         <p><label asp-for="Input.Name"></label> <input asp-for="Input.Name" /></p>
         <p><label asp-for="Input.DirectoryValue"></label> <input asp-for="Input.DirectoryValue" /></p>
+        <p><label asp-for="Input.TimeZoneId"></label> <input asp-for="Input.TimeZoneId" list="timezones" placeholder="default" /> <small>IANA (e.g. Europe/Amsterdam) or Windows id; empty = default.</small></p>
         <p><label><input asp-for="Input.IsActive" /> Active</label></p>
         <button type="submit">Save</button> <a asp-page="/Admin/Sites">Cancel</a>
     </form>
@@ -47,6 +56,7 @@ else
         <p><label asp-for="Input.Key"></label> <input asp-for="Input.Key" /> <small>Stable short key, e.g. HQ; cannot be changed later.</small></p>
         <p><label asp-for="Input.Name"></label> <input asp-for="Input.Name" /></p>
         <p><label asp-for="Input.DirectoryValue"></label> <input asp-for="Input.DirectoryValue" /></p>
+        <p><label asp-for="Input.TimeZoneId"></label> <input asp-for="Input.TimeZoneId" list="timezones" placeholder="default" /> <small>IANA (e.g. Europe/Amsterdam) or Windows id; empty = default.</small></p>
         <p><label><input asp-for="Input.IsActive" /> Active</label></p>
         <button type="submit">Create</button>
     </form>

@@ -28,7 +28,7 @@ public class Loan
 
     public DateTimeOffset StartedAt { get; set; }
 
-    /// <summary>Optional due date as a client-local calendar day.</summary>
+    /// <summary>Optional due date as a calendar day in the loan site's timezone (see <c>SiteCalendar</c>).</summary>
     public DateOnly? DueDate { get; set; }
 
     /// <summary>Set when fully returned. Null while open (drives the one-open-loan-per-asset unique index).</summary>

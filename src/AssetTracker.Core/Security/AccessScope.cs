@@ -15,7 +15,8 @@ public sealed record SiteAccess(bool AllSites, IReadOnlySet<int> SiteIds)
 
 /// <summary>
 /// Resolves site-level read access. Must be used by every inventory/report/export query path.
-/// IT → all sites. Manager → granted sites (grants only count while in the manager group).
+/// IT → all sites. Manager → granted sites (grants only count while in the manager group and while the granted
+/// person is active in the directory snapshot; sponsor decision D9 keeps the grant row but it then has no effect).
 /// Admin role alone → nothing.
 /// </summary>
 public class AccessScope(AppDbContext db, ICurrentUser user)
@@ -31,7 +32,7 @@ public class AccessScope(AppDbContext db, ICurrentUser user)
         var siteIds = await (
             from g in db.ManagerSiteGrants
             join p in db.People on g.PrincipalDirectoryId equals p.DirectoryId
-            where p.Sid == user.Sid
+            where p.Sid == user.Sid && p.IsActive
             select g.SiteId).ToListAsync(ct);
         return _cached = new SiteAccess(false, siteIds.ToHashSet());
     }

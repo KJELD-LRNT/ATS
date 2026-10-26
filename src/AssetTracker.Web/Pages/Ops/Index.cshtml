@@ -65,6 +65,7 @@ else
             <tr><th>Last error</th><td>@(o.LastError is null ? "none" : $"{IndexModel.Utc(o.LastErrorAt)}: {o.LastError}")</td></tr>
         </table>
         <p><a asp-page="/Ops/Mail">Open the mail queue</a> to inspect and requeue failed notifications.</p>
+        <p><a asp-page="/Admin/Sync">Directory sync history</a> lists every run with its issues (read-only for IT).</p>
     }
     else
     {

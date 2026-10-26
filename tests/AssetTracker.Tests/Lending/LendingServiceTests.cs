@@ -10,14 +10,14 @@ namespace AssetTracker.Tests.Lending;
 
 /// <summary>
 /// Checkout and return (WP2.1). The class shares one database and clock; tests only move the clock forward and
-/// derive due dates from <c>Clock.LocalToday</c>.
+/// derive due dates from <c>Clock.UtcToday</c> (the default timezone is UTC in tests).
 /// </summary>
 public class LendingServiceTests : IClassFixture<AppFactory>
 {
     private readonly AppFactory _f;
     public LendingServiceTests(AppFactory f) => _f = f;
 
-    private DateOnly InDays(int days) => _f.Clock.LocalToday.AddDays(days);
+    private DateOnly InDays(int days) => _f.Clock.UtcToday.AddDays(days);
 
     [Fact]
     public async Task Checkout_tagged_asset_creates_loan_event_audit_and_outbox()

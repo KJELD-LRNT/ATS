@@ -36,7 +36,7 @@
             </td>
             <td>@r.StartedAt.ToString("yyyy-MM-dd")</td>
             <td>@(r.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
-            @if (Model.Overdue) { <td class="num"><strong>@r.DaysOverdue</strong></td> }
+            @if (Model.Overdue) { <td class="num"><strong>@(r.DaysOverdue == 0 ? "due today" : r.DaysOverdue.ToString())</strong></td> }
             @if (Model.History) { <td>@(r.ClosedAt?.ToString("yyyy-MM-dd") ?? "open")</td> }
             <td>
                 @r.HolderDisplayName

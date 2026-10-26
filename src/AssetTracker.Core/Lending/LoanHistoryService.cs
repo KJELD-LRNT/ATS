@@ -1,9 +1,9 @@
-using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace AssetTracker.Core.Lending;
@@ -38,7 +38,7 @@ public sealed record LoanSearch(
 /// before a site move) and pool loans by the pool's site. Effective state is in the <see cref="Loan"/> columns;
 /// the original events and their corrections are in the event list.
 /// </summary>
-public class LoanHistoryService(AppDbContext db, AccessScope access, IClock clock)
+public class LoanHistoryService(AppDbContext db, AccessScope access, SiteCalendar calendar)
 {
     /// <summary>The loan with its event trail, or <see cref="AccessDeniedException"/> (404) when not visible.</summary>
     public async Task<LoanHistory> GetAsync(int loanId, CancellationToken ct = default)
@@ -85,10 +85,7 @@ public class LoanHistoryService(AppDbContext db, AccessScope access, IClock cloc
         if (s.SiteId is { } siteId)
             q = q.Where(l => (l.AssetId != null && l.Asset!.SiteId == siteId) || (l.PoolId != null && l.Pool!.SiteId == siteId));
         if (s.OverdueOnly)
-        {
-            var lastDue = OverduePolicy.LatestOverdueDueDate(clock.LocalToday);
-            q = q.Where(l => l.ClosedAt == null && l.DueDate != null && l.DueDate <= lastDue);
-        }
+            q = q.Where(l => l.ClosedAt == null).Where(await calendar.OverduePredicateAsync(ct)); // per-site day (D4)
         var term = s.Query?.Trim();
         if (!string.IsNullOrEmpty(term))
         {

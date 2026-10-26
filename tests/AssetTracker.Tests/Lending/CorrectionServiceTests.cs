@@ -69,7 +69,7 @@ public class CorrectionServiceTests : IClassFixture<AppFactory>
         var loanId = (await _f.CheckoutTaggedAsync(asset, holder)).Loan.Id;
 
         await _f.AsItCorrection(s => s.CommitAsync(loanId,
-            new CorrectionRequest { DueDate = _f.Clock.LocalToday.AddDays(30), Reason = "Agreed longer loan" }));
+            new CorrectionRequest { DueDate = _f.Clock.UtcToday.AddDays(30), Reason = "Agreed longer loan" }));
 
         var rows = await _f.OutboxAsync(loanId, NotificationKind.Correction);
         Assert.Equal(2, rows.Count);
@@ -102,7 +102,7 @@ public class CorrectionServiceTests : IClassFixture<AppFactory>
         var loanId = (await _f.CheckoutTaggedAsync(asset, holder)).Loan.Id;
 
         var noReason = await Assert.ThrowsAsync<DomainException>(() => _f.AsItCorrection(s =>
-            s.CommitAsync(loanId, new CorrectionRequest { DueDate = _f.Clock.LocalToday.AddDays(3), Reason = "  " })));
+            s.CommitAsync(loanId, new CorrectionRequest { DueDate = _f.Clock.UtcToday.AddDays(3), Reason = "  " })));
         Assert.Equal("correction.reason_required", noReason.Code);
 
         var noChange = await Assert.ThrowsAsync<DomainException>(() => _f.AsItCorrection(s =>
@@ -257,10 +257,10 @@ public class CorrectionServiceTests : IClassFixture<AppFactory>
         var loanId = (await _f.CheckoutTaggedAsync(asset, holder)).Loan.Id;
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => _f.RunAsAsync(TestUser.Manager, sp =>
-            sp.GetRequiredService<CorrectionService>().PreviewAsync(loanId, new CorrectionRequest { DueDate = _f.Clock.LocalToday })));
+            sp.GetRequiredService<CorrectionService>().PreviewAsync(loanId, new CorrectionRequest { DueDate = _f.Clock.UtcToday })));
         await Assert.ThrowsAsync<AccessDeniedException>(() => _f.RunAsAsync(TestUser.Admin, sp =>
             sp.GetRequiredService<CorrectionService>().CommitAsync(loanId,
-                new CorrectionRequest { DueDate = _f.Clock.LocalToday, Reason = "x" })));
+                new CorrectionRequest { DueDate = _f.Clock.UtcToday, Reason = "x" })));
 
         // Two concurrent corrections: at most one commits; the other sees a changed version.
         var attempts = Enumerable.Range(1, 4).Select(i => Task.Run(async () =>
@@ -268,7 +268,7 @@ public class CorrectionServiceTests : IClassFixture<AppFactory>
             try
             {
                 await _f.AsItCorrection(s => s.CommitAsync(loanId,
-                    new CorrectionRequest { DueDate = _f.Clock.LocalToday.AddDays(i), Reason = $"Attempt {i}" }));
+                    new CorrectionRequest { DueDate = _f.Clock.UtcToday.AddDays(i), Reason = $"Attempt {i}" }));
                 return true;
             }
             catch (ConflictException) { return false; }

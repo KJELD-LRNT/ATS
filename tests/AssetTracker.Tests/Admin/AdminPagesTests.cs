@@ -14,7 +14,8 @@ public class AdminPagesTests : IClassFixture<AppFactory>
     private readonly AppFactory _f;
     public AdminPagesTests(AppFactory f) => _f = f;
 
-    public static TheoryData<string> AdminPages => ["/Admin/Sites", "/Admin/Grants", "/Admin/Settings", "/Admin/Sync"];
+    /// <summary>Admin-only pages. <c>/Admin/Sync</c> is readable by IT too (D7, see the sync history tests below).</summary>
+    public static TheoryData<string> AdminPages => ["/Admin/Sites", "/Admin/Grants", "/Admin/Settings"];
 
     [Theory]
     [MemberData(nameof(AdminPages))]
@@ -192,5 +193,82 @@ public class AdminPagesTests : IClassFixture<AppFactory>
         var html = await (await c.GetAsync("/Admin/Sync")).Content.ReadAsStringAsync();
         Assert.Contains("Rejected", html);
         Assert.Contains("low-count", html);
+        Assert.Contains("Run sync now", html);
+    }
+
+    /// <summary>Sponsor decision D7: IT can view sync history and issues read-only; only admins can run a sync.</summary>
+    [Fact]
+    public async Task D7_it_can_view_sync_history_read_only_but_only_admins_can_run_a_sync()
+    {
+        _f.Directory.Entries = [];
+        await _f.RunAsAsync(TestUser.Admin, sp => sp.GetRequiredService<AdminService>().RunSyncNowAsync());
+        var runs = await _f.WithDbAsync(db => db.SyncRuns.CountAsync());
+
+        var it = _f.CreateClientAs(TestUser.It);
+        var res = await it.GetAsync("/Admin/Sync");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var html = await res.Content.ReadAsStringAsync();
+        Assert.Contains("low-count", html);
+        Assert.Contains("Read-only view", html);
+        Assert.DoesNotContain("Run sync now", html);
+        Assert.Contains("href=\"/Admin/Sync\"", await (await it.GetAsync("/Ops")).Content.ReadAsStringAsync());
+
+        // A crafted POST with a valid antiforgery token is still forbidden for IT, and runs nothing.
+        var token = await FormHelper.GetTokenAsync(it, "/Pools/Create");
+        res = await it.PostAsync("/Admin/Sync?handler=Run",
+            new FormUrlEncodedContent([new(FormHelper.TokenField, token)]));
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.Equal(runs, await _f.WithDbAsync(db => db.SyncRuns.CountAsync()));
+        await Assert.ThrowsAsync<AccessDeniedException>(() =>
+            _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<AdminService>().RunSyncNowAsync()));
+
+        // The service read allows IT or admin only.
+        var page = await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<AdminService>().ListSyncRunsAsync(1));
+        Assert.Equal(runs, page.TotalCount);
+        foreach (var user in new[] { TestUser.Manager, TestUser.Nobody })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await _f.CreateClientAs(user).GetAsync("/Admin/Sync")).StatusCode);
+            await Assert.ThrowsAsync<AccessDeniedException>(() =>
+                _f.RunAsAsync(user, sp => sp.GetRequiredService<AdminService>().ListSyncRunsAsync(1)));
+        }
+    }
+
+    [Fact]
+    public async Task Admin_sets_a_site_timezone_validated_and_audited()
+    {
+        var c = _f.CreateClientAs(TestUser.Admin);
+        var form = await (await c.GetAsync("/Admin/Sites")).Content.ReadAsStringAsync();
+        Assert.Contains("<datalist id=\"timezones\">", form);
+        Assert.Contains("UTC", form); // the default timezone label (Clock:TimeZoneId in tests)
+
+        var res = await FormHelper.PostFormAsync(c, "/Admin/Sites", "/Admin/Sites?handler=Create",
+            ("Input.Key", "TZ1"), ("Input.Name", "Timezone Site"), ("Input.TimeZoneId", " Europe/Amsterdam "),
+            ("Input.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+        var site = await _f.WithDbAsync(db => db.Sites.AsNoTracking().SingleAsync(s => s.Key == "TZ1"));
+        Assert.Equal("Europe/Amsterdam", site.TimeZoneId);
+
+        // Unknown id: rejected, nothing changed.
+        res = await FormHelper.PostFormAsync(c, $"/Admin/Sites?editId={site.Id}", $"/Admin/Sites?handler=Update&id={site.Id}",
+            ("Input.Name", "Timezone Site"), ("Input.TimeZoneId", "Mars/Olympus_Mons"), ("Input.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("not a known timezone", await res.Content.ReadAsStringAsync());
+        Assert.Equal("Europe/Amsterdam", (await _f.WithDbAsync(db => db.Sites.AsNoTracking().SingleAsync(s => s.Id == site.Id))).TimeZoneId);
+
+        // Windows ids are accepted too; empty means "use the default timezone".
+        await _f.RunAsAsync(TestUser.Admin, sp => sp.GetRequiredService<AdminService>()
+            .UpdateSiteAsync(site.Id, "Timezone Site", null, true, "W. Europe Standard Time"));
+        Assert.Equal("W. Europe Standard Time", (await _f.WithDbAsync(db => db.Sites.AsNoTracking().SingleAsync(s => s.Id == site.Id))).TimeZoneId);
+        res = await FormHelper.PostFormAsync(c, $"/Admin/Sites?editId={site.Id}", $"/Admin/Sites?handler=Update&id={site.Id}",
+            ("Input.Name", "Timezone Site"), ("Input.TimeZoneId", ""), ("Input.IsActive", "true"));
+        Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+        Assert.Null((await _f.WithDbAsync(db => db.Sites.AsNoTracking().SingleAsync(s => s.Id == site.Id))).TimeZoneId);
+
+        var audits = await _f.WithDbAsync(db => db.AuditEvents.Where(a => a.EntityType == "Site" && a.EntityId == site.Id.ToString())
+            .OrderBy(a => a.Id).Select(a => a.DetailsJson).ToListAsync());
+        Assert.Equal(3, audits.Count);
+        Assert.Contains("\"TimeZoneId\":\"Europe/Amsterdam\"", audits[0]);
+        Assert.Contains("\"TimeZoneId\":\"W. Europe Standard Time\"", audits[1]);
+        Assert.Contains("\"TimeZoneId\":null", audits[2]);
     }
 }

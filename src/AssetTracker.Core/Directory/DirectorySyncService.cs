@@ -4,6 +4,7 @@ using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
+using AssetTracker.Core.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,11 @@ namespace AssetTracker.Core.Directory;
 /// an existing person with a quarantined id is left unchanged). An entry whose site value maps to no
 /// <see cref="Site.DirectoryValue"/> is still synced with no site and reported as an unmapped-site issue.
 /// </para>
+/// <para>
+/// Sponsor decision D6: a run that ends <see cref="SyncRunStatus.Failed"/> or <see cref="SyncRunStatus.Rejected"/>
+/// stages one <see cref="NotificationKind.SystemAlert"/> mail to the IT mailbox (dedupe key
+/// <c>sync-alert:{runId}</c>) in the same save as the run's completion.
+/// </para>
 /// Not authorization-guarded: it is run by the worker (system actor) and by <c>AdminService.RunSyncNowAsync</c>,
 /// which enforces the admin role.
 /// </summary>
@@ -32,6 +38,7 @@ public class DirectorySyncService(
     IDirectorySource source,
     IClock clock,
     AuditWriter audit,
+    NotificationService notifications,
     IOptions<DirectorySyncOptions> options,
     ILogger<DirectorySyncService> logger)
 {
@@ -40,6 +47,12 @@ public class DirectorySyncService(
 
     private const int MaxDirectoryIdLength = 64;
     private const int MaxErrorLength = 4000;
+
+    /// <summary>Dedupe key of the D6 alert for a failed or rejected run.</summary>
+    public static string AlertDedupeKey(int runId) => $"sync-alert:{runId}";
+
+    /// <summary>Issues listed in the alert mail; the full list is on the sync history page.</summary>
+    private const int MaxAlertIssues = 10;
 
     public async Task<SyncRun> RunAsync(string triggeredBy, CancellationToken ct = default)
     {
@@ -288,7 +301,50 @@ public class DirectorySyncService(
             run.Status, run.TriggeredBy, run.Fetched, run.Mapped, run.Quarantined, run.Created, run.Updated,
             run.Deactivated, Issues = issues.Count,
         });
+        if (status is SyncRunStatus.Failed or SyncRunStatus.Rejected)
+        {
+            var (subject, body) = AlertMail(run, issues);
+            await notifications.QueueSystemAlertAsync(subject, body, AlertDedupeKey(run.Id), ct);
+        }
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// D6 alert text: run id, status, counts and a short, sanitized summary (first line of each message only, so no
+    /// stack traces; truncated). Issue usernames/ids are left out: the history page has the details.
+    /// </summary>
+    private static (string Subject, string Body) AlertMail(SyncRun run, List<SyncIssue> issues)
+    {
+        var verb = run.Status == SyncRunStatus.Failed ? "failed" : "rejected";
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Hello IT,").AppendLine();
+        sb.AppendLine(run.Status == SyncRunStatus.Failed
+            ? $"Directory sync run {run.Id} failed. The previous people snapshot is still in use."
+            : $"Directory sync run {run.Id} was rejected by the safety checks and not applied. The previous people snapshot is still in use.");
+        sb.AppendLine();
+        sb.AppendLine($"Run:                {run.Id}");
+        sb.AppendLine($"Status:             {run.Status}");
+        sb.AppendLine($"Triggered by:       {run.TriggeredBy}");
+        sb.AppendLine($"Started (UTC):      {run.StartedAt:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"Fetched:            {run.Fetched}");
+        sb.AppendLine($"Mapped:             {run.Mapped}");
+        sb.AppendLine($"Quarantined:        {run.Quarantined}");
+        if (run.Error is not null) sb.AppendLine($"Error:              {Sanitize(run.Error)}");
+        if (issues.Count > 0)
+        {
+            sb.AppendLine().AppendLine($"Issues ({issues.Count}):");
+            foreach (var i in issues.Take(MaxAlertIssues)) sb.AppendLine($"- {i.Code}: {Sanitize(i.Message)}");
+            if (issues.Count > MaxAlertIssues) sb.AppendLine($"- ... {issues.Count - MaxAlertIssues} more on the sync history page.");
+        }
+        sb.AppendLine().AppendLine("See Directory sync in the asset tracker for the full run history.");
+        sb.AppendLine().AppendLine("This is an automated message from the asset tracker.");
+        return ($"Asset Tracker: AD sync {verb} (run {run.Id})", sb.ToString());
+    }
+
+    private static string Sanitize(string text)
+    {
+        var line = text.ReplaceLineEndings("\n").Split("\n", 2)[0].Trim();
+        return line.Length <= 300 ? line : line[..300] + "...";
     }
 
     /// <summary>Parses <see cref="SyncRun.IssuesJson"/> for display.</summary>
