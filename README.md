@@ -5,6 +5,7 @@ A browser-based internal asset tracker for tagged devices and site quantity pool
 - **Stack:** ASP.NET Core (.NET 10, Razor Pages) on IIS with Windows Authentication, SQL Server (Express), and a Windows Worker Service.
 - **Plan:** [`docs/mvp-plan.md`](docs/mvp-plan.md)
 - **Development guide:** [`docs/development.md`](docs/development.md)
+- **Sponsor decisions:** [`docs/decisions.md`](docs/decisions.md)
 - **Operations runbook** (install, monitoring, release/rollback, backup/restore, troubleshooting): [`docs/runbook.md`](docs/runbook.md)
 - **Privacy, retention and deletion** (sponsor decision, data inventory, anonymization): [`docs/privacy-and-retention.md`](docs/privacy-and-retention.md)
 - **Deployment artifacts and configuration reference:** [`deploy/README.md`](deploy/README.md); build with `build/publish.ps1`
