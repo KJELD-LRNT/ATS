@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "claude/**"]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test-sqlite:
@@ -60,3 +61,34 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet build -c Release
+
+  publish:
+    name: Publish release artifacts (win-x64)
+    # Only for main and manual runs; pull requests and feature branches stop at build/test.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [test-sqlite, test-sqlserver, build-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish web, worker and migrations bundle
+        shell: pwsh
+        run: ./build/publish.ps1 -Version "0.1.${{ github.run_number }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assettracker-web
+          path: artifacts/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assettracker-worker
+          path: artifacts/worker
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assettracker-efbundle
+          path: artifacts/efbundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assettracker-deploy
+          path: artifacts/deploy

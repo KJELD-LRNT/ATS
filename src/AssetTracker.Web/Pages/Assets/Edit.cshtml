@@ -57,7 +57,7 @@
                 <button type="submit">Move</button>
             </form>
             <form method="post" asp-page-handler="Retire" asp-route-id="@a.Id"
-                  onsubmit="return confirm('Retire this asset? This cannot be undone.');">
+                  data-confirm="Retire this asset? This cannot be undone.">
                 <strong>Retire</strong><br />
                 <input name="reason" placeholder="Reason (optional)" />
                 <button type="submit">Retire</button>

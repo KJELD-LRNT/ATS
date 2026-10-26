@@ -15,6 +15,8 @@ builder.Services.AddScoped<ICurrentUser, SystemCurrentUser>();
 builder.Services.AddHostedService<OutboxSenderJob>();
 builder.Services.AddHostedService<OverdueReminderJob>();
 builder.Services.AddHostedService<AssetTracker.Worker.Jobs.DirectorySyncJob>();
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.SectionName));
+builder.Services.AddHostedService<WorkerHeartbeatJob>();
 
 var host = builder.Build();
 host.Run();
