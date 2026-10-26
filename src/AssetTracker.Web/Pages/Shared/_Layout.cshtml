@@ -1,0 +1,23 @@
+@inject ICurrentUser CurrentUser
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Asset Tracker</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<header>
+    <nav class="topnav">
+        <a class="brand" asp-page="/Index">Asset Tracker</a>
+        @* Feature work packages add nav links here, gated on role. *@
+        <span class="user">@CurrentUser.Name (@CurrentUser.Roles)</span>
+    </nav>
+</header>
+<main>
+    @RenderBody()
+</main>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

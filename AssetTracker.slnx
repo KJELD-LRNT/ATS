@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AssetTracker.Core/AssetTracker.Core.csproj" />
+    <Project Path="src/AssetTracker.Infrastructure/AssetTracker.Infrastructure.csproj" />
+    <Project Path="src/AssetTracker.Web/AssetTracker.Web.csproj" />
+    <Project Path="src/AssetTracker.Worker/AssetTracker.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AssetTracker.Tests/AssetTracker.Tests.csproj" />
+  </Folder>
+</Solution>
