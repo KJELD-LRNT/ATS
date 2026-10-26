@@ -1,7 +1,10 @@
 using AssetTracker.Core;
 using AssetTracker.Core.Security;
 using AssetTracker.Infrastructure;
+using AssetTracker.Web.Health;
 using AssetTracker.Web.Security;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 
@@ -30,7 +33,22 @@ builder.Services.AddAuthorization(o =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
 builder.Services.AddRazorPages(o => o.Conventions.ConfigureFilter(new DomainExceptionFilter()));
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks().AddAssetTrackerReadiness();
+
+// Antiforgery and TempData cookies: HttpOnly, SameSite=Strict, Secure (HTTPS only outside the plain-HTTP test host).
+var cookieSecure = builder.Environment.IsEnvironment("Testing") ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+builder.Services.AddAntiforgery(o =>
+{
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.Cookie.SecurePolicy = cookieSecure;
+});
+builder.Services.Configure<CookieTempDataProviderOptions>(o =>
+{
+    o.Cookie.HttpOnly = true;
+    o.Cookie.SameSite = SameSiteMode.Strict;
+    o.Cookie.SecurePolicy = cookieSecure;
+});
 
 var app = builder.Build();
 
@@ -40,13 +58,24 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
     app.UseHsts();
 }
 
+app.UseSecurityHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+// Everything below static files is dynamic (pages, CSV exports with personal data, health): never cache it.
+app.UseNoStoreForDynamicResponses();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapHealthChecks("/health").AllowAnonymous();
+// Liveness: the process answers; no dependencies are checked. Anonymous for the client's monitoring.
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+// Readiness: database, AD sync freshness, mail outbox and worker heartbeat. Minimal JSON, no internals.
+// Healthy/Degraded → 200, Unhealthy → 503.
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains(ReadinessChecks.Tag),
+    ResponseWriter = ReadinessChecks.WriteResponse,
+}).AllowAnonymous();
 app.MapRazorPages();
 
 app.Run();

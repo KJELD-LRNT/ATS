@@ -216,6 +216,15 @@ public class DirectorySyncService(
                 db.People.Add(p);
                 run.Created++;
             }
+            else if (p.IsAnonymized)
+            {
+                // Anonymized under client direction: never refresh or reactivate (docs/privacy-and-retention.md).
+                if (c.Enabled)
+                    issues.Add(new SyncIssue("anonymized-present",
+                        "An anonymized person is enabled in the directory; left anonymized and inactive.",
+                        DirectoryId: c.DirectoryId));
+                continue;
+            }
             else
             {
                 var wasActive = p.IsActive;

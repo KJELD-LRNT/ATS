@@ -1,0 +1,73 @@
+@page
+@model AssetTracker.Web.Pages.Ops.IndexModel
+@{
+    ViewData["Title"] = "Operations";
+    var d = Model.Dashboard;
+}
+<h1>Operations</h1>
+<p class="muted">Monitoring endpoints: <code>/health</code> (liveness) and <code>/health/ready</code> (readiness). See the runbook for what to alert on.</p>
+
+<h2>Application</h2>
+<table class="summary">
+    <tr><th>Web app version</th><td id="app-version">@d.AppVersion</td></tr>
+    <tr><th>Database</th><td id="db-status" class="@(d.DatabaseReachable ? "" : "error")">@(d.DatabaseReachable ? "Reachable" : "NOT reachable")</td></tr>
+</table>
+
+@if (!d.DatabaseReachable)
+{
+    <p class="warning">The database cannot be reached; sync, mail and worker status are unavailable.</p>
+}
+else
+{
+    <h2>Worker</h2>
+    @if (d.Worker is { } w)
+    {
+        <table class="summary">
+            <tr><th>Status</th><td id="worker-status" class="@(w.IsStale ? "error" : "")">@(w.LastSeenAt is null ? "Never reported" : w.IsStale ? "STALE" : "Running")</td></tr>
+            <tr><th>Last heartbeat</th><td>@IndexModel.Utc(w.LastSeenAt) (@IndexModel.Age(w.Age) ago)</td></tr>
+            <tr><th>Worker version</th><td>@(w.Version ?? "unknown")</td></tr>
+            <tr><th>Stale after</th><td>@IndexModel.Age(d.WorkerStaleAfter) without a heartbeat</td></tr>
+        </table>
+    }
+    else
+    {
+        <p class="warning">Worker status unavailable.</p>
+    }
+
+    <h2>Directory sync</h2>
+    @if (d.Sync is { } s)
+    {
+        <table class="summary">
+            <tr><th>Last successful sync</th><td id="sync-last-success" class="@(s.IsStale ? "error" : "")">@IndexModel.Utc(s.LastSuccessAt)@(s.IsStale ? " (STALE)" : "")</td></tr>
+            <tr><th>Stale after</th><td>@IndexModel.Age(d.SyncStaleAfter)</td></tr>
+            <tr><th>Latest run</th><td id="sync-last-run">@(s.LastRunStatus?.ToString() ?? "none") @(s.LastRunAt is null ? "" : $"(started {IndexModel.Utc(s.LastRunAt)})")</td></tr>
+            <tr><th>Issues in latest run</th><td id="sync-issues">@(d.LastRunIssueCount?.ToString() ?? "n/a")</td></tr>
+            @if (s.LastRunError is not null)
+            {
+                <tr><th>Latest run error</th><td class="error">@s.LastRunError</td></tr>
+            }
+        </table>
+        <p class="muted">Run details and manual rerun are on the admin directory sync page (application admins).</p>
+    }
+    else
+    {
+        <p class="warning">Directory sync status unavailable.</p>
+    }
+
+    <h2>Mail outbox</h2>
+    @if (d.Outbox is { } o)
+    {
+        <table class="summary">
+            <tr><th>Pending</th><td id="outbox-pending">@o.PendingCount</td></tr>
+            <tr><th>Failed (retries exhausted)</th><td id="outbox-failed" class="@(o.FailedCount > 0 ? "error" : "")">@o.FailedCount</td></tr>
+            <tr><th>Skipped recipients</th><td id="outbox-skipped">@o.SkippedCount</td></tr>
+            <tr><th>Oldest pending</th><td class="@(o.OldestPendingAge > d.OutboxPendingMaxAge ? "error" : "")">@(o.OldestPendingAge is null ? "none" : IndexModel.Age(o.OldestPendingAge))</td></tr>
+            <tr><th>Last error</th><td>@(o.LastError is null ? "none" : $"{IndexModel.Utc(o.LastErrorAt)}: {o.LastError}")</td></tr>
+        </table>
+        <p><a asp-page="/Ops/Mail">Open the mail queue</a> to inspect and requeue failed notifications.</p>
+    }
+    else
+    {
+        <p class="warning">Mail outbox status unavailable.</p>
+    }
+}

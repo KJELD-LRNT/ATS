@@ -152,6 +152,7 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     Email = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
                     SiteId = table.Column<int>(type: "int", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    IsAnonymized = table.Column<bool>(type: "bit", nullable: false),
                     FirstSeenAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     LastSyncedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
                 },

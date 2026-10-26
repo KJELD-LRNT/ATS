@@ -3,6 +3,8 @@ using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
+using AssetTracker.Core.Ops;
+using AssetTracker.Core.Privacy;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
 using AssetTracker.Core.Security;
@@ -37,6 +39,11 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<LoanHistoryService>();
         // Reports and CSV exports (WP3.1).
         services.AddScoped<ReportService>();
+
+        // Operations and privacy (WP3.2). OpsOptions are bound from "Ops" by the infrastructure layer.
+        services.AddOptions<OpsOptions>();
+        services.AddScoped<OpsStatusService>();
+        services.AddScoped<PrivacyService>();
         return services;
     }
 }

@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AssetTracker.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261026150258_Initial")]
+    [Migration("20261026153102_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -460,6 +460,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsAnonymized")
                         .HasColumnType("bit");
 
                     b.Property<string>("JobTitle")

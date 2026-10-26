@@ -22,6 +22,12 @@ public class Person
     /// <summary>Active per the latest successful sync. Missing/disabled in AD → false.</summary>
     public bool IsActive { get; set; }
 
+    /// <summary>
+    /// Personal fields were replaced by a pseudonym under client direction (see <c>PrivacyService</c>).
+    /// Directory sync never updates or reactivates an anonymized person.
+    /// </summary>
+    public bool IsAnonymized { get; set; }
+
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset LastSyncedAt { get; set; }
 

@@ -459,6 +459,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsAnonymized")
+                        .HasColumnType("bit");
+
                     b.Property<string>("JobTitle")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
