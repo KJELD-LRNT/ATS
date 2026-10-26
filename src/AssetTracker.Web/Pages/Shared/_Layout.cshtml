@@ -10,6 +10,8 @@
 </head>
 <body>
 <header>
+    @* Local demo mode only (renders nothing otherwise). *@
+    @await Component.InvokeAsync("DemoBanner")
     <nav class="topnav">
         <a class="brand" asp-page="/Index">Asset Tracker</a>
         @* Feature work packages add nav links here, gated on role. *@

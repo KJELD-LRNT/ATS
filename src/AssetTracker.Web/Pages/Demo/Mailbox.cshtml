@@ -1,0 +1,60 @@
+@page
+@model AssetTracker.Web.Pages.Demo.MailboxModel
+@{
+    ViewData["Title"] = "Demo mailbox";
+}
+<h1>Demo mailbox</h1>
+<p>Every mail the app sends in demo mode (checkout, return, correction, overdue reminders, sync alerts, test mail)
+    lands here instead of a mail relay. The outbox sender delivers about every 10 seconds; reload to see new mail.</p>
+
+@if (Model.Message is not null)
+{
+    <p class="flash">@Model.Message</p>
+}
+
+<form method="post" asp-page-handler="Clear" data-confirm="Delete every message in the demo mailbox?" class="demo-inline">
+    <button type="submit" id="demo-mailbox-clear">Clear mailbox</button>
+</form>
+<a asp-page="/Demo/Mailbox">Reload</a>
+
+<div class="demo-mailbox">
+    <div>
+        <h2>@Model.Messages.Count message(s)</h2>
+        @if (Model.Messages.Count == 0)
+        {
+            <p>No mail yet.</p>
+        }
+        else
+        {
+            <table id="demo-mail-list">
+                <thead><tr><th>Received (demo time)</th><th>To</th><th>Subject</th></tr></thead>
+                <tbody>
+                @foreach (var m in Model.Messages)
+                {
+                    <tr class="@(m.Id == Model.Id ? "selected" : "")">
+                        <td class="nowrap">@m.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td>
+                        <td>@m.To</td>
+                        <td><a asp-page="/Demo/Mailbox" asp-route-id="@m.Id">@(string.IsNullOrWhiteSpace(m.Subject) ? "(no subject)" : m.Subject)</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+    <div>
+        @if (Model.Selected is { } s)
+        {
+            <h2 id="demo-mail-subject">@s.Subject</h2>
+            <table>
+                <tr><th>From</th><td>@s.From</td></tr>
+                <tr><th>To</th><td>@s.To</td></tr>
+                <tr><th>Date</th><td>@s.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+            </table>
+            <pre class="demo-mail-body" id="demo-mail-body">@s.Body</pre>
+        }
+        else
+        {
+            <p class="muted">Select a message to read it.</p>
+        }
+    </div>
+</div>

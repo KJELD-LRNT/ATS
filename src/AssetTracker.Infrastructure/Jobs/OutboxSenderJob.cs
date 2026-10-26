@@ -1,7 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using AssetTracker.Core.Notifications;
 using Microsoft.Extensions.Options;
 
-namespace AssetTracker.Worker.Jobs;
+namespace AssetTracker.Infrastructure.Jobs;
 
 /// <summary>
 /// Polls the mail outbox every <see cref="NotificationOptions.PollInterval"/> and drains due rows in batches.

@@ -5,9 +5,9 @@
 | Project | Purpose |
 | --- | --- |
 | `src/AssetTracker.Core` | Domain entities, `AppDbContext` (provider-agnostic), application services, access scope, audit writer, adapter interfaces (`IClock`, `IDirectorySource`, `IMailRelay`). |
-| `src/AssetTracker.Infrastructure` | SQL Server registration, EF migrations, production adapters (AD `DirectorySearcher`, SMTP relay, system clock). |
+| `src/AssetTracker.Infrastructure` | SQL Server registration, EF migrations, production adapters (AD `DirectorySearcher`, SMTP relay, system clock), the background jobs (`Jobs/`, hosted by the worker) and the local demo mode adapters (`Demo/`). |
 | `src/AssetTracker.Web` | ASP.NET Core Razor Pages on IIS, Windows Authentication, AD-group → app-role mapping, authorization policies. |
-| `src/AssetTracker.Worker` | Windows Service hosting background jobs (AD sync, mail outbox sender, per-site overdue reminders). |
+| `src/AssetTracker.Worker` | Windows Service hosting the background jobs from `Infrastructure/Jobs` (AD sync, mail outbox sender, per-site overdue reminders, heartbeat). |
 | `tests/AssetTracker.Tests` | Integration-first tests: `AppFactory` runs the real app against a real relational DB with simulated Windows principals and fake AD/relay. |
 
 ## Running locally
@@ -66,3 +66,13 @@ Rules: people are keyed on the directory id (rename updates the same row) and ne
 - **Worker heartbeat:** `WorkerHeartbeatJob` upserts `AppSetting` rows `Worker.Heartbeat` / `Worker.Version` (`UpdatedBy = system:worker`) every `Worker:HeartbeatInterval`; `OpsStatusService` reads them. The IT dashboard is `/Ops`.
 - **Security headers:** `Web/Security/SecurityHeaders.cs` sets CSP (`script-src 'self'; style-src 'self'`, no inline), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store` on every non-static response. **Do not add inline `<script>`, `<style>`, `style=""` or `on*=` handlers**; use `wwwroot/js/site.js` (e.g. `data-confirm="..."` on a form) and `site.css`.
 - **Privacy:** `PrivacyService.AnonymizePersonAsync` (admin, audited `privacy.anonymize`) and `Person.IsAnonymized`, which `DirectorySyncService` never updates. New code that stores holder personal data in a *mutable* table must be added to the anonymization scrub; never put names/emails into append-only ledgers. See `docs/privacy-and-retention.md`.
+
+## Local demo mode (WP5.1)
+
+`dotnet run --project src/AssetTracker.Web --launch-profile Demo` runs the whole app on one machine with fictional data; the user-facing guide is [`docs/testing-guide.md`](testing-guide.md).
+
+- **Activation.** `Demo:Enabled=true` (`DemoOptions`, Infrastructure/Demo) is honoured only when `IHostEnvironment.IsDevelopment()`; in any other environment `DemoOptions.Resolve` throws at start-up. When off, nothing changes: Program.cs registers Negotiate as before and the `/Demo` pages get no route (`ConfigureDemoPages` clears their selectors, so they are 404).
+- **What it swaps** (`AddDemoWeb` → `AddAssetTrackerDemo`, called after the production registrations): SQLite at `<Demo:DataDirectory>/demo.db` (`EnsureCreated()`, WAL; the migrations stay SQL Server only), `DemoClock` (real time + offset stored in the `Demo.ClockOffset` AppSetting; seeding pins it per async flow), `DemoDirectorySource` (fixed fictional directory), `PickupDirectoryMailRelay` (`.eml` files under `mail/`, read by `/Demo/Mailbox`), a plain key folder `keys/`, the background jobs hosted in the web process (`AddAssetTrackerBackgroundJobs`, shared with the worker), `DemoAuthenticationHandler` (emits Name/PrimarySid/GroupSid like Negotiate, from the `/Demo` role-switcher cookie) and `DemoCurrentUser` (seeding actor → HTTP user → `system:worker`). Demo configuration defaults (role group SIDs, short intervals, timezone) are an in-memory source added before the database settings overlay, so Admin → Settings still wins.
+- **Seeding** (`DemoSeeder`) goes through the real services as an IT+admin actor, in time order with the clock pinned to past instants, so audit, ledgers and outbox are consistent; seeded mail is marked sent. It only runs on an empty database; **Reset demo data** (`DemoDataManager.ResetAsync`) empties every table and seeds again.
+- **Tests:** `tests/AssetTracker.Tests/Demo/` (`DemoAppFactory` = Development + demo + temp folder, jobs off).
+- Production code never references the demo types except through these Program.cs hooks, the layout's `DemoBanner` view component (renders nothing when demo is off) and the settings page note.

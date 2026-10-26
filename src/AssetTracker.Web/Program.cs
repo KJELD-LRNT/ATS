@@ -3,6 +3,7 @@ using AssetTracker.Core.Security;
 using AssetTracker.Infrastructure;
 using AssetTracker.Infrastructure.Configuration;
 using AssetTracker.Infrastructure.Security;
+using AssetTracker.Web.Demo;
 using AssetTracker.Web.Health;
 using AssetTracker.Web.Security;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -11,6 +12,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 
 var builder = WebApplication.CreateBuilder(args);
+// Local demo mode (WP5.1, docs/testing-guide.md): only in Development; throws if enabled anywhere else. Null when off.
+var demo = builder.AddDemoConfiguration();
 // Settings saved on Admin → Settings (AppSettings table) override the appsettings files. Keep this the last source.
 builder.Configuration.AddDatabaseSettings();
 
@@ -20,8 +23,8 @@ builder.Services.AddAssetTrackerInfrastructure(builder.Configuration);
 builder.Services.AddAssetTrackerDataProtection(builder.Configuration, builder.Environment);
 
 // Integrated Windows Authentication (IIS in-process passes the Windows identity through Negotiate).
-// The Testing environment substitutes a simulated Windows principal scheme (see tests).
-if (!builder.Environment.IsEnvironment("Testing"))
+// The Testing environment substitutes a simulated Windows principal scheme (see tests); demo mode its own scheme.
+if (!builder.Environment.IsEnvironment("Testing") && demo is null)
 {
     builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();
 }
@@ -39,11 +42,21 @@ builder.Services.AddAuthorization(o =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpCurrentUser>();
-builder.Services.AddRazorPages(o => o.Conventions.ConfigureFilter(new DomainExceptionFilter()));
+builder.Services.AddRazorPages(o =>
+{
+    o.Conventions.ConfigureFilter(new DomainExceptionFilter());
+    o.Conventions.ConfigureDemoPages(demo is not null);
+})
+// No client-side validation scripts are used (CSP). With it off, an empty validation summary renders nothing instead
+// of a placeholder with an inline style attribute, which the CSP blocks (a console violation on every form page).
+.AddViewOptions(o => o.HtmlHelperOptions.ClientValidationEnabled = false);
 builder.Services.AddHealthChecks().AddAssetTrackerReadiness();
 
-// Antiforgery and TempData cookies: HttpOnly, SameSite=Strict, Secure (HTTPS only outside the plain-HTTP test host).
-var cookieSecure = builder.Environment.IsEnvironment("Testing") ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+// Antiforgery and TempData cookies: HttpOnly, SameSite=Strict, Secure (HTTPS only outside the plain-HTTP test host
+// and the plain-HTTP local demo).
+var cookieSecure = builder.Environment.IsEnvironment("Testing") || demo is not null
+    ? CookieSecurePolicy.SameAsRequest
+    : CookieSecurePolicy.Always;
 builder.Services.AddAntiforgery(o =>
 {
     o.Cookie.HttpOnly = true;
@@ -57,7 +70,12 @@ builder.Services.Configure<CookieTempDataProviderOptions>(o =>
     o.Cookie.SecurePolicy = cookieSecure;
 });
 
+// Demo mode replaces the database, directory, relay, clock, key ring, authentication and current user.
+if (demo is not null) builder.Services.AddDemoWeb(demo, builder.Configuration);
+
 var app = builder.Build();
+// Demo mode: create and seed the SQLite demo database on first run.
+if (demo is not null) await app.Services.InitializeDemoAsync();
 // First load of database settings before anything reads options (tolerates a database that is not migrated yet).
 await app.Services.LoadDatabaseSettingsAsync();
 
@@ -68,7 +86,7 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
 }
 
 app.UseSecurityHeaders();
-app.UseHttpsRedirection();
+if (demo is null) app.UseHttpsRedirection();
 app.UseStaticFiles();
 // Everything below static files is dynamic (pages, CSV exports with personal data, health): never cache it.
 app.UseNoStoreForDynamicResponses();
