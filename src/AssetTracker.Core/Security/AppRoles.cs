@@ -26,4 +26,7 @@ public static class Policies
 
     /// <summary>Application admin: settings and grants.</summary>
     public const string AdminOnly = "AdminOnly";
+
+    /// <summary>IT or application admin: read-only operational views such as directory sync history (D7).</summary>
+    public const string ItOrAdmin = "ItOrAdmin";
 }

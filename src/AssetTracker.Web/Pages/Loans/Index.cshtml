@@ -35,7 +35,7 @@
             <td class="num"><strong>@l.Quantity</strong></td>
             <td class="num">@l.OutstandingQuantity</td>
             <td>@l.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
-            <td>@l.DueDate@(Model.IsOverdue(l) ? " (overdue)" : "")</td>
+            <td>@l.DueDate@(Model.DueStatus(l) is { } status ? $" ({status})" : "")</td>
             <td>
                 @if (Model.CanEdit && l.IsOpen)
                 {

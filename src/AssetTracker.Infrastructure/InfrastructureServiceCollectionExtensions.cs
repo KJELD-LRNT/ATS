@@ -6,6 +6,7 @@ using AssetTracker.Infrastructure.Mail;
 using AssetTracker.Core.Directory;
 using AssetTracker.Infrastructure.Directory;
 using AssetTracker.Infrastructure.Time;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,7 +25,7 @@ public static class InfrastructureServiceCollectionExtensions
             config.GetConnectionString("AssetTracker"),
             sql => sql.MigrationsAssembly(typeof(InfrastructureServiceCollectionExtensions).Assembly.FullName)));
 
-        services.Configure<ClockOptions>(config.GetSection("Clock"));
+        services.Configure<ClockOptions>(config.GetSection(ClockOptions.SectionName));
         services.AddSingleton<IClock, SystemClock>();
 
         services.Configure<NotificationOptions>(config.GetSection(NotificationOptions.SectionName));

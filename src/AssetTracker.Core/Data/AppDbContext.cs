@@ -85,6 +85,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Key).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.DirectoryValue).HasMaxLength(200);
+            e.Property(x => x.TimeZoneId).HasMaxLength(100);
             e.HasIndex(x => x.Key).IsUnique();
             e.HasIndex(x => x.DirectoryValue).IsUnique().HasFilter("[DirectoryValue] IS NOT NULL");
         });

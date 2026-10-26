@@ -8,12 +8,12 @@
 <div class="balances">
     <div><strong>@s.OpenLoans</strong>open assignments</div>
     <div><strong>@s.OpenPoolUnits</strong>pool units out</div>
-    <div><strong>@s.OverdueLoans</strong>overdue (as of @s.LocalToday.ToString("yyyy-MM-dd"))</div>
+    <div><strong>@s.OverdueLoans</strong>overdue or due today (site-local date)</div>
 </div>
 <ul>
     <li><a asp-page="Inventory">Inventory</a> — tagged assets by site, type and state; pool balances</li>
     <li><a asp-page="Assignments">Current assignments</a> — open tagged and pool loans with holder details</li>
-    <li><a asp-page="Overdue">Overdue</a> — open loans past their due date</li>
+    <li><a asp-page="Overdue">Overdue</a> — open loans due today or earlier (site-local date)</li>
     <li><a asp-page="History">History</a> — all loans with corrections; loan and event level exports</li>
 </ul>
 <p class="muted">Every report has a CSV export of the current filters. Exports are audited.</p>

@@ -24,6 +24,10 @@
         {
             <a asp-page="/Ops/Index">Ops</a>
             <a asp-page="/Ops/Mail">Mail queue</a>
+            @if (!CurrentUser.IsAdmin)
+            {
+                <a asp-page="/Admin/Sync">Directory sync</a>
+            }
         }
         @if (CurrentUser.IsIt)
         {

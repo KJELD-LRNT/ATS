@@ -88,12 +88,16 @@ public static class NotificationTemplates
     public static ComposedMail OverdueReminder(LoanMailFacts f, MailAudience to, DateOnly localToday)
     {
         var due = f.DueDate ?? localToday;
+        // D4: overdue from the due date itself; 0 days past due reads as "due today".
         var days = OverduePolicy.DaysOverdue(due, localToday);
+        var state = days == 0 ? "is due back today" : $"was due back on {due:yyyy-MM-dd} and is {days} day(s) overdue";
         var lead = to.IsIt
-            ? $"{f.ItemSummary} held by {f.HolderName} was due back on {due:yyyy-MM-dd} and is {days} day(s) overdue."
-            : $"{f.ItemSummary} was due back on {due:yyyy-MM-dd} and is {days} day(s) overdue. Please return it to IT or contact IT to agree a new date.";
-        return Compose($"Overdue: {f.ItemSummary} was due {due:yyyy-MM-dd}", to, lead, f,
-            includeOutstanding: f.IsPool, extra: null);
+            ? $"{f.ItemSummary} held by {f.HolderName} {state}."
+            : $"{f.ItemSummary} {state}. Please return it to IT or contact IT to agree a new date.";
+        var subject = days == 0
+            ? $"Due today: {f.ItemSummary} is due {due:yyyy-MM-dd}"
+            : $"Overdue: {f.ItemSummary} was due {due:yyyy-MM-dd}";
+        return Compose(subject, to, lead, f, includeOutstanding: f.IsPool, extra: null);
     }
 
     private static ComposedMail Compose(string subject, MailAudience to, string lead, LoanMailFacts f,

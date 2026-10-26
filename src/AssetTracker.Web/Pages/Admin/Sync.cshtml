@@ -21,10 +21,17 @@
     </p>
 }
 
-<form method="post" asp-page-handler="Run">
-    <button type="submit">Run sync now</button>
-    <small>Runs a full directory sync and waits for it to finish.</small>
-</form>
+@if (Model.CanRun)
+{
+    <form method="post" asp-page-handler="Run">
+        <button type="submit">Run sync now</button>
+        <small>Runs a full directory sync and waits for it to finish.</small>
+    </form>
+}
+else
+{
+    <p class="muted">Read-only view. An application admin can run a sync manually. Failed or rejected runs are also mailed to the IT mailbox.</p>
+}
 
 <h2>History</h2>
 <table>

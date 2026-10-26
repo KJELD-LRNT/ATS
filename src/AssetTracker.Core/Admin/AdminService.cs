@@ -7,6 +7,7 @@ using AssetTracker.Core.Data;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace AssetTracker.Core.Admin;
@@ -19,7 +20,8 @@ public sealed record PersonPick(int Id, string Username, string DisplayName, str
 
 /// <summary>
 /// Application-admin functions: sites and their AD mapping, manager site grants, settings, and manual sync.
-/// Every method requires the admin role (which grants no inventory access by itself). All changes are audited.
+/// Every method requires the admin role (which grants no inventory access by itself), except reading the sync
+/// history, which IT may also do (D7). All changes are audited.
 /// </summary>
 public partial class AdminService(
     AppDbContext db,
@@ -49,8 +51,9 @@ public partial class AdminService(
                ?? throw new DomainException("site.not-found", "Site not found.");
     }
 
+    /// <param name="timeZoneId">IANA or Windows timezone id; empty = the default timezone (<c>Clock:TimeZoneId</c>).</param>
     public async Task<Site> CreateSiteAsync(string key, string name, string? directoryValue, bool isActive,
-        CancellationToken ct = default)
+        string? timeZoneId = null, CancellationToken ct = default)
     {
         scope.EnsureAdmin();
         key = (key ?? "").Trim();
@@ -58,6 +61,7 @@ public partial class AdminService(
             throw new DomainException("site.key", "Key must be 1-32 letters, digits, '-' or '_'.");
         name = RequireName(name);
         directoryValue = CleanDirectoryValue(directoryValue);
+        timeZoneId = CleanTimeZoneId(timeZoneId);
 
         var keys = await db.Sites.Select(s => s.Key).ToListAsync(ct);
         if (keys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
@@ -66,33 +70,41 @@ public partial class AdminService(
 
         // The audit row needs the generated id: two saves, one transaction.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var site = new Site { Key = key, Name = name, DirectoryValue = directoryValue, IsActive = isActive };
+        var site = new Site
+        {
+            Key = key, Name = name, DirectoryValue = directoryValue, IsActive = isActive, TimeZoneId = timeZoneId,
+        };
         db.Sites.Add(site);
         await db.SaveChangesAsync(ct);
         audit.Record("site.create", nameof(Site), site.Id, site.Id,
-            details: new { site.Key, site.Name, site.DirectoryValue, site.IsActive });
+            details: new { site.Key, site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return site;
     }
 
-    /// <summary>Updates name, AD mapping and active flag. The key is immutable once created.</summary>
+    /// <summary>
+    /// Updates name, AD mapping, active flag and timezone. The key is immutable once created.
+    /// <paramref name="timeZoneId"/> empty/null = use the default timezone (<c>Clock:TimeZoneId</c>).
+    /// </summary>
     public async Task<Site> UpdateSiteAsync(int id, string name, string? directoryValue, bool isActive,
-        CancellationToken ct = default)
+        string? timeZoneId = null, CancellationToken ct = default)
     {
         scope.EnsureAdmin();
         var site = await db.Sites.SingleOrDefaultAsync(s => s.Id == id, ct)
                    ?? throw new DomainException("site.not-found", "Site not found.");
         name = RequireName(name);
         directoryValue = CleanDirectoryValue(directoryValue);
+        timeZoneId = CleanTimeZoneId(timeZoneId);
         await EnsureDirectoryValueFreeAsync(directoryValue, id, ct);
 
-        var before = new { site.Name, site.DirectoryValue, site.IsActive };
+        var before = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId };
         site.Name = name;
         site.DirectoryValue = directoryValue;
         site.IsActive = isActive;
+        site.TimeZoneId = timeZoneId;
         audit.Record("site.update", nameof(Site), site.Id, site.Id,
-            details: new { before, after = new { site.Name, site.DirectoryValue, site.IsActive } });
+            details: new { before, after = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId } });
         await db.SaveChangesAsync(ct);
         return site;
     }
@@ -108,6 +120,17 @@ public partial class AdminService(
     {
         v = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
         if (v is { Length: > 200 }) throw new DomainException("site.directory-value", "Directory value is too long (max 200).");
+        return v;
+    }
+
+    /// <summary>Empty = null (default timezone); otherwise must be a timezone id known on this server.</summary>
+    private static string? CleanTimeZoneId(string? v)
+    {
+        v = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        if (v is null) return null;
+        if (v.Length > 100 || !SiteCalendar.TryFindTimeZone(v, out _))
+            throw new DomainException("site.timezone",
+                $"'{(v.Length > 100 ? v[..100] : v)}' is not a known timezone. Use an IANA id such as Europe/Amsterdam or a Windows id such as W. Europe Standard Time, or leave it empty for the default timezone.");
         return v;
     }
 
@@ -242,9 +265,10 @@ public partial class AdminService(
 
     // ---- Directory sync ----------------------------------------------------------------------------------
 
+    /// <summary>Sync run history, newest first. IT or admin (sponsor decision D7: IT can view, read-only).</summary>
     public async Task<PagedResult<SyncRun>> ListSyncRunsAsync(int page, int pageSize = 20, CancellationToken ct = default)
     {
-        scope.EnsureAdmin();
+        if (!user.IsIt && !user.IsAdmin) throw new AccessDeniedException();
         page = Math.Max(1, page);
         var total = await db.SyncRuns.CountAsync(ct);
         var items = await db.SyncRuns.AsNoTracking().OrderByDescending(r => r.Id)
@@ -252,7 +276,7 @@ public partial class AdminService(
         return new PagedResult<SyncRun>(items, total, page, pageSize);
     }
 
-    /// <summary>Manual rerun, executed synchronously in the request.</summary>
+    /// <summary>Manual rerun, executed synchronously in the request. Admin only (IT views history read-only, D7).</summary>
     public Task<SyncRun> RunSyncNowAsync(CancellationToken ct = default)
     {
         scope.EnsureAdmin();

@@ -6,6 +6,7 @@ using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace AssetTracker.Core.Reporting;
@@ -27,7 +28,7 @@ namespace AssetTracker.Core.Reporting;
 /// the only change and is saved by its own <c>SaveChangesAsync</c> before the file is returned.
 /// </para>
 /// </summary>
-public class ReportService(AppDbContext db, AccessScope access, AuditWriter audit, ICurrentUser user, IClock clock)
+public class ReportService(AppDbContext db, AccessScope access, AuditWriter audit, ICurrentUser user, SiteCalendar calendar)
 {
     public const string ExportInventoryAction = "export.inventory";
     public const string ExportAssignmentsAction = "export.assignments";
@@ -55,19 +56,17 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
             })
             .ToListAsync(ct);
 
-        var today = clock.LocalToday;
-        var lastDue = OverduePolicy.LatestOverdueDueDate(today);
         var open = (await access.VisibleLoansAsync(ct)).Where(l => l.ClosedAt == null);
         var openLoans = await open.CountAsync(ct);
         var openPoolUnits = await open.Where(l => l.PoolId != null).SumAsync(l => l.Quantity - l.ReturnedQuantity, ct);
-        var overdue = await open.CountAsync(l => l.DueDate != null && l.DueDate <= lastDue, ct);
+        var overdue = await open.Where(await calendar.OverduePredicateAsync(ct)).CountAsync(ct);
 
         return new InventorySummary(
             assetCounts.Select(x => new AssetCount(Key(x.SiteId), x.Type, x.State, x.Count))
                 .OrderBy(x => x.SiteKey).ThenBy(x => x.Type).ThenBy(x => x.State).ToList(),
             poolTotals.Select(x => new PoolTotal(Key(x.SiteId), x.Type, x.Pools, x.Available, x.Outstanding))
                 .OrderBy(x => x.SiteKey).ThenBy(x => x.Type).ToList(),
-            openLoans, openPoolUnits, overdue, today);
+            openLoans, openPoolUnits, overdue);
     }
 
     public async Task<PagedResult<InventoryAssetRow>> InventoryAssetsAsync(ReportFilter f, CancellationToken ct = default)
@@ -159,37 +158,40 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
     // ---------------------------------------------------------------- overdue
 
     /// <summary>
-    /// Open loans that <see cref="OverduePolicy"/> considers overdue on <see cref="IClock.LocalToday"/>, most overdue
-    /// first, with days overdue. Partially returned pool loans stay listed with their outstanding quantity.
+    /// Open loans that <see cref="OverduePolicy"/> considers overdue on their site's local today
+    /// (<see cref="SiteCalendar"/>), most overdue first, with days overdue (0 = due today). Partially returned pool loans stay listed with their outstanding quantity.
     /// </summary>
     public async Task<PagedResult<LoanRow>> OverdueAsync(ReportFilter f, CancellationToken ct = default)
     {
         EnsureReader();
-        var today = clock.LocalToday;
-        var page = await (await OverdueQueryAsync(f, today, ct)).ToPageAsync(f.Page, f.PageSize, ct);
+        var page = await (await OverdueQueryAsync(f, ct)).ToPageAsync(f.Page, f.PageSize, ct);
+        var today = await SiteTodayAsync(ct);
         return page with { Items = page.Items.Select(r => WithDaysOverdue(r, today)).ToList() };
     }
 
     public async Task<CsvExport> ExportOverdueAsync(ReportFilter f, CancellationToken ct = default)
     {
         EnsureReader();
-        var today = clock.LocalToday;
-        var rows = (await (await OverdueQueryAsync(f, today, ct)).ToListAsync(ct))
+        var today = await SiteTodayAsync(ct);
+        var rows = (await (await OverdueQueryAsync(f, ct)).ToListAsync(ct))
             .Select(r => WithDaysOverdue(r, today)).ToList();
         var csv = LoanCsv(rows, includeHistory: false, includeOverdue: true);
         return await FinishExportAsync(ExportOverdueAction, "overdue", f, csv, rows.Count, ct);
     }
 
-    private async Task<IQueryable<LoanRow>> OverdueQueryAsync(ReportFilter f, DateOnly today, CancellationToken ct)
+    private async Task<IQueryable<LoanRow>> OverdueQueryAsync(ReportFilter f, CancellationToken ct)
     {
-        var lastDue = OverduePolicy.LatestOverdueDueDate(today);
         var q = FilterLoans(await access.VisibleLoansAsync(ct), f, dueDateRange: true)
-            .Where(l => l.ClosedAt == null && l.DueDate != null && l.DueDate <= lastDue);
+            .Where(l => l.ClosedAt == null)
+            .Where(await calendar.OverduePredicateAsync(ct));
         return q.OrderBy(l => l.DueDate).ThenBy(l => l.Id).Select(ToRow);
     }
 
-    private static LoanRow WithDaysOverdue(LoanRow r, DateOnly today) =>
-        r with { DaysOverdue = OverduePolicy.DaysOverdue(r.DueDate!.Value, today) };
+    private async Task<IReadOnlyDictionary<int, DateOnly>> SiteTodayAsync(CancellationToken ct) =>
+        (await calendar.AllSitesAsync(ct)).ToDictionary(s => s.SiteId, s => s.Today);
+
+    private static LoanRow WithDaysOverdue(LoanRow r, IReadOnlyDictionary<int, DateOnly> siteToday) =>
+        r with { DaysOverdue = OverduePolicy.DaysOverdue(r.DueDate!.Value, siteToday[r.SiteId]) };
 
     // ---------------------------------------------------------------- history
 
@@ -330,6 +332,7 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         PoolSku = l.Pool != null ? l.Pool.Sku : null,
         ItemDescription = l.Asset != null ? l.Asset.Description : l.Pool!.Description,
         Type = l.Asset != null ? l.Asset.Type : l.Pool!.Type,
+        SiteId = l.AssetId != null ? l.Asset!.SiteId : l.Pool!.SiteId,
         SiteKey = l.Asset != null ? l.Asset.Site!.Key : l.Pool!.Site!.Key,
         Quantity = l.Quantity,
         ReturnedQuantity = l.ReturnedQuantity,
@@ -389,6 +392,7 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         audit.Record(action, "Report", name, f.SiteId,
             details: new { Filters = f.ForAudit(), RowCount = rowCount, Level = level });
         await db.SaveChangesAsync(ct);
-        return new CsvExport($"{name}-{clock.LocalToday:yyyy-MM-dd}.csv", csv.ToUtf8Bytes(), rowCount);
+        // The file name uses the default timezone's date: an export can span sites.
+        return new CsvExport($"{name}-{calendar.DefaultToday:yyyy-MM-dd}.csv", csv.ToUtf8Bytes(), rowCount);
     }
 }
