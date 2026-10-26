@@ -1,0 +1,85 @@
+@page
+@model AssetTracker.Web.Pages.Reports.InventoryModel
+@{
+    ViewData["Title"] = "Inventory report";
+}
+<h1>Inventory report</h1>
+<p>
+    @if (Model.ShowPools)
+    {
+        <a asp-route-view="" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.Type">Tagged assets</a>
+        <strong>| Pool balances</strong>
+    }
+    else
+    {
+        <strong>Tagged assets |</strong>
+        <a asp-route-view="pools" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.Type">Pool balances</a>
+    }
+</p>
+<form method="get" class="filters">
+    @if (Model.ShowPools) { <input type="hidden" name="view" value="pools" /> }
+    <label>Search<br /><input name="q" value="@Model.Q" placeholder="@Model.SearchPlaceholder" size="32" /></label>
+    <label>Site<br />
+        <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
+    </label>
+    <label>Type<br />
+        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+    </label>
+    @if (!Model.ShowPools)
+    {
+        <label>State<br />
+            <select name="state" asp-for="State" asp-items="InventoryUi.EnumOptions<AssetState>()"><option value="">All</option></select>
+        </label>
+    }
+    <button type="submit">Filter</button>
+    <a asp-all-route-data="Model.ExportRoute()">Export CSV</a>
+</form>
+<p class="muted">The CSV export contains tagged assets and pool balances for the current filters (a state filter exports tagged assets only).</p>
+@if (Model.Pools is { } pools)
+{
+    <table>
+        <thead>
+        <tr><th>SKU</th><th>Type</th><th>Description</th><th>Site</th><th class="num">Available</th><th class="num">Outstanding</th><th class="num">On hand</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var p in pools.Items)
+        {
+            <tr>
+                <td>@p.Sku</td><td>@p.Type</td><td>@p.Description</td><td>@p.SiteKey</td>
+                <td class="num"><strong>@p.Available</strong></td>
+                <td class="num"><strong>@p.Outstanding</strong></td>
+                <td class="num">@p.OnHand</td>
+            </tr>
+        }
+        @if (pools.TotalCount == 0)
+        {
+            <tr><td colspan="7" class="muted">No pools match.</td></tr>
+        }
+        </tbody>
+    </table>
+}
+else if (Model.Assets is { } assets)
+{
+    <table>
+        <thead>
+        <tr><th>Tag</th><th>Type</th><th>Description</th><th>Site</th><th>State</th><th>Serial</th><th>Current holder</th><th>Due</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var a in assets.Items)
+        {
+            <tr>
+                <td>@a.Tag</td><td>@a.Type</td><td>@a.Description</td><td>@a.SiteKey</td><td>@a.State</td>
+                <td>@a.SerialNumber</td>
+                <td>@a.HolderName<div class="muted">@a.HolderUsername</div></td>
+                <td>@a.DueDate?.ToString("yyyy-MM-dd")</td>
+            </tr>
+        }
+        @if (assets.TotalCount == 0)
+        {
+            <tr><td colspan="8" class="muted">No assets match.</td></tr>
+        }
+        </tbody>
+    </table>
+}
+<partial name="_Pager" model="Model.Pager" />
+<p><a asp-page="Index">Back to reports</a></p>
