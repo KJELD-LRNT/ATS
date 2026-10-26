@@ -1,0 +1,13 @@
+@model AssetTracker.Core.Directory.DirectorySyncStatus
+<div class="warning" role="status" id="sync-status-warning">
+    @if (Model.IsStale)
+    {
+        <strong>People data may be stale.</strong>
+        @(Model.LastSuccessAt is { } t ? $" Last successful directory sync: {t:yyyy-MM-dd HH:mm} UTC." : " No directory sync has succeeded yet.")
+        <span>Recently disabled accounts may still appear active; lending is not blocked.</span>
+    }
+    @if (Model.LastRunUnsuccessful)
+    {
+        <div>Last directory sync @Model.LastRunStatus?.ToString().ToLowerInvariant()@(Model.LastRunError is null ? "." : $": {Model.LastRunError}") The previous snapshot is still in use.</div>
+    }
+</div>

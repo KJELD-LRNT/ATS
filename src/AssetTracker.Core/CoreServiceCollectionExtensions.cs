@@ -1,4 +1,6 @@
+using AssetTracker.Core.Admin;
 using AssetTracker.Core.Auditing;
+using AssetTracker.Core.Directory;
 using AssetTracker.Core.Security;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -11,6 +13,9 @@ public static class CoreServiceCollectionExtensions
     {
         services.AddScoped<AccessScope>();
         services.AddScoped<AuditWriter>();
+        services.AddScoped<AuditQueryService>();
+        services.AddScoped<DirectorySyncService>();
+        services.AddScoped<AdminService>();
         return services;
     }
 }

@@ -1,5 +1,7 @@
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Data;
+using AssetTracker.Core.Directory;
+using AssetTracker.Infrastructure.Directory;
 using AssetTracker.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +23,13 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.Configure<ClockOptions>(config.GetSection("Clock"));
         services.AddSingleton<IClock, SystemClock>();
+
+        services.Configure<DirectorySyncOptions>(config.GetSection(DirectorySyncOptions.SectionName));
+        services.Configure<ActiveDirectoryOptions>(config.GetSection(ActiveDirectoryOptions.SectionName));
+        if (OperatingSystem.IsWindows())
+            services.AddScoped<IDirectorySource, ActiveDirectorySource>();
+        else
+            services.AddScoped<IDirectorySource, UnsupportedDirectorySource>();
         return services;
     }
 }
