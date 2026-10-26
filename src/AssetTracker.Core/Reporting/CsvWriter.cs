@@ -70,9 +70,17 @@ public sealed class CsvWriter
         return result;
     }
 
-    /// <summary>Prefixes a single quote when <paramref name="value"/> starts with a formula-trigger character.</summary>
-    public static string Neutralize(string value) =>
-        value.Length > 0 && Array.IndexOf(FormulaTriggers, value[0]) >= 0 ? "'" + value : value;
+    /// <summary>
+    /// Prefixes a single quote when <paramref name="value"/> starts with a formula-trigger character, either as the
+    /// first character or after leading spaces (some spreadsheet apps trim before evaluating).
+    /// </summary>
+    public static string Neutralize(string value)
+    {
+        if (value.Length == 0) return value;
+        if (Array.IndexOf(FormulaTriggers, value[0]) >= 0) return "'" + value;
+        var first = value.TrimStart(' ');
+        return first.Length > 0 && Array.IndexOf(FormulaTriggers, first[0]) >= 0 ? "'" + value : value;
+    }
 
     /// <summary>RFC 4180 field escaping (no neutralization).</summary>
     public static string Escape(string value) =>

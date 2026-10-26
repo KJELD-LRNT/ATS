@@ -11,6 +11,7 @@ public class CsvWriterTests
     [InlineData("@SUM(1)")]
     [InlineData("-2+3")]
     [InlineData("=cmd")]
+    [InlineData("  =cmd")]
     [InlineData("\t=1+1")]
     [InlineData("\r=1+1")]
     [InlineData("＝1+1")] // fullwidth =
