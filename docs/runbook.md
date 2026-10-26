@@ -22,7 +22,7 @@ monitor, release, roll back, back up/restore and troubleshoot the Asset Tracker 
 | Component | Runs as | Notes |
 | --- | --- | --- |
 | IIS site `AssetTracker` (ASP.NET Core in-process) | App pool identity `DOMAIN\gmsa-ats$` (gMSA) | Windows Authentication; anonymous only for `/health*`. |
-| Windows service `AssetTrackerWorker` | `DOMAIN\gmsa-ats$` (may be a separate gMSA) | AD sync, mail outbox sender, daily overdue reminders, heartbeat. |
+| Windows service `AssetTrackerWorker` | `DOMAIN\gmsa-ats$` (may be a separate gMSA) | AD sync, mail outbox sender, per-site daily overdue reminders, heartbeat. |
 | SQL Server Express database `AssetTracker` | SQL service account | No SQL Agent: all scheduling is in the worker. |
 | Internal mail relay | client | Worker submits mail; relay forwards to Microsoft 365. |
 | Active Directory | client | Read-only queries by both web (admin sync rerun) and worker. |
@@ -108,7 +108,14 @@ Use the CI `publish` job artifacts (`assettracker-web`, `-worker`, `-efbundle`, 
 Run `deploy\Apply-Migrations.ps1 -Bundle .\efbundle\efbundle.exe -Server '<SQL-HOST>\SQLEXPRESS'` **as the migration
 account** (`runas /user:DOMAIN\<migration-admin> pwsh`).
 
-### 5.3 Web
+### 5.3 Data Protection key folder
+Create one folder for the Data Protection key ring shared by web and worker, outside the web root, e.g.
+`D:\AppData\AssetTracker\DataProtection-Keys`. Grant **Modify** to the app pool identity and the worker account
+(either may create the next key when the current one expires), nothing to users. Put the path in
+`DataProtection:KeyPath` in **both** `appsettings.Production.json` files. The keys encrypt the SMTP password stored
+in the database (machine DPAPI, so they only work on this server); back the folder up with the database (§12).
+
+### 5.4 Web
 1. Copy `web\` to e.g. `D:\Apps\AssetTracker\Web`. Create `appsettings.Production.json` from
    `deploy\web.appsettings.Production.template.json` ([settings reference](../deploy/README.md)).
 2. App pool `AssetTracker`: **.NET CLR version = No Managed Code**, pipeline Integrated, identity = custom account
@@ -119,7 +126,7 @@ account** (`runas /user:DOMAIN\<migration-admin> pwsh`).
    except for `/health` and `/health/ready`.
 6. Firewall: allow 443 only from approved LAN/VPN ranges.
 
-### 5.4 Worker
+### 5.5 Worker
 1. Copy `worker\` to e.g. `D:\Apps\AssetTracker\Worker`; create `appsettings.Production.json` from
    `deploy\worker.appsettings.Production.template.json`.
 2. `deploy\Install-Worker.ps1 -InstallPath 'D:\Apps\AssetTracker\Worker' -Account 'DOMAIN\gmsa-ats$'`
@@ -128,18 +135,31 @@ account** (`runas /user:DOMAIN\<migration-admin> pwsh`).
 
 ## 6. Configuration reference
 
-All settings, defaults and which app uses them: [`deploy/README.md`](../deploy/README.md). Both apps need the same
-`ConnectionStrings`, `Clock`, `DirectorySync` and `ActiveDirectory` values.
+All settings, defaults and which app uses them: [`deploy/README.md`](../deploy/README.md). The configuration files
+hold only bootstrap values (connection string, role group SIDs, Data Protection key folder, reload interval, ops
+thresholds); both apps need the same `ConnectionStrings` and `DataProtection:KeyPath`. Everything else (AD query,
+sync safety thresholds and schedule, mail relay, notifications, default time zone, IT mailbox) is set by an admin on
+**Admin → Settings**, stored in the database and picked up by both apps without a restart (the worker within
+`Settings:ReloadInterval`, 30 seconds by default).
 
 ## 7. First-run checklist
 
 1. [ ] `GET https://<INTERNAL-DNS-NAME>/health` → `Healthy` (anonymous).
 2. [ ] Sign in as a member of the admin AD group → header shows `(Admin)`.
-3. [ ] **Admin → Sites:** create every site; set each site's *directory value* to the exact AD site attribute value.
-4. [ ] **Admin → Settings:** set the IT mailbox / distribution list.
+3. [ ] **Admin → Settings** (in this order; each section has its own *Save* button):
+       - *Default time zone* (`Clock:TimeZoneId`).
+       - *Mail relay*: host, port, TLS mode, sending address (and username/password only for an authenticated
+         relay). **Send test email** to a test mailbox; it must report success and arrive.
+       - *Notifications*: the IT mailbox / distribution list; check the reminder time.
+       - *Directory*: search root and site attribute (other attributes only if Stage 0 requires). **Test directory
+         query**: fetched count close to the expected directory size, few or no quarantine candidates.
+       - *Directory sync safety*: sync interval (e.g. `01:00:00`), stale-after (~2-3× the interval).
+4. [ ] **Admin → Sites:** create every site; set each site's *directory value* to the exact AD site attribute value.
+       Set a site's *timezone* only when it differs from the default `Clock:TimeZoneId` (see §10, *Timezones*).
+       Rerun **Test directory query** on the Settings page: most entries now map to a known site.
 5. [ ] **Admin → Directory sync → Run now:** status `Succeeded`; review issues (unmapped sites, duplicates, missing
        ids). Fix site mappings and rerun until only expected issues remain. Confirm fetched/mapped counts against AD
-       and set `DirectorySync:MinimumExpectedCount` accordingly.
+       and set *Minimum expected entries* (`DirectorySync:MinimumExpectedCount`) on the Settings page accordingly.
 6. [ ] **Admin → Grants:** grant each manager their site(s).
 7. [ ] Sign in as an IT group member: **Ops** page shows database reachable, worker heartbeat current, last
        successful sync, outbox empty.
@@ -189,6 +209,7 @@ Route all alerts to `<client alert owner>`. Suggested rules (tune thresholds wit
 | Mail | `mail-outbox` check / Ops page | any Failed mail; pending older than threshold |
 | AD sync | `directory-sync` check / Ops page | stale or last run Rejected/Failed (offboarding risk: disabled accounts remain eligible until a good sync) |
 | Sync count anomaly | Admin → Directory sync | Rejected run (low-count / drop safety check) |
+| Sync failure mail | IT mailbox | Every `Failed`/`Rejected` sync run mails one "Asset Tracker: AD sync failed/rejected" alert (D6); it is `Skipped` on the Mail queue when the IT mailbox is not set |
 | Disk / DB size | OS / SQL monitoring | free disk < 15%; database > 80% of the Express 10/50 GB cap (per installed version) |
 | Backups | client backup platform | any failed or missing SQL backup |
 | Certificate | certificate monitoring | expiry < 30 days |
@@ -199,11 +220,26 @@ Route all alerts to `<client alert owner>`. Suggested rules (tune thresholds wit
 - **Failed mail:** Ops → *Mail queue*: read the last error (relay rejected, timeout, invalid recipient). Fix the cause
   (relay, recipient), then *Requeue* one row or *Requeue all failed*. Requeues are audited. *Skipped* rows had no
   usable recipient (inactive holder, missing address, IT mailbox unset) and are not retried.
-- **Sync rejected:** an admin opens *Directory sync*, reads the reason (e.g. "would deactivate N of M"). Verify AD
+- **Sync rejected:** the IT mailbox receives an alert mail (D6). IT can read the run history and issues on
+  *Directory sync* (read-only, D7); an admin opens it to rerun. Read the reason (e.g. "would deactivate N of M"). Verify AD
   (OU move, replication, permission change). If the change is legitimate (a real mass leaver event), temporarily raise
-  `DirectorySync:MaxDropFraction` in both config files, rerun, and restore the value. Never disable the check
+  *Maximum deactivation fraction* on Admin → Settings (applies to both apps), rerun, and restore the value. Never disable the check
   permanently.
-- **Sync failed:** check the worker event log (AD unreachable, gMSA rights). The last good snapshot stays in use.
+- **Sync failed:** the IT mailbox receives an alert mail with the run id and a short error (no stack trace). Check
+  the worker event log (AD unreachable, gMSA rights). The last good snapshot stays in use.
+- **Timezones:** each site has a calendar timezone (*Admin → Sites*, IANA id such as `Europe/Amsterdam` or a Windows
+  id such as `W. Europe Standard Time`); empty means the default `Clock:TimeZoneId`. `Clock:TimeZoneId` (Admin → Settings → *Default time zone*) is required:
+  if it is missing, pages and reminder ticks that need a site without its own timezone fail with "Clock:TimeZoneId is
+  not configured". A loan's calendar is its site's: a tagged loan follows the asset's **current** site, a pool loan
+  the pool's site. Due dates must be today or later in that zone.
+- **Overdue reminders:** an item is overdue from the start of its due date in its site's timezone (D4; "due today"
+  on the due date itself). The worker ticks every `Notifications:ReminderPollInterval` (default 15 minutes) and, for
+  each site whose local time has reached `Notifications:ReminderTimeOfDay` (default 08:00), queues one reminder per
+  overdue loan to the holder and IT. Dedupe keys `overdue:{loanId}:{site-local date}:{recipient}` make every later
+  tick that day, worker restarts and DST transition days harmless: one reminder per loan, site-local day and
+  recipient. A worker that was down at the reminder time catches up on its next tick the same local day; a site-local
+  day the worker missed entirely is not sent later (the next day's reminder follows). Each tick that queued
+  something writes one `notification.overdue-run` audit event; idle ticks write none.
 - **Stale banner:** IT sees "People data may be stale". Lending continues by design; escalate to the service owner if
   the sync cannot be restored the same day.
 - **Worker stale:** check the service; it restarts automatically on failure. Inspect the Application event log.
@@ -237,7 +273,9 @@ Data entered between release and rollback is lost by the restore; record what wa
 ## 12. Backup and restore
 
 Use the client's **existing backup platform** with SQL-aware (VSS/SQL writer or native) backups of `AssetTracker`;
-no extra app backup scheduler. Back up together: the database, both `appsettings.Production.json` files, the IIS site
+no extra app backup scheduler. Back up together: the database, both `appsettings.Production.json` files, the
+**Data Protection key folder** (`DataProtection:KeyPath`; without it the SMTP password stored in the database cannot be
+decrypted after a restore or server rebuild and must be re-entered on Admin → Settings), the IIS site
 configuration (`appcmd add backup` or the platform's system-state backup), the site certificate (with private key,
 per client policy), and the release artifacts. Backups contain personal data: apply the client's access and retention
 controls ([privacy](privacy-and-retention.md)).
@@ -252,6 +290,8 @@ controls ([privacy](privacy-and-retention.md)).
    - Open loans: Reports → Current assignments count and a sample of holders/quantities.
    - Stock balances: Reports → Inventory → Pools: available/outstanding per pool; `on hand = available + outstanding`.
    - Grants: Admin → Grants (as admin) lists the expected manager grants; Admin → Settings shows the IT mailbox.
+   - Settings: Admin → Settings shows the expected values; **Send test email** succeeds. "The stored SMTP password
+     cannot be decrypted" means the Data Protection key folder was not restored: restore it, or re-enter the password.
    - Queued mail: Ops → Mail queue counts.
 4. Inspect pending mail in SQL (read-only):
    ```sql
@@ -263,7 +303,7 @@ controls ([privacy](privacy-and-retention.md)).
    [`deploy/Quarantine-Outbox-After-Restore.sql`](../deploy/Quarantine-Outbox-After-Restore.sql) — first as a dry run
    (`@Commit = 0`), then with `@Commit = 1`. It marks `Pending` rows created before the cut-off as `Skipped` with a
    reason and writes one audit event. Nothing is deleted. Today's overdue reminders keep their dedupe keys, so the
-   daily job does not re-create them. If some checkout/return notices must still go out, requeue or resend them
+   reminder ticks do not re-create them. If some checkout/return notices must still go out, requeue or resend them
    deliberately afterwards.
 6. Start the app pool, then the worker. Check `/health/ready` and the Ops page; the heartbeat becomes current within
    ~1 minute and the sync runs per schedule.
@@ -290,6 +330,8 @@ Note: SMTP cannot guarantee exactly-once delivery; a mail accepted by the relay 
 | 403 after sign-in | User not in a mapped AD group, or group SIDs wrong | Compare `whoami /groups` SIDs with `Roles:*GroupSids`; group changes need a new logon/ticket (`klist purge`). |
 | 500.30 / 500.31 at start | Missing Hosting Bundle / runtime, bad config | Event Log (IIS AspNetCore Module V2); enable `stdoutLogEnabled` temporarily; check `appsettings.Production.json` JSON validity. |
 | Mail `Failed`: "5.7.1 relay denied" | Server IP not allowed on the relay, wrong sending address | Ask the mail team to allow the app server / `FromAddress`; requeue. |
+| Mail `Failed`: "stored SMTP password cannot be decrypted" | Data Protection key folder missing/changed, or web and worker use different `DataProtection:KeyPath` | Point both apps at the same folder (restore it from backup), or re-enter the password on Admin → Settings. |
+| Settings change not picked up by the worker | Worker cannot read the database, or `Settings:ReloadInterval` is 0 | Wait one reload interval; check the worker event log for "Database settings could not be loaded"; restart the worker. |
 | Mail `Failed`: TLS errors | Relay certificate not trusted, or `SecureSocket` mismatch | Trust the relay CA on the server; align `Mail:SecureSocket`/`Port`. |
 | Mail pending, nothing sent | Worker stopped or stale | Ops page heartbeat; start the service; event log. |
 | Sync `Rejected` | Safety check (low count / mass deactivation) | See §10. Do not disable the check. |

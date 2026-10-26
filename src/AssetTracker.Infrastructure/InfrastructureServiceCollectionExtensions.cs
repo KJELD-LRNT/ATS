@@ -5,10 +5,14 @@ using AssetTracker.Core.Ops;
 using AssetTracker.Infrastructure.Mail;
 using AssetTracker.Core.Directory;
 using AssetTracker.Infrastructure.Directory;
+using AssetTracker.Core.Settings;
+using AssetTracker.Infrastructure.Configuration;
 using AssetTracker.Infrastructure.Time;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AssetTracker.Infrastructure;
 
@@ -24,7 +28,7 @@ public static class InfrastructureServiceCollectionExtensions
             config.GetConnectionString("AssetTracker"),
             sql => sql.MigrationsAssembly(typeof(InfrastructureServiceCollectionExtensions).Assembly.FullName)));
 
-        services.Configure<ClockOptions>(config.GetSection("Clock"));
+        services.Configure<ClockOptions>(config.GetSection(ClockOptions.SectionName));
         services.AddSingleton<IClock, SystemClock>();
 
         services.Configure<NotificationOptions>(config.GetSection(NotificationOptions.SectionName));
@@ -37,6 +41,22 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddScoped<IDirectorySource, ActiveDirectorySource>();
         else
             services.AddScoped<IDirectorySource, UnsupportedDirectorySource>();
+
+        // Database-backed settings (WP4.1). The configuration overlay itself is added by Program.cs
+        // (builder.Configuration.AddDatabaseSettings()); the reloader fills it from the AppSettings table.
+        services.AddSingleton<ISettingsReloader, DatabaseSettingsReloader>();
+        services.AddHostedService<DatabaseSettingsRefreshService>();
+        // Sections the Settings page can change: IOptions<T> (normally a start-up snapshot) resolves to the current
+        // value, so scoped services that inject IOptions<T> see saved changes on their next scope. Singletons should
+        // inject IOptionsMonitor<T> and read CurrentValue.
+        LiveOptions<ClockOptions>(services);
+        LiveOptions<NotificationOptions>(services);
+        LiveOptions<MailOptions>(services);
+        LiveOptions<DirectorySyncOptions>(services);
+        LiveOptions<ActiveDirectoryOptions>(services);
         return services;
     }
+
+    private static void LiveOptions<T>(IServiceCollection services) where T : class =>
+        services.AddTransient<IOptions<T>>(sp => Options.Create(sp.GetRequiredService<IOptionsMonitor<T>>().CurrentValue));
 }

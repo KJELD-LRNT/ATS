@@ -48,13 +48,13 @@ public class ActiveDirectoryOptions
 /// previous snapshot is kept.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public class ActiveDirectorySource(IOptions<ActiveDirectoryOptions> options, ILogger<ActiveDirectorySource> logger)
+public class ActiveDirectorySource(IOptionsMonitor<ActiveDirectoryOptions> options, ILogger<ActiveDirectorySource> logger)
     : IDirectorySource
 {
     private const int AccountDisable = 0x2;
 
     public Task<IReadOnlyList<DirectoryEntry>> FetchAllUsersAsync(CancellationToken ct) =>
-        Task.Run(() => Fetch(options.Value, ct), ct);
+        Task.Run(() => Fetch(options.CurrentValue, ct), ct);
 
     private IReadOnlyList<DirectoryEntry> Fetch(ActiveDirectoryOptions o, CancellationToken ct)
     {

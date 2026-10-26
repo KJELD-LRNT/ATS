@@ -223,7 +223,7 @@ public class NotificationServiceTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task Phone_number_is_not_included_by_default()
+    public async Task Phone_number_is_included_by_default_per_decision_d5()
     {
         var rows = await InScope(async (db, svc) =>
         {
@@ -235,7 +235,8 @@ public class NotificationServiceTests : IClassFixture<AppFactory>
             await db.SaveChangesAsync();
             return staged;
         });
-        Assert.All(rows, r => Assert.DoesNotContain("+31209990008", r.Body));
+        // Sponsor decision D5: IncludePhoneNumberInMail defaults to true (was false before WP4.1).
+        Assert.All(rows, r => Assert.Contains("+31209990008", r.Body));
         Assert.All(rows, r => Assert.Contains("NS-PH-008", r.Body));
     }
 

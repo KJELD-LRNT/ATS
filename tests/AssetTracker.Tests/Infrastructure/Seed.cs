@@ -6,9 +6,11 @@ namespace AssetTracker.Tests.Infrastructure;
 /// <summary>Fixture builders with fictional data only (no real personal data).</summary>
 public static class Seed
 {
-    public static async Task<Site> SiteAsync(AppDbContext db, string key, string? directoryValue = null)
+    /// <param name="timeZoneId">Site timezone; null = the default timezone (UTC in tests, see <c>AppFactory</c>).</param>
+    public static async Task<Site> SiteAsync(AppDbContext db, string key, string? directoryValue = null,
+        string? timeZoneId = null)
     {
-        var s = new Site { Key = key, Name = $"Site {key}", DirectoryValue = directoryValue ?? key };
+        var s = new Site { Key = key, Name = $"Site {key}", DirectoryValue = directoryValue ?? key, TimeZoneId = timeZoneId };
         db.Sites.Add(s);
         await db.SaveChangesAsync();
         return s;

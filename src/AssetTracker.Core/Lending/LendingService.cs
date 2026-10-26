@@ -6,6 +6,7 @@ using AssetTracker.Core.Domain;
 using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace AssetTracker.Core.Lending;
@@ -33,7 +34,7 @@ public sealed record PersonOption(int Id, string DisplayName, string Username, s
 /// </summary>
 public class LendingService(
     AppDbContext db, AccessScope access, AuditWriter audit, NotificationService notifications,
-    IDirectoryFreshness freshness, ICurrentUser user, IClock clock)
+    IDirectoryFreshness freshness, ICurrentUser user, IClock clock, SiteCalendar calendar)
 {
     public const int ConditionMaxLength = 200;
     public const int NoteMaxLength = 2000;
@@ -92,8 +93,6 @@ public class LendingService(
         var email = EmailAddresses.Normalize(holder.Email)
             ?? throw new DomainException("loan.holder_no_email",
                 $"{holder.DisplayName} has no valid email address in the directory; a missing email blocks checkout.");
-        if (r.DueDate is { } due && due < clock.LocalToday)
-            throw new DomainException("loan.due_past", "The due date cannot be in the past.");
         var condition = Limit(Normalization.OptionalText(r.Condition), ConditionMaxLength, "Condition");
         var note = Limit(Normalization.OptionalText(r.Note), NoteMaxLength, "Note");
 
@@ -120,9 +119,13 @@ public class LendingService(
                 ?? throw new AccessDeniedException();
         }
 
+        var siteId = asset?.SiteId ?? pool!.SiteId;
+        // Due dates are calendar days at the loan's site; today itself is allowed (it is then due today, D4).
+        if (r.DueDate is { } due && due < await calendar.TodayForAsync(siteId, ct))
+            throw new DomainException("loan.due_past", "The due date cannot be in the past.");
+
         var stale = await freshness.IsStaleAsync(ct);
         var now = clock.UtcNow;
-        var siteId = asset?.SiteId ?? pool!.SiteId;
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (asset is not null)

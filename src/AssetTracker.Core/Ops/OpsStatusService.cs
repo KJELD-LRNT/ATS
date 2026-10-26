@@ -50,7 +50,7 @@ public class OpsStatusService(
     DirectorySyncService sync,
     OutboxMonitor outbox,
     IOptions<OpsOptions> options,
-    IOptions<DirectorySyncOptions> syncOptions,
+    IOptionsMonitor<DirectorySyncOptions> syncOptions,
     ILogger<OpsStatusService> logger)
 {
     public const string HeartbeatKey = "Worker.Heartbeat";
@@ -122,7 +122,7 @@ public class OpsStatusService(
         access.EnsureIt();
         var o = options.Value;
         var result = new OpsDashboard(false, appVersion, null, null, null, null,
-            syncOptions.Value.StaleAfter, o.WorkerStaleAfter, o.OutboxPendingMaxAge);
+            syncOptions.CurrentValue.StaleAfter, o.WorkerStaleAfter, o.OutboxPendingMaxAge);
 
         bool reachable;
         try

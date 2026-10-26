@@ -55,7 +55,8 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     Key = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     DirectoryValue = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    TimeZoneId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
                 constraints: table =>
                 {

@@ -8,6 +8,8 @@ using AssetTracker.Core.Privacy;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Settings;
+using AssetTracker.Core.Time;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetTracker.Core;
@@ -18,6 +20,9 @@ public static class CoreServiceCollectionExtensions
     public static IServiceCollection AddAssetTrackerCore(this IServiceCollection services)
     {
         services.AddScoped<AccessScope>();
+        // Per-site calendar (WP4.2). ClockOptions are bound from "Clock" by the infrastructure layer.
+        services.AddOptions<ClockOptions>();
+        services.AddScoped<SiteCalendar>();
         services.AddScoped<AuditWriter>();
         services.AddScoped<AssetService>();
         services.AddScoped<PoolService>();
@@ -31,6 +36,8 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<AuditQueryService>();
         services.AddScoped<DirectorySyncService>();
         services.AddScoped<AdminService>();
+        // Database-backed settings (WP4.1). ISettingsReloader/ISecretProtector come from the infrastructure layer.
+        services.AddScoped<SettingsService>();
 
         // Lending (WP2.1/WP2.2). Staleness uses DirectorySyncOptions.StaleAfter via DirectorySyncService.
         services.AddScoped<IDirectoryFreshness, SyncRunDirectoryFreshness>();

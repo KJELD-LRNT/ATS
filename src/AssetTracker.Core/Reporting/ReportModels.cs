@@ -9,7 +9,7 @@ namespace AssetTracker.Core.Reporting;
 /// <list type="bullet">
 /// <item><see cref="Query"/>: inventory — tag, SKU, description, serial; loan reports — holder name, username,
 /// email, checkout name snapshot, asset tag or pool SKU.</item>
-/// <item><see cref="From"/>/<see cref="To"/> (inclusive): assignments and overdue — due date (client-local
+/// <item><see cref="From"/>/<see cref="To"/> (inclusive): assignments and overdue — due date (site-local
 /// calendar day); history — loan start date (UTC calendar day). Ignored by the inventory report.</item>
 /// <item><see cref="State"/>: inventory only (tagged asset state).</item>
 /// </list>
@@ -43,10 +43,13 @@ public sealed record PoolTotal(string SiteKey, AssetType Type, int Pools, int Av
     public int OnHand => Available + Outstanding;
 }
 
-/// <summary>Counts for the reports landing page; already scoped to the principal's sites.</summary>
+/// <summary>
+/// Counts for the reports landing page; already scoped to the principal's sites. <see cref="OverdueLoans"/> uses
+/// each loan's site-local day (<c>SiteCalendar</c>).
+/// </summary>
 public sealed record InventorySummary(
     IReadOnlyList<AssetCount> Assets, IReadOnlyList<PoolTotal> Pools,
-    int OpenLoans, int OpenPoolUnits, int OverdueLoans, DateOnly LocalToday);
+    int OpenLoans, int OpenPoolUnits, int OverdueLoans);
 
 /// <summary>
 /// One loan (assignment) in the effective, corrected state, with the holder's full synced snapshot.
@@ -60,6 +63,9 @@ public sealed record LoanRow
     public string? PoolSku { get; init; }
     public string ItemDescription { get; init; } = "";
     public AssetType Type { get; init; }
+
+    /// <summary>The loan's site: the asset's current site, or the pool's site.</summary>
+    public int SiteId { get; init; }
     public string SiteKey { get; init; } = "";
 
     public int Quantity { get; init; }
@@ -90,7 +96,10 @@ public sealed record LoanRow
     public int CorrectionCount { get; init; }
     public string? LatestCorrectionReason { get; init; }
 
-    /// <summary>Set by the overdue report (see <c>OverduePolicy.DaysOverdue</c>).</summary>
+    /// <summary>
+    /// Set by the overdue report: whole days past due at the loan's site, 0 = due today
+    /// (see <c>OverduePolicy.DaysOverdue</c>).
+    /// </summary>
     public int? DaysOverdue { get; init; }
 
     public string ItemLabel => AssetTag ?? PoolSku ?? "";

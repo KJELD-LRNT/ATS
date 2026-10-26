@@ -15,7 +15,7 @@ public sealed record ItMailbox(string? Address, string? SkipReason);
 /// notice exists if and only if the business change committed. The worker's <see cref="OutboxSender"/> delivers.
 /// <para>Requires no role: the caller (checkout/return/correction service) has already authorized the change.</para>
 /// </summary>
-public class NotificationService(AppDbContext db, IClock clock, IOptions<NotificationOptions> options)
+public class NotificationService(AppDbContext db, IClock clock, IOptionsMonitor<NotificationOptions> options)
 {
     public const string ItMailboxNotConfigured = "IT mailbox not configured";
     public const string ItMailboxInvalid = "IT mailbox setting is not a valid email address";
@@ -113,6 +113,30 @@ public class NotificationService(AppDbContext db, IClock clock, IOptions<Notific
         return rows;
     }
 
+    /// <summary>
+    /// Stages one <see cref="NotificationKind.SystemAlert"/> row for the IT mailbox (e.g. a failed directory sync).
+    /// Like loan notices it never sends and never saves: the caller saves it with the change that raised the alert.
+    /// When the IT mailbox is not configured (or invalid) the row is <see cref="NotificationStatus.Skipped"/> with
+    /// that reason, so the alert is still visible on the mail ops page. A row with the same
+    /// <paramref name="dedupeKey"/> that is already staged or stored is returned instead of adding a duplicate.
+    /// The body must not contain stack traces or secrets; the caller sanitizes it.
+    /// </summary>
+    public async Task<NotificationOutbox> QueueSystemAlertAsync(string subject, string body, string dedupeKey,
+        CancellationToken ct = default)
+    {
+        var staged = db.ChangeTracker.Entries<NotificationOutbox>()
+            .FirstOrDefault(e => e.State == EntityState.Added && e.Entity.DedupeKey == dedupeKey)?.Entity;
+        if (staged is not null) return staged;
+        var stored = await db.Outbox.FirstOrDefaultAsync(x => x.DedupeKey == dedupeKey, ct);
+        if (stored is not null) return stored;
+
+        var it = await GetItMailboxAsync(ct);
+        var row = NewRow(NotificationKind.SystemAlert, dedupeKey, it.Address, it.Address is null ? it.SkipReason : null,
+            new ComposedMail(subject.Length <= 500 ? subject : subject[..500], body), clock.UtcNow);
+        db.Outbox.Add(row);
+        return row;
+    }
+
     /// <summary>Reads <see cref="AppSetting.ItMailbox"/> and validates it.</summary>
     public async Task<ItMailbox> GetItMailboxAsync(CancellationToken ct = default)
     {
@@ -143,7 +167,7 @@ public class NotificationService(AppDbContext db, IClock clock, IOptions<Notific
         if (site is null && siteId is { } sid) site = await db.Sites.FindAsync([sid], ct);
         if (string.IsNullOrWhiteSpace(loan.HolderNameSnapshot) && loan.Holder is null && loan.HolderId > 0)
             await db.People.FindAsync([loan.HolderId], ct);
-        return LoanMailFacts.From(loan, asset, pool, site, options.Value.IncludePhoneNumberInMail);
+        return LoanMailFacts.From(loan, asset, pool, site, options.CurrentValue.IncludePhoneNumberInMail);
     }
 
     internal static NotificationOutbox NewRow(NotificationKind kind, string dedupeKey, string? email, string? skipReason,

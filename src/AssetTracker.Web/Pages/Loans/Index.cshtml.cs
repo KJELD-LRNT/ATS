@@ -1,10 +1,10 @@
-using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Time;
 using AssetTracker.Web.Pages.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +15,7 @@ namespace AssetTracker.Web.Pages.Loans;
 
 /// <summary>Current (open) loans, scoped by site access.</summary>
 [Authorize(Policy = Policies.InventoryRead)]
-public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbContext db, ICurrentUser user, IClock clock)
+public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbContext db, ICurrentUser user, SiteCalendar calendar)
     : PageModel
 {
     [BindProperty(SupportsGet = true)] public string? Q { get; set; }
@@ -26,7 +26,8 @@ public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbConte
     public PagedResult<Loan> Results { get; private set; } = null!;
     public List<SelectListItem> Sites { get; private set; } = [];
     public bool CanEdit => user.IsIt;
-    public DateOnly Today => clock.LocalToday;
+    /// <summary>Each site's local today; loan status uses the loan's site (asset's current site / pool's site).</summary>
+    public IReadOnlyDictionary<int, DateOnly> SiteToday { get; private set; } = new Dictionary<int, DateOnly>();
 
     [TempData] public string? Message { get; set; }
 
@@ -35,11 +36,18 @@ public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbConte
         ["q"] = Q, ["siteId"] = SiteId, ["overdue"] = Overdue ? "true" : null,
     });
 
-    public bool IsOverdue(Loan l) => l.IsOpen && OverduePolicy.IsOverdue(l.DueDate, Today);
+    public bool IsOverdue(Loan l) => l.IsOpen && OverduePolicy.IsOverdue(l.DueDate, TodayFor(l));
+
+    /// <summary>"due today" on the due date itself (D4: already overdue, 0 days late), "overdue" after it.</summary>
+    public string? DueStatus(Loan l) =>
+        !IsOverdue(l) ? null : OverduePolicy.DaysOverdue(l.DueDate!.Value, TodayFor(l)) == 0 ? "due today" : "overdue";
+
+    private DateOnly TodayFor(Loan l) => SiteToday[l.Asset?.SiteId ?? l.Pool!.SiteId];
 
     public async Task OnGetAsync(CancellationToken ct)
     {
         Results = await loans.SearchAsync(new LoanSearch(SiteId, Overdue, Q, Page: PageNumber), ct);
+        SiteToday = (await calendar.AllSitesAsync(ct)).ToDictionary(s => s.SiteId, s => s.Today);
         Sites = await InventoryUi.SiteOptionsAsync(db, await access.GetAsync(ct), ct);
     }
 }

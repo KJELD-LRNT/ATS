@@ -26,3 +26,31 @@ public sealed record DirectorySyncStatus(
     /// <summary>The most recent run failed or was rejected (the previous good snapshot is still in use).</summary>
     public bool LastRunUnsuccessful => LastRunStatus is SyncRunStatus.Failed or SyncRunStatus.Rejected;
 }
+
+/// <summary>One directory entry shown by the settings page's "Test directory query".</summary>
+public sealed record DirectoryPreviewSample(string Username, string DisplayName, string? SiteValue, bool SiteMapped, bool Enabled);
+
+/// <summary>Result of <see cref="DirectorySyncService.PreviewAsync"/>: what a sync would see, without applying it.</summary>
+/// <param name="Fetched">Entries returned by the directory.</param>
+/// <param name="Valid">Entries that would be synced (not quarantined).</param>
+/// <param name="Quarantined">Entries that would be skipped (missing/invalid id or username, duplicate id or SID).</param>
+/// <param name="MappedToSite">Valid entries whose site value maps to a known site.</param>
+/// <param name="UnmappedSite">Valid entries whose site value maps to no site.</param>
+/// <param name="MissingSite">Valid entries without a site value.</param>
+/// <param name="Disabled">Valid entries disabled in the directory.</param>
+/// <param name="CurrentActive">Currently active people in the local snapshot.</param>
+/// <param name="WouldDeactivate">Active people a sync would deactivate.</param>
+/// <param name="WouldReject">The safety-check rejection reason a sync would hit, or null.</param>
+public sealed record DirectoryPreview(
+    int Fetched,
+    int Valid,
+    int Quarantined,
+    int MappedToSite,
+    int UnmappedSite,
+    int MissingSite,
+    int Disabled,
+    int CurrentActive,
+    int WouldDeactivate,
+    string? WouldReject,
+    IReadOnlyList<SyncIssue> Issues,
+    IReadOnlyList<DirectoryPreviewSample> Sample);

@@ -49,7 +49,7 @@ public class LoanPagesTests : IClassFixture<AppFactory>
 
         var res = await FormHelper.PostFormAsync(client, form, "/Loans/Checkout",
             ("Input.PoolId", pool.Id.ToString()), ("Input.Quantity", "3"), ("Input.HolderId", holder.Id.ToString()),
-            ("Input.DueDate", _f.Clock.LocalToday.AddDays(5).ToString("yyyy-MM-dd")));
+            ("Input.DueDate", _f.Clock.UtcToday.AddDays(5).ToString("yyyy-MM-dd")));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var loan = await _f.WithDbAsync(db => db.Loans.AsNoTracking().SingleAsync(l => l.PoolId == pool.Id));
         Assert.Equal(3, loan.Quantity);
@@ -67,7 +67,7 @@ public class LoanPagesTests : IClassFixture<AppFactory>
         var fields = new[]
         {
             ("Input.HolderId", other.Id.ToString()), ("Input.Quantity", "3"), ("Input.ReturnedQuantity", "1"),
-            ("Input.DueDate", _f.Clock.LocalToday.AddDays(5).ToString("yyyy-MM-dd")),
+            ("Input.DueDate", _f.Clock.UtcToday.AddDays(5).ToString("yyyy-MM-dd")),
         };
         res = await FormHelper.PostFormAsync(client, correctUrl, $"/Loans/Correct/{loan.Id}?handler=Preview", fields);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);

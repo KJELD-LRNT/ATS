@@ -222,44 +222,52 @@ public class ReportTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task Overdue_report_follows_overdue_policy_in_client_timezone()
+    public async Task Overdue_report_follows_overdue_policy_in_each_sites_timezone()
     {
-        var site = await _f.WithDbAsync(async db =>
+        // Two sites with the same loans: one on the default timezone (UTC in tests), one at UTC+14.
+        async Task<Site> SeedSiteAsync(string key, string? tz) => await _f.WithDbAsync(async db =>
         {
-            var s = await Seed.SiteAsync(db, "RO1");
-            var h = await ReportSeed.HolderAsync(db, "ro.holder", "Holder Ro", s);
-            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, "RO-DUE-0302", s), due: new DateOnly(2026, 3, 2));
-            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, "RO-DUE-0301", s), due: new DateOnly(2026, 3, 1));
-            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, "RO-UNDATED", s));
-            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, "RO-RETURNED", s),
+            var s = await Seed.SiteAsync(db, key, timeZoneId: tz);
+            var h = await ReportSeed.HolderAsync(db, key.ToLowerInvariant() + ".holder", "Holder " + key, s);
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-DUE-0304", s), due: new DateOnly(2026, 3, 4));
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-DUE-0303", s), due: new DateOnly(2026, 3, 3));
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-DUE-0302", s), due: new DateOnly(2026, 3, 2));
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-DUE-0301", s), due: new DateOnly(2026, 3, 1));
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-UNDATED", s));
+            await ReportSeed.LoanAsync(db, h, asset: await Seed.AssetAsync(db, key + "-RETURNED", s),
                 due: new DateOnly(2026, 2, 1), closedAt: ReportSeed.Started.AddDays(1));
             return s;
         });
+        var utcSite = await SeedSiteAsync("ROU", null);
+        var plus14Site = await SeedSiteAsync("ROK", "Pacific/Kiritimati");
 
         var previousNow = _f.Clock.UtcNow;
-        var previousTz = _f.Clock.TimeZone;
         try
         {
-            // 2026-03-02 12:00 UTC: in UTC it is still the 2nd, so only the item due on the 1st is overdue (1 day).
+            // 2026-03-02 12:00 UTC. D4: overdue from the due date itself; days overdue = days past due (0 = due today).
             _f.Clock.UtcNow = new DateTimeOffset(2026, 3, 2, 12, 0, 0, TimeSpan.Zero);
-            _f.Clock.TimeZone = TimeZoneInfo.Utc;
-            var utc = await OverdueTagsAsync(site.Id);
-            Assert.Equal([("RO-DUE-0301", 1)], utc);
 
-            // Same instant in a UTC+14 client timezone is already 2026-03-03 local: both dated items are overdue.
-            _f.Clock.TimeZone = TimeZoneInfo.CreateCustomTimeZone("Test+14", TimeSpan.FromHours(14), "Test+14", "Test+14");
-            var plus14 = await OverdueTagsAsync(site.Id);
-            Assert.Equal([("RO-DUE-0301", 2), ("RO-DUE-0302", 1)], plus14);
+            // Default (UTC) site: still the 2nd, so items due on the 1st (1 day) and the 2nd (due today) are overdue.
+            Assert.Equal([("ROU-DUE-0301", 1), ("ROU-DUE-0302", 0)], await OverdueTagsAsync(utcSite.Id));
 
-            var csv = await GetCsvAsync(_f.CreateClientAs(TestUser.It), $"/Reports/Overdue?handler=Export&siteId={site.Id}");
+            // UTC+14 site: already 2026-03-03 locally, so the item due on the 3rd is due today there.
+            Assert.Equal([("ROK-DUE-0301", 2), ("ROK-DUE-0302", 1), ("ROK-DUE-0303", 0)], await OverdueTagsAsync(plus14Site.Id));
+
+            var csv = await GetCsvAsync(_f.CreateClientAs(TestUser.It), $"/Reports/Overdue?handler=Export&siteId={plus14Site.Id}");
             var rows = CsvTestParser.ParseWithHeader(csv);
-            Assert.Equal(["RO-DUE-0301", "RO-DUE-0302"], rows.Select(r => r["Asset tag"]));
-            Assert.Equal(["2", "1"], rows.Select(r => r["Days overdue"]));
+            Assert.Equal(["ROK-DUE-0301", "ROK-DUE-0302", "ROK-DUE-0303"], rows.Select(r => r["Asset tag"]));
+            Assert.Equal(["2", "1", "0"], rows.Select(r => r["Days overdue"]));
+
+            // The landing page summary and the loans list use the same per-site rule.
+            var html = await (await _f.CreateClientAs(TestUser.It).GetAsync($"/Loans?overdue=true&siteId={plus14Site.Id}"))
+                .Content.ReadAsStringAsync();
+            Assert.Contains("ROK-DUE-0303", html);
+            Assert.Contains("(due today)", html);
+            Assert.DoesNotContain("ROK-DUE-0304", html);
         }
         finally
         {
             _f.Clock.UtcNow = previousNow;
-            _f.Clock.TimeZone = previousTz;
         }
     }
 

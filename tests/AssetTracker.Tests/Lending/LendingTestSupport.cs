@@ -20,11 +20,11 @@ public static class LendingTestSupport
         f.RunAsAsync(TestUser.It, sp => action(sp.GetRequiredService<CorrectionService>()));
 
     /// <summary>A site with the IT mailbox configured.</summary>
-    public static Task<Site> SiteAsync(this AppFactory f, string key) =>
+    public static Task<Site> SiteAsync(this AppFactory f, string key, string? timeZoneId = null) =>
         f.WithDbAsync(async db =>
         {
             await NotificationSeed.SetItMailboxAsync(db, ItMailbox);
-            return await Seed.SiteAsync(db, key);
+            return await Seed.SiteAsync(db, key, timeZoneId: timeZoneId);
         });
 
     public static Task<Person> PersonAsync(this AppFactory f, string username, Site site, bool active = true,

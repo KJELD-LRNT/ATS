@@ -86,10 +86,18 @@ public class AppFactory : WebApplicationFactory<Program>
     protected override IHost CreateHost(IHostBuilder builder)
     {
         var host = base.CreateHost(builder);
-        using var scope = host.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+        using (var scope = host.Services.CreateScope())
+            scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+        // Program.cs's first settings load ran before the schema existed (tolerated); load again now.
+        ReloadSettingsAsync(host.Services).GetAwaiter().GetResult();
         return host;
     }
+
+    /// <summary>Applies database settings rows to configuration now (as the Settings page does after a save).</summary>
+    public Task ReloadSettingsAsync() => ReloadSettingsAsync(Services);
+
+    private static Task ReloadSettingsAsync(IServiceProvider services) =>
+        services.GetRequiredService<AssetTracker.Core.Settings.ISettingsReloader>().ReloadAsync();
 
     /// <summary>HTTP client authenticated as the given simulated Windows user. Does not follow redirects.</summary>
     public HttpClient CreateClientAs(TestUser user)

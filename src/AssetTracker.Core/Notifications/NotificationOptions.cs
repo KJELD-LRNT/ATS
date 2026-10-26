@@ -1,15 +1,15 @@
 namespace AssetTracker.Core.Notifications;
 
-/// <summary>Bound from the "Notifications" configuration section.</summary>
+/// <summary>Bound from the "Notifications" configuration section (database-overridable via Admin → Settings).</summary>
 public class NotificationOptions
 {
     public const string SectionName = "Notifications";
 
     /// <summary>
-    /// Whether a phone/phone-number asset's normalized number may appear in mail bodies. Default false until
-    /// Stage 0 confirms what reminder/notification mail may contain (mvp-plan §7.4).
+    /// Whether a phone/phone-number asset's normalized number may appear in mail bodies.
+    /// Default true (sponsor decision D5); admins can turn it off on the Settings page.
     /// </summary>
-    public bool IncludePhoneNumberInMail { get; set; }
+    public bool IncludePhoneNumberInMail { get; set; } = true;
 
     /// <summary>Send attempts per row before it becomes <see cref="Domain.NotificationStatus.Failed"/>.</summary>
     public int MaxAttempts { get; set; } = 8;
@@ -32,9 +32,15 @@ public class NotificationOptions
     public int BatchSize { get; set; } = 50;
 
     /// <summary>
-    /// Worker: client-local time of day (Clock:TimeZoneId) at which daily overdue reminders are queued.
-    /// If the worker starts later than this and today's run has not happened, it catches up immediately.
-    /// Stage 0 confirms the preferred time.
+    /// Site-local time of day from which a site's daily overdue reminders are queued (each site in its own timezone,
+    /// see <c>SiteCalendar</c>). A worker that starts later in the day still queues that day's reminders on its next
+    /// tick. Stage 0 confirms the preferred time.
     /// </summary>
     public TimeOnly ReminderTimeOfDay { get; set; } = new(8, 0);
+
+    /// <summary>
+    /// Worker: how often the overdue-reminder job ticks. Each tick queues reminders for every site whose local time
+    /// has reached <see cref="ReminderTimeOfDay"/>; dedupe keys make repeated ticks harmless.
+    /// </summary>
+    public TimeSpan ReminderPollInterval { get; set; } = TimeSpan.FromMinutes(15);
 }
