@@ -26,6 +26,12 @@ dotnet run --project src/AssetTracker.Web --launch-profile Demo
 - To stop the demo, press `Ctrl+C` in the terminal. To start it again, run the same command. Your data is kept between runs.
 - If port 5080 is already in use, add a different address: `dotnet run --project src/AssetTracker.Web --launch-profile Demo -- --urls http://localhost:5090`.
 
+**If the build fails with `error NU1100: Unable to resolve '…'`** for every package, NuGet on that machine has no usable package source. This is common on a fresh .NET install. The repository's `nuget.config` points at nuget.org, so first run `git pull` to make sure you have it. If it still fails, check `dotnet nuget list source`:
+- If nuget.org isn't listed, run `dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org`.
+- If it's listed as disabled, run `dotnet nuget enable source nuget.org`.
+
+Behind a company proxy, nuget.org must be reachable from the machine.
+
 The `Demo` launch profile sets `ASPNETCORE_ENVIRONMENT=Development` and `Demo__Enabled=true`. Demo mode is honoured **only** in the Development environment. If `Demo:Enabled` is set anywhere else, the app refuses to start, so a demo setting can never take effect on a server.
 
 ## 3. Where the data lives, and how to reset it
