@@ -12,6 +12,11 @@
     <nav class="topnav">
         <a class="brand" asp-page="/Index">Asset Tracker</a>
         @* Feature work packages add nav links here, gated on role. *@
+        @if (CurrentUser.IsIt || CurrentUser.IsManager)
+        {
+            <a asp-page="/Assets/Index">Assets</a>
+            <a asp-page="/Pools/Index">Pools</a>
+        }
         <span class="user">@CurrentUser.Name (@CurrentUser.Roles)</span>
     </nav>
 </header>

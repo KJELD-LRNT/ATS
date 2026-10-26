@@ -1,0 +1,47 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Pools.DetailsModel
+@{
+    var p = Model.Pool;
+    ViewData["Title"] = $"{p.Sku} at {p.Site?.Key}";
+}
+@if (Model.Message is not null)
+{
+    <p class="flash">@Model.Message</p>
+}
+<h1>@p.Sku <span class="muted">@p.Type pool at @p.Site?.Key – @p.Site?.Name</span></h1>
+<p>@p.Description</p>
+<div class="balances">
+    <div><strong>@p.Available</strong>Available</div>
+    <div><strong>@p.Outstanding</strong>Outstanding</div>
+    <div><strong>@p.OnHand</strong>On hand</div>
+</div>
+@if (Model.CanEdit)
+{
+    <p><a asp-page="Adjust" asp-route-id="@p.Id">Receipt / loss / count / transfer</a></p>
+}
+<h2>Stock events</h2>
+<table>
+    <thead>
+    <tr><th>When (UTC)</th><th>Event</th><th class="num">Change</th><th class="num">Available after</th><th class="num">Outstanding after</th><th>Reason</th><th>By</th></tr>
+    </thead>
+    <tbody>
+    @foreach (var e in Model.Events.Items)
+    {
+        <tr>
+            <td>@e.OccurredAt.ToString("yyyy-MM-dd HH:mm")</td>
+            <td>@InventoryUi.Describe(e.Type)@(e.CounterpartEventId is { } c ? $" (linked #{c})" : "")</td>
+            <td class="num">@e.QuantityDelta.ToString("+0;-0;0")</td>
+            <td class="num">@e.AvailableAfter</td>
+            <td class="num">@e.OutstandingAfter</td>
+            <td>@e.Reason</td>
+            <td>@e.Actor</td>
+        </tr>
+    }
+    @if (Model.Events.TotalCount == 0)
+    {
+        <tr><td colspan="7" class="muted">No stock events yet.</td></tr>
+    }
+    </tbody>
+</table>
+<partial name="_Pager" model="Model.Pager" />
+<p><a asp-page="Index">Back to pools</a></p>

@@ -1,0 +1,29 @@
+@page
+@model AssetTracker.Web.Pages.Assets.CreateModel
+@{
+    ViewData["Title"] = "New asset";
+}
+<h1>New tagged asset</h1>
+<p class="muted">The asset tag cannot be changed after creation. Phone number applies to phones and phone numbers; IMEI to phones only.</p>
+<form method="post">
+    <div asp-validation-summary="All" class="error"></div>
+    <div class="form-grid">
+        <label asp-for="Input.Tag">Asset tag</label>
+        <input asp-for="Input.Tag" required maxlength="64" />
+        <label asp-for="Input.Type">Type</label>
+        <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions<AssetType>()"></select>
+        <label asp-for="Input.SiteId">Site</label>
+        <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
+        <label asp-for="Input.Description">Description / model</label>
+        <input asp-for="Input.Description" required maxlength="500" />
+        <label asp-for="Input.Condition">Condition</label>
+        <input asp-for="Input.Condition" maxlength="200" />
+        <label asp-for="Input.SerialNumber">Serial number</label>
+        <input asp-for="Input.SerialNumber" maxlength="128" />
+        <label asp-for="Input.PhoneNumber">Phone number</label>
+        <input asp-for="Input.PhoneNumber" placeholder="+31 20 123 4567" />
+        <label asp-for="Input.Imei">IMEI</label>
+        <input asp-for="Input.Imei" />
+        <div class="full"><button type="submit">Create</button> <a asp-page="Index">Cancel</a></div>
+    </div>
+</form>
