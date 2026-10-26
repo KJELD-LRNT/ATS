@@ -8,3 +8,15 @@ table { border-collapse: collapse; width: 100%; }
 th, td { border-bottom: 1px solid #d0d7de; padding: .35rem .5rem; text-align: left; }
 .error { color: #cf222e; }
 .warning { background: #fff8c5; padding: .5rem; border: 1px solid #d4a72c; }
+.muted { color: #656d76; }
+.flash { background: #dafbe1; border: 1px solid #4ac26b; padding: .5rem; margin-bottom: 1rem; }
+.filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin-bottom: 1rem; }
+.form-grid { display: grid; grid-template-columns: max-content minmax(14rem, 28rem); gap: .4rem .8rem; align-items: center; }
+.form-grid .full { grid-column: 1 / -1; }
+.actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
+.actions form { border: 1px solid #d0d7de; padding: .75rem; border-radius: 6px; }
+.balances { display: flex; gap: 1.5rem; margin: 1rem 0; }
+.balances div { border: 1px solid #d0d7de; border-radius: 6px; padding: .5rem 1rem; text-align: center; }
+.balances strong { display: block; font-size: 1.8em; }
+.pager { display: flex; gap: 1rem; margin-top: .75rem; }
+td.num, th.num { text-align: right; }

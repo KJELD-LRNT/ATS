@@ -1,0 +1,48 @@
+@page
+@model AssetTracker.Web.Pages.Assets.IndexModel
+@{
+    ViewData["Title"] = "Assets";
+}
+<h1>Tagged assets</h1>
+@if (Model.CanEdit)
+{
+    <p><a asp-page="Create">New asset</a></p>
+}
+<form method="get" class="filters">
+    <label>Search<br /><input name="q" value="@Model.Q" placeholder="Tag, description, serial, phone, IMEI" size="36" /></label>
+    <label>Site<br />
+        <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
+    </label>
+    <label>Type<br />
+        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+    </label>
+    <label>State<br />
+        <select name="state" asp-for="State" asp-items="InventoryUi.EnumOptions<AssetState>()"><option value="">All</option></select>
+    </label>
+    <button type="submit">Search</button>
+</form>
+<table>
+    <thead>
+    <tr><th>Tag</th><th>Type</th><th>Description</th><th>Site</th><th>State</th><th>Serial</th><th>Phone</th><th>IMEI</th></tr>
+    </thead>
+    <tbody>
+    @foreach (var a in Model.Results.Items)
+    {
+        <tr>
+            <td><a asp-page="Details" asp-route-id="@a.Id">@a.Tag</a></td>
+            <td>@a.Type</td>
+            <td>@a.Description</td>
+            <td>@a.Site?.Key</td>
+            <td>@a.State</td>
+            <td>@a.SerialNumber</td>
+            <td>@a.PhoneNumber</td>
+            <td>@a.Imei</td>
+        </tr>
+    }
+    @if (Model.Results.TotalCount == 0)
+    {
+        <tr><td colspan="8" class="muted">No assets match.</td></tr>
+    }
+    </tbody>
+</table>
+<partial name="_Pager" model="Model.Pager" />

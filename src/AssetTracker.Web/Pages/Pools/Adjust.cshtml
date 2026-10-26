@@ -1,0 +1,50 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Pools.AdjustModel
+@{
+    var p = Model.Pool;
+    ViewData["Title"] = $"Adjust {p.Sku}";
+}
+<h1>Adjust @p.Sku <span class="muted">at @p.Site?.Key</span></h1>
+<div class="balances">
+    <div><strong>@p.Available</strong>Available</div>
+    <div><strong>@p.Outstanding</strong>Outstanding</div>
+    <div><strong>@p.OnHand</strong>On hand</div>
+</div>
+<div asp-validation-summary="All" class="error"></div>
+<p class="muted">Every adjustment needs a reason and is recorded as a stock event. Outstanding units change only through checkout and return.</p>
+
+<div class="actions">
+    <form method="post" asp-page-handler="Receipt" asp-route-id="@p.Id">
+        <strong>Receipt</strong> (adds to available)<br />
+        <input name="quantity" type="number" min="1" required placeholder="Quantity" />
+        <input name="reason" required maxlength="2000" placeholder="Reason, e.g. PO number" />
+        <button type="submit">Record receipt</button>
+    </form>
+    <form method="post" asp-page-handler="Loss" asp-route-id="@p.Id">
+        <strong>Loss</strong> (removes from available)<br />
+        <input name="quantity" type="number" min="1" max="@p.Available" required placeholder="Quantity" />
+        <input name="reason" required maxlength="2000" placeholder="Reason" />
+        <button type="submit">Record loss</button>
+    </form>
+    <form method="post" asp-page-handler="Count" asp-route-id="@p.Id">
+        <strong>Count adjustment</strong> (set available to the counted number on the shelf)<br />
+        <input name="counted" type="number" min="0" required placeholder="Counted available" />
+        <input name="reason" required maxlength="2000" placeholder="Reason" />
+        <button type="submit">Set count</button>
+    </form>
+    <form method="post" asp-page-handler="Transfer" asp-route-id="@p.Id">
+        <strong>Transfer</strong> available units to another site<br />
+        @if (Model.TransferTargets.Count == 0)
+        {
+            <span class="muted">No pool with this SKU exists at another site. Create one first.</span>
+        }
+        else
+        {
+            <select name="toPoolId" asp-items="Model.TransferTargets"></select>
+            <input name="quantity" type="number" min="1" max="@p.Available" required placeholder="Quantity" />
+            <input name="reason" required maxlength="2000" placeholder="Reason" />
+            <button type="submit">Transfer</button>
+        }
+    </form>
+</div>
+<p><a asp-page="Details" asp-route-id="@p.Id">Back to pool</a></p>
