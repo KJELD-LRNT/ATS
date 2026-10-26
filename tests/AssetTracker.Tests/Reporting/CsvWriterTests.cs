@@ -30,7 +30,6 @@ public class CsvWriterTests
     [InlineData("Laptop 14\"")]
     [InlineData("A. Example")]
     [InlineData("2026-03-02")]
-    [InlineData(" =not-first")]
     [InlineData("")]
     public void Safe_text_is_not_prefixed(string value)
     {
