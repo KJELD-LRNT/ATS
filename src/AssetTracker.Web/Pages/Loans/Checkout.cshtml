@@ -41,7 +41,7 @@
                         <label for="f-qty">Quantity</label>
                         <div class="stepper stepper--sm" data-stepper>
                             <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
-                            <input id="f-qty" name="quantity" type="number" min="1" value="@Model.Quantity" />
+                            <input id="f-qty" name="quantity" type="number" min="1" value="@Model.Quantity" data-sync="quantity" />
                             <button type="button" aria-label="Increase quantity" data-step="1">+</button>
                         </div>
                     </div>
@@ -148,7 +148,7 @@
                         <label for="qty">Quantity</label>
                         <div class="stepper" data-stepper>
                             <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
-                            <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required form="checkout-confirm" aria-describedby="qty-hint" />
+                            <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required form="checkout-confirm" aria-describedby="qty-hint" data-sync="quantity" />
                             <button type="button" aria-label="Increase quantity" data-step="1">+</button>
                         </div>
                         <span class="hint" id="qty-hint"><strong>@p.Available</strong> available · @p.Outstanding out · @p.OnHand on hand</span>

@@ -23,6 +23,21 @@ document.addEventListener("click", function (e) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
 });
 
+// Inputs sharing a data-sync key mirror each other (checkout: the search form's quantity and the confirmed quantity),
+// so the number on screen is always the number that gets submitted.
+["input", "change"].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+        var source = e.target instanceof HTMLInputElement ? e.target : null;
+        var key = source && source.getAttribute("data-sync");
+        if (!key) return;
+        document.querySelectorAll("input[data-sync]").forEach(function (other) {
+            if (other !== source && other.getAttribute("data-sync") === key && other.value !== source.value) {
+                other.value = source.value;
+            }
+        });
+    });
+});
+
 // Segmented control (checkout: tagged asset vs pool). Shows one panel and disables the other's fields so they are
 // not submitted. Without JavaScript the control stays hidden and both panels are shown.
 (function () {
