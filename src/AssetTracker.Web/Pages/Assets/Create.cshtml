@@ -3,27 +3,50 @@
 @{
     ViewData["Title"] = "New asset";
 }
-<h1>New tagged asset</h1>
-<p class="muted">The asset tag cannot be changed after creation. Phone number applies to phones and phone numbers; IMEI to phones only.</p>
-<form method="post">
-    <div asp-validation-summary="All" class="error"></div>
-    <div class="form-grid">
-        <label asp-for="Input.Tag">Asset tag</label>
-        <input asp-for="Input.Tag" required maxlength="64" />
-        <label asp-for="Input.Type">Type</label>
-        <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions<AssetType>()"></select>
-        <label asp-for="Input.SiteId">Site</label>
-        <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
-        <label asp-for="Input.Description">Description / model</label>
-        <input asp-for="Input.Description" required maxlength="500" />
-        <label asp-for="Input.Condition">Condition</label>
-        <input asp-for="Input.Condition" maxlength="200" />
-        <label asp-for="Input.SerialNumber">Serial number</label>
-        <input asp-for="Input.SerialNumber" maxlength="128" />
-        <label asp-for="Input.PhoneNumber">Phone number</label>
-        <input asp-for="Input.PhoneNumber" placeholder="+31 20 123 4567" />
-        <label asp-for="Input.Imei">IMEI</label>
-        <input asp-for="Input.Imei" />
-        <div class="full"><button type="submit">Create</button> <a asp-page="Index">Cancel</a></div>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Assets</a><span aria-hidden="true">/</span><span aria-current="page">New asset</span></nav>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>New tagged asset</h1>
+        <p class="page-subtitle">The asset tag cannot be changed after creation. Phone number applies to phones and phone numbers; IMEI to phones only.</p>
     </div>
+</header>
+<form method="post" class="card form-card">
+    <div asp-validation-summary="All" class="alert alert--error"></div>
+    <div class="fields">
+        <div class="field">
+            <label asp-for="Input.Tag">Asset tag</label>
+            <input asp-for="Input.Tag" required maxlength="64" class="mono" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.Type">Type</label>
+            <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions<AssetType>()"></select>
+        </div>
+        <div class="field">
+            <label asp-for="Input.SiteId">Site</label>
+            <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
+        </div>
+        <div class="field">
+            <label asp-for="Input.Description">Description / model</label>
+            <input asp-for="Input.Description" required maxlength="500" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.Condition">Condition <span class="optional">(optional)</span></label>
+            <input asp-for="Input.Condition" maxlength="200" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.SerialNumber">Serial number <span class="optional">(optional)</span></label>
+            <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.PhoneNumber">Phone number</label>
+            <input asp-for="Input.PhoneNumber" placeholder="+31 20 123 4567" class="mono" />
+            <span class="hint">Phones and phone numbers only, with country code.</span>
+        </div>
+        <div class="field">
+            <label asp-for="Input.Imei">IMEI</label>
+            <input asp-for="Input.Imei" class="mono" />
+            <span class="hint">Phones only.</span>
+        </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn--primary">Create</button> <a class="text-link" asp-page="Index">Cancel</a></div>
 </form>

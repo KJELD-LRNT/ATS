@@ -2,68 +2,169 @@
 @model AssetTracker.Web.Pages.Loans.CheckoutModel
 @{
     ViewData["Title"] = "Check out";
+    var hasTarget = Model.TargetError is null && (Model.Asset is not null || Model.Pool is not null);
+    // Initial segment: pool when a pool is chosen (and no tag), otherwise tagged asset.
+    var poolMode = Model.Asset is null && string.IsNullOrEmpty(Model.Tag) && (Model.Pool is not null || Model.PoolId is not null);
+    var staleText = "The people directory snapshot is stale. Checkout is still allowed, but recently disabled accounts may still appear active. The stale state is recorded on the loan and in the audit log.";
 }
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Loans</a><span aria-hidden="true">/</span><span aria-current="page">Check out</span></nav>
 <h1>Check out</h1>
-@if (Model.DirectoryStale)
+@if (Model.DirectoryStale && !hasTarget)
 {
-    <p class="warning"><strong>The people directory snapshot is stale.</strong> Checkout is still allowed, but recently
-        disabled accounts may still appear active. The stale state is recorded on the loan and in the audit log.</p>
+    <div class="alert alert--warning" role="status">@Ui.Icon("warning", 18, 2)<div class="alert-body">@staleText</div></div>
 }
-<div asp-validation-summary="All" class="error"></div>
+<div asp-validation-summary="All" class="alert alert--error"></div>
 
-<h2>1. Item and person</h2>
-<form method="get" class="filters">
-    <label>Asset tag<br /><input name="tag" value="@(Model.Asset?.Tag ?? Model.Tag)" placeholder="Tagged asset" size="16" /></label>
-    <span class="muted">or</span>
-    <label>Pool<br />
-        <select name="poolId" asp-items="Model.Pools"><option value="">–</option></select>
-    </label>
-    <label>Quantity (pool)<br /><input name="quantity" type="number" min="1" value="@Model.Quantity" class="qty" /></label>
-    <label>Person<br /><input name="who" value="@Model.Who" placeholder="Name, username or email" size="28" /></label>
-    <button type="submit">Find</button>
-</form>
-<p class="muted">Only active people with an email address can receive new loans.</p>
+<div class="columns">
+    <div class="col-main">
+        <form method="get" class="card" aria-labelledby="find-h">
+            <h2 id="find-h" class="visually-hidden">Find item and person</h2>
+            <fieldset>
+                <legend><span class="step-number">1.</span> What is being lent?</legend>
+                <div class="segmented" role="radiogroup" aria-label="Inventory type" data-segmented hidden>
+                    <button type="button" role="radio" aria-checked="@(poolMode ? "false" : "true")" data-segment="tag">Tagged asset</button>
+                    <button type="button" role="radio" aria-checked="@(poolMode ? "true" : "false")" data-segment="pool">Pool (quantity)</button>
+                </div>
+                <div class="search-row" data-segment-panel="tag">
+                    <div class="field field--grow">
+                        <label for="f-tag">Asset tag</label>
+                        <input id="f-tag" name="tag" value="@(Model.Asset?.Tag ?? Model.Tag)" placeholder="Tagged asset, e.g. AMS-LT-012" class="mono" />
+                    </div>
+                </div>
+                <p class="hint" data-segment-or>or</p>
+                <div class="search-row" data-segment-panel="pool">
+                    <div class="field field--grow">
+                        <label for="f-pool">Pool</label>
+                        <select id="f-pool" name="poolId" asp-items="Model.Pools"><option value="">–</option></select>
+                    </div>
+                    <div class="field field--auto">
+                        <label for="f-qty">Quantity</label>
+                        <div class="stepper stepper--sm" data-stepper>
+                            <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
+                            <input id="f-qty" name="quantity" type="number" min="1" value="@Model.Quantity" data-sync="quantity" />
+                            <button type="button" aria-label="Increase quantity" data-step="1">+</button>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend><span class="step-number">2.</span> Who receives it?</legend>
+                <div class="search-row">
+                    <div class="field field--grow">
+                        <label for="f-who">Person</label>
+                        <input id="f-who" name="who" value="@Model.Who" type="search" placeholder="Name, username or email" />
+                    </div>
+                </div>
+                <span class="hint">Only active people with an email address can receive new loans.</span>
+            </fieldset>
+            <div class="form-actions"><button type="submit" class="@(hasTarget ? "" : "btn--primary")">Find</button></div>
+        </form>
 
-@if (Model.TargetError is not null)
-{
-    <p class="error">@Model.TargetError</p>
-}
-else if (Model.Asset is not null || Model.Pool is not null)
-{
-    <h2>2. Confirm</h2>
-    <form method="post">
-        <div class="form-grid">
-            @if (Model.Asset is { } a)
-            {
-                <input type="hidden" name="Input.AssetId" value="@a.Id" />
-                <span>Item</span><span><strong>@a.Tag</strong> – @a.Description (@a.Type) at @a.Site?.Key · quantity <strong>1</strong></span>
-            }
-            else if (Model.Pool is { } p)
-            {
-                <input type="hidden" name="Input.PoolId" value="@p.Id" />
-                <span>Pool</span><span><strong>@p.Sku</strong> – @p.Description at @p.Site?.Key · <strong>@p.Available</strong> available</span>
-                <label for="qty"><strong>Quantity</strong></label>
-                <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required class="qty" />
-            }
-            <span>Person</span>
-            <span>
-                @if (Model.People.Count == 0)
+        @if (Model.TargetError is not null)
+        {
+            <div class="alert alert--error" role="alert">@Ui.Icon("error", 18, 2)<div class="alert-body">@Model.TargetError</div></div>
+        }
+        else if (hasTarget)
+        {
+            <form method="post" id="checkout-confirm" class="card" aria-labelledby="confirm-h">
+                <h2 id="confirm-h" class="visually-hidden">Confirm</h2>
+                @if (Model.Asset is { } a)
                 {
-                    <span class="muted">Search for a person above.</span>
+                    <input type="hidden" name="Input.AssetId" value="@a.Id" />
                 }
-                @foreach (var person in Model.People)
+                else if (Model.Pool is { } pool)
                 {
-                    <label><input type="radio" name="Input.HolderId" value="@person.Id" required checked="@(Model.Input.HolderId == person.Id)" />
-                        @person.DisplayName <span class="muted">@person.Username · @person.Email @person.SiteKey</span></label><br />
+                    <input type="hidden" name="Input.PoolId" value="@pool.Id" />
                 }
-            </span>
-            <label for="due">Due date (optional)</label>
-            <input id="due" name="Input.DueDate" type="date" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
-            <label for="cond">Condition</label>
-            <input id="cond" name="Input.Condition" maxlength="200" value="@Model.Input.Condition" />
-            <label for="note">Note</label>
-            <input id="note" name="Input.Note" maxlength="2000" value="@Model.Input.Note" />
-            <div class="full"><button type="submit" disabled="@(Model.People.Count == 0)">Confirm checkout</button> <a asp-page="Index">Cancel</a></div>
-        </div>
-    </form>
-}
+                <fieldset>
+                    <legend>Choose the person</legend>
+                    @if (Model.People.Count == 0)
+                    {
+                        <p class="picker-empty">Search for a person above.</p>
+                    }
+                    else
+                    {
+                        <ul class="picker">
+                            @foreach (var person in Model.People)
+                            {
+                                <li>
+                                    <label class="picker-option">
+                                        <input type="radio" name="Input.HolderId" value="@person.Id" required checked="@(Model.Input.HolderId == person.Id)" />
+                                        <span class="avatar" aria-hidden="true">@Ui.Initials(person.DisplayName)</span>
+                                        <span class="picker-text">
+                                            <span class="picker-name">@person.DisplayName</span>
+                                            <span class="picker-meta">@person.Username · @person.Email @person.SiteKey</span>
+                                        </span>
+                                        <span class="picker-check">@Ui.Icon("check", 18, 2.4)</span>
+                                    </label>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </fieldset>
+                <fieldset>
+                    <legend><span class="step-number">3.</span> Terms</legend>
+                    <div class="fields">
+                        <div class="field">
+                            <label for="due">Due date <span class="optional">(optional)</span></label>
+                            <input id="due" name="Input.DueDate" type="date" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
+                            <span class="hint">Overdue from the start of this day at the item's site.</span>
+                        </div>
+                        <div class="field">
+                            <label for="cond">Condition</label>
+                            <input id="cond" name="Input.Condition" maxlength="200" value="@Model.Input.Condition" />
+                        </div>
+                        <div class="field span-all">
+                            <label for="note">Note <span class="optional">(optional)</span></label>
+                            <input id="note" name="Input.Note" maxlength="2000" value="@Model.Input.Note" />
+                        </div>
+                    </div>
+                </fieldset>
+            </form>
+        }
+    </div>
+
+    @if (hasTarget)
+    {
+        <aside class="col-side" aria-label="Summary">
+            <div class="card summary">
+                <h2>Summary</h2>
+                @if (Model.Asset is { } a)
+                {
+                    <div class="summary-qty">
+                        <span class="summary-big">1×</span>
+                        <span class="summary-item"><span class="mono">@a.Tag</span><span class="secondary">@a.Description (@a.Type) at @a.Site?.Key</span></span>
+                    </div>
+                    <dl class="dl-list">
+                        <div><dt>Item</dt><dd>Tagged asset · quantity <strong>1</strong></dd></div>
+                        <div><dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd></div>
+                        <div><dt>Emails</dt><dd>Holder + IT mailbox</dd></div>
+                    </dl>
+                }
+                else if (Model.Pool is { } p)
+                {
+                    <div class="summary-item"><span class="mono">@p.Sku</span><span class="secondary">@p.Description at @p.Site?.Key</span></div>
+                    <div class="field">
+                        <label for="qty">Quantity</label>
+                        <div class="stepper" data-stepper>
+                            <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
+                            <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required form="checkout-confirm" aria-describedby="qty-hint" data-sync="quantity" />
+                            <button type="button" aria-label="Increase quantity" data-step="1">+</button>
+                        </div>
+                        <span class="hint" id="qty-hint"><strong>@p.Available</strong> available · @p.Outstanding out · @p.OnHand on hand</span>
+                    </div>
+                    <dl class="dl-list">
+                        <div><dt>Pool</dt><dd>@p.Type at @p.Site?.Key</dd></div>
+                        <div><dt>Emails</dt><dd>Holder + IT mailbox</dd></div>
+                    </dl>
+                }
+                @if (Model.DirectoryStale)
+                {
+                    <div class="note" role="note">@Ui.Icon("warning", 16, 2)<span>@staleText</span></div>
+                }
+                <button type="submit" form="checkout-confirm" class="btn--primary btn--block" disabled="@(Model.People.Count == 0)">Confirm checkout</button>
+                <a class="text-link text-link--center" asp-page="Index">Cancel</a>
+            </div>
+        </aside>
+    }
+</div>

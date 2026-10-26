@@ -3,42 +3,58 @@
 @{
     ViewData["Title"] = "Pools";
 }
-<h1>Quantity pools</h1>
-@if (Model.CanEdit)
-{
-    <p><a asp-page="Create">New pool</a></p>
-}
-<form method="get" class="filters">
-    <label>Search<br /><input name="q" value="@Model.Q" placeholder="SKU or description" size="30" /></label>
-    <label>Site<br />
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Quantity pools</h1>
+        <p class="page-subtitle">Peripherals, webcams and headsets counted per SKU and site.</p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <div class="page-actions">
+            <a class="btn btn--primary" asp-page="Create">@Ui.Icon("plus", 16, 2.2) New pool</a>
+        </div>
+    }
+</header>
+<form method="get" class="filters" role="search">
+    <div class="field field--grow">
+        <label for="f-q">Search</label>
+        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="SKU or description" />
+    </div>
+    <div class="field">
+        <label for="SiteId">Site</label>
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
-    </label>
-    <label>Type<br />
+    </div>
+    <div class="field">
+        <label for="Type">Type</label>
         <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions(AssetTypes.PoolEligible)"><option value="">All</option></select>
-    </label>
-    <button type="submit">Search</button>
+    </div>
+    <div class="filters-actions"><button type="submit">Search</button></div>
 </form>
-<table>
-    <thead>
-    <tr><th>SKU</th><th>Type</th><th>Description</th><th>Site</th><th class="num">Available</th><th class="num">Outstanding</th><th class="num">On hand</th></tr>
-    </thead>
-    <tbody>
-    @foreach (var p in Model.Results.Items)
-    {
-        <tr>
-            <td><a asp-page="Details" asp-route-id="@p.Id">@p.Sku</a></td>
-            <td>@p.Type</td>
-            <td>@p.Description</td>
-            <td>@p.Site?.Key</td>
-            <td class="num"><strong>@p.Available</strong></td>
-            <td class="num">@p.Outstanding</td>
-            <td class="num">@p.OnHand</td>
-        </tr>
-    }
-    @if (Model.Results.TotalCount == 0)
-    {
-        <tr><td colspan="7" class="muted">No pools match.</td></tr>
-    }
-    </tbody>
-</table>
-<partial name="_Pager" model="Model.Pager" />
+<section class="card card--flush" aria-label="Pools">
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr><th scope="col">SKU</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col" class="num">Available</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">On hand</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var p in Model.Results.Items)
+            {
+                <tr>
+                    <td class="nowrap"><a class="mono" asp-page="Details" asp-route-id="@p.Id">@p.Sku</a></td>
+                    <td>@p.Type</td>
+                    <td>@p.Description</td>
+                    <td>@p.Site?.Key</td>
+                    <td class="num"><strong>@p.Available</strong></td>
+                    <td class="num">@p.Outstanding</td>
+                    <td class="num">@p.OnHand</td>
+                </tr>
+            }
+            @if (Model.Results.TotalCount == 0)
+            {
+                <tr><td colspan="7" class="empty">No pools match.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <partial name="_Pager" model="Model.Pager" />
+</section>

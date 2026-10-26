@@ -1,17 +1,30 @@
 @model AssetTracker.Web.Pages.Reports.ReportPageModel
-<form method="get" class="filters">
-    <label>Search<br /><input name="q" value="@Model.Q" placeholder="@Model.SearchPlaceholder" size="32" /></label>
-    <label>Site<br />
+<form method="get" class="filters" role="search">
+    <div class="field field--grow">
+        <label for="f-q">Search</label>
+        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="@Model.SearchPlaceholder" />
+    </div>
+    <div class="field">
+        <label for="SiteId">Site</label>
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
-    </label>
-    <label>Type<br />
+    </div>
+    <div class="field">
+        <label for="Type">Type</label>
         <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
-    </label>
+    </div>
     @if (Model.DateRangeLabel is not null)
     {
-        <label>@Model.DateRangeLabel from<br /><input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" /></label>
-        <label>to<br /><input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" /></label>
+        <div class="field">
+            <label for="f-from">@Model.DateRangeLabel from</label>
+            <input id="f-from" type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" />
+        </div>
+        <div class="field">
+            <label for="f-to">to</label>
+            <input id="f-to" type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" />
+        </div>
     }
-    <button type="submit">Filter</button>
-    <a class="button" asp-all-route-data="Model.ExportRoute()">Export CSV</a>
+    <div class="filters-actions">
+        <button type="submit">Filter</button>
+        <a class="btn" asp-all-route-data="Model.ExportRoute()">@Ui.Icon("download", 16, 2) Export CSV</a>
+    </div>
 </form>

@@ -4,50 +4,64 @@
     ViewData["Title"] = "Reports";
     var s = Model.Summary;
 }
-<h1>Reports</h1>
-<div class="balances">
-    <div><strong>@s.OpenLoans</strong>open assignments</div>
-    <div><strong>@s.OpenPoolUnits</strong>pool units out</div>
-    <div><strong>@s.OverdueLoans</strong>overdue or due today (site-local date)</div>
-</div>
-<ul>
-    <li><a asp-page="Inventory">Inventory</a> — tagged assets by site, type and state; pool balances</li>
-    <li><a asp-page="Assignments">Current assignments</a> — open tagged and pool loans with holder details</li>
-    <li><a asp-page="Overdue">Overdue</a> — open loans due today or earlier (site-local date)</li>
-    <li><a asp-page="History">History</a> — all loans with corrections; loan and event level exports</li>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Reports</h1>
+        <p class="page-subtitle">Every report has a CSV export of the current filters. Exports are audited.</p>
+    </div>
+</header>
+<section class="kpis balances" aria-label="Summary">
+    <div class="kpi"><span class="kpi-label">Open assignments</span><span class="kpi-value">@s.OpenLoans</span><span class="kpi-sub">tagged and pool loans</span></div>
+    <div class="kpi"><span class="kpi-label">Pool units out</span><span class="kpi-value">@s.OpenPoolUnits</span><span class="kpi-sub">outstanding quantity</span></div>
+    <div class="kpi @(s.OverdueLoans > 0 ? "kpi--overdue" : "")"><span class="kpi-label">Overdue or due today</span><span class="kpi-value">@s.OverdueLoans</span><span class="kpi-sub">site-local date</span></div>
+</section>
+<ul class="link-cards">
+    <li><a class="link-card" asp-page="Inventory"><span class="link-card-title">@Ui.Icon("assets", 18) Inventory</span><span class="link-card-text">Tagged assets by site, type and state; pool balances.</span></a></li>
+    <li><a class="link-card" asp-page="Assignments"><span class="link-card-title">@Ui.Icon("loans", 18) Current assignments</span><span class="link-card-text">Open tagged and pool loans with holder details.</span></a></li>
+    <li><a class="link-card" asp-page="Overdue"><span class="link-card-title">@Ui.Icon("warning", 18) Overdue</span><span class="link-card-text">Open loans due today or earlier (site-local date).</span></a></li>
+    <li><a class="link-card" asp-page="History"><span class="link-card-title">@Ui.Icon("audit", 18) History</span><span class="link-card-text">All loans with corrections; loan and event level exports.</span></a></li>
 </ul>
-<p class="muted">Every report has a CSV export of the current filters. Exports are audited.</p>
 
-<h2>Tagged assets</h2>
-<table>
-    <thead><tr><th>Site</th><th>Type</th><th>State</th><th class="num">Count</th></tr></thead>
-    <tbody>
-    @foreach (var a in s.Assets)
-    {
-        <tr><td>@a.SiteKey</td><td>@a.Type</td><td>@a.State</td><td class="num">@a.Count</td></tr>
-    }
-    @if (s.Assets.Count == 0)
-    {
-        <tr><td colspan="4" class="muted">No tagged assets.</td></tr>
-    }
-    </tbody>
-</table>
+<div class="columns">
+    <section class="card card--flush col-main" aria-labelledby="assets-h">
+        <div class="card-header"><h2 id="assets-h">Tagged assets</h2></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Site</th><th scope="col">Type</th><th scope="col">State</th><th scope="col" class="num">Count</th></tr></thead>
+                <tbody>
+                @foreach (var a in s.Assets)
+                {
+                    <tr><td>@a.SiteKey</td><td>@a.Type</td><td>@Ui.Pill(a.State)</td><td class="num">@a.Count</td></tr>
+                }
+                @if (s.Assets.Count == 0)
+                {
+                    <tr><td colspan="4" class="empty">No tagged assets.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
 
-<h2>Pool totals</h2>
-<table>
-    <thead><tr><th>Site</th><th>Type</th><th class="num">Pools</th><th class="num">Available</th><th class="num">Outstanding</th><th class="num">On hand</th></tr></thead>
-    <tbody>
-    @foreach (var p in s.Pools)
-    {
-        <tr>
-            <td>@p.SiteKey</td><td>@p.Type</td><td class="num">@p.Pools</td>
-            <td class="num"><strong>@p.Available</strong></td><td class="num"><strong>@p.Outstanding</strong></td>
-            <td class="num">@p.OnHand</td>
-        </tr>
-    }
-    @if (s.Pools.Count == 0)
-    {
-        <tr><td colspan="6" class="muted">No pools.</td></tr>
-    }
-    </tbody>
-</table>
+    <section class="card card--flush col-side" aria-labelledby="pools-h">
+        <div class="card-header"><h2 id="pools-h">Pool totals</h2></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Site</th><th scope="col">Type</th><th scope="col" class="num">Pools</th><th scope="col" class="num">Available</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">On hand</th></tr></thead>
+                <tbody>
+                @foreach (var p in s.Pools)
+                {
+                    <tr>
+                        <td>@p.SiteKey</td><td>@p.Type</td><td class="num">@p.Pools</td>
+                        <td class="num"><strong>@p.Available</strong></td><td class="num"><strong>@p.Outstanding</strong></td>
+                        <td class="num">@p.OnHand</td>
+                    </tr>
+                }
+                @if (s.Pools.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty">No pools.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

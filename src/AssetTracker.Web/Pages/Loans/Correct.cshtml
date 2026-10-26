@@ -3,108 +3,188 @@
 @{
     var l = Model.History.Loan;
     ViewData["Title"] = $"Correct loan #{l.Id}";
+    var currentHolder = l.Holder?.DisplayName ?? l.HolderNameSnapshot;
 }
-<h1>Correct loan #@l.Id</h1>
-<p class="muted">A correction never changes the original record: it appends a superseding event with your reason.
-    Corrections that overlap another loan of the same asset or would make stock inconsistent are rejected.</p>
-<p>
-    @(l.Asset is { } a ? $"{a.Tag} – {a.Description} (asset is {a.State})" : $"{l.Pool?.Sku} (pool at {l.Pool?.Site?.Key})")
-    · effective holder <strong>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</strong>
-    · quantity <strong>@l.Quantity</strong>, returned @l.ReturnedQuantity
-    · @(l.IsOpen ? "open" : "returned")
-</p>
-<div asp-validation-summary="All" class="error"></div>
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a asp-page="Index">Loans</a><span aria-hidden="true">/</span>
+    <a asp-page="Details" asp-route-id="@l.Id">Loan #@l.Id</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Correct</span>
+</nav>
+<header class="page-header">
+    <div class="page-heading">
+        <div class="title-row">
+            <h1>Correct loan <span class="title-mono">#@l.Id</span></h1>
+            @if (l.IsOpen) { @Ui.Pill("checked-out", "Open") } else { @Ui.Pill("available", "Returned") }
+        </div>
+        <p class="page-subtitle">A correction never changes the original record: it appends a superseding event with your reason.
+            Corrections that overlap another loan of the same asset or would make stock inconsistent are rejected.</p>
+    </div>
+</header>
+<section class="card">
+    <dl class="dl-grid">
+        <div><dt>Item</dt><dd>@(l.Asset is { } a ? $"{a.Tag} – {a.Description} (asset is {a.State})" : $"{l.Pool?.Sku} (pool at {l.Pool?.Site?.Key})")</dd></div>
+        <div><dt>Effective holder</dt><dd><strong>@currentHolder</strong></dd></div>
+        <div><dt>Quantity</dt><dd><strong>@l.Quantity</strong>, returned @l.ReturnedQuantity</dd></div>
+        <div><dt>Status</dt><dd>@(l.IsOpen ? "open" : "returned")</dd></div>
+    </dl>
+</section>
+<div asp-validation-summary="All" class="alert alert--error"></div>
 
 @if (Model.Preview is { } p)
 {
-    <h2>Preview</h2>
-    <table>
-        <thead><tr><th>Field</th><th>Change</th></tr></thead>
-        <tbody>
-        @foreach (var c in p.Changes)
-        {
-            <tr><td>@CorrectModel.Label(c.Field)</td><td>@CorrectModel.Show(c, Model.PersonName)</td></tr>
-        }
-        @if (p.PoolAvailableBefore is not null)
-        {
-            <tr><td>Pool available</td><td>@p.PoolAvailableBefore → <strong>@p.PoolAvailableAfter</strong></td></tr>
-            <tr><td>Pool outstanding</td><td>@p.PoolOutstandingBefore → <strong>@p.PoolOutstandingAfter</strong></td></tr>
-        }
-        @if (p.AssetStateBefore is not null && p.AssetStateBefore != p.AssetStateAfter)
-        {
-            <tr><td>Asset state</td><td>@p.AssetStateBefore → @p.AssetStateAfter</td></tr>
-        }
-        <tr><td>Supersedes event</td><td>#@p.SupersedesEventId</td></tr>
-        @if (p.HolderChanged)
-        {
-            <tr><td>Notifications</td><td>Previous and corrected holder plus IT will be notified.</td></tr>
-        }
-        </tbody>
-    </table>
-    @if (p.HasConflicts)
-    {
-        <div class="error">
-            <strong>This correction cannot be committed:</strong>
-            <ul>@foreach (var c in p.Conflicts) { <li>@c</li> }</ul>
+    <section class="card card--flush" aria-labelledby="preview-h">
+        <div class="card-header">
+            <h2 id="preview-h">Preview</h2>
+            @Ui.Pill("corrected", "Correction")
         </div>
-    }
-    else
-    {
-        <form method="post" asp-page-handler="Commit" asp-route-id="@l.Id">
-            <input type="hidden" name="Input.HolderId" value="@Model.Input.HolderId" />
-            <input type="hidden" name="Input.StartedAt" value="@CorrectModel.Local(Model.Input.StartedAt)" />
-            <input type="hidden" name="Input.DueDate" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
-            <input type="hidden" name="Input.ReturnedAt" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
-            <input type="hidden" name="Input.Reopen" value="@(Model.Input.Reopen ? "true" : "false")" />
-            <input type="hidden" name="Input.Quantity" value="@Model.Input.Quantity" />
-            <input type="hidden" name="Input.ReturnedQuantity" value="@Model.Input.ReturnedQuantity" />
-            <p><label>Reason (required)<br /><textarea name="Input.Reason" required maxlength="2000" rows="3" cols="60">@Model.Input.Reason</textarea></label></p>
-            <button type="submit">Commit correction</button>
-        </form>
-    }
-    <h2>Change the correction</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Field</th><th scope="col">Change</th></tr></thead>
+                <tbody>
+                @foreach (var c in p.Changes)
+                {
+                    <tr><td>@CorrectModel.Label(c.Field)</td><td>@CorrectModel.Show(c, Model.PersonName)</td></tr>
+                }
+                @if (p.PoolAvailableBefore is not null)
+                {
+                    <tr><td>Pool available</td><td>@p.PoolAvailableBefore → <strong>@p.PoolAvailableAfter</strong></td></tr>
+                    <tr><td>Pool outstanding</td><td>@p.PoolOutstandingBefore → <strong>@p.PoolOutstandingAfter</strong></td></tr>
+                }
+                @if (p.AssetStateBefore is not null && p.AssetStateBefore != p.AssetStateAfter)
+                {
+                    <tr><td>Asset state</td><td>@p.AssetStateBefore → @p.AssetStateAfter</td></tr>
+                }
+                <tr><td>Supersedes event</td><td class="mono">#@p.SupersedesEventId</td></tr>
+                @if (p.HolderChanged)
+                {
+                    <tr><td>Notifications</td><td>Previous and corrected holder plus IT will be notified.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <div class="card-body">
+            @if (p.HasConflicts)
+            {
+                <div class="alert alert--error" role="alert">
+                    @Ui.Icon("error", 18, 2)
+                    <div class="alert-body">
+                        <strong>This correction cannot be committed:</strong>
+                        <ul>@foreach (var c in p.Conflicts) { <li>@c</li> }</ul>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Commit" asp-route-id="@l.Id" class="stack stack--tight">
+                    <input type="hidden" name="Input.HolderId" value="@Model.Input.HolderId" />
+                    <input type="hidden" name="Input.StartedAt" value="@CorrectModel.Local(Model.Input.StartedAt)" />
+                    <input type="hidden" name="Input.DueDate" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
+                    <input type="hidden" name="Input.ReturnedAt" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
+                    <input type="hidden" name="Input.Reopen" value="@(Model.Input.Reopen ? "true" : "false")" />
+                    <input type="hidden" name="Input.Quantity" value="@Model.Input.Quantity" />
+                    <input type="hidden" name="Input.ReturnedQuantity" value="@Model.Input.ReturnedQuantity" />
+                    <div class="field">
+                        <label for="reason">Reason (required)</label>
+                        <textarea id="reason" name="Input.Reason" required maxlength="2000" rows="3">@Model.Input.Reason</textarea>
+                        <span class="hint">Stored with the correction and shown in the loan history.</span>
+                    </div>
+                    <div class="form-actions"><button type="submit" class="btn--primary">Commit correction</button></div>
+                </form>
+            }
+        </div>
+    </section>
 }
 
-<form method="get" class="filters">
-    <label>Find another holder<br /><input name="who" value="@Model.Who" placeholder="Name, username or email" size="28" /></label>
-    <button type="submit">Search</button>
-    <span class="muted">Includes inactive people.</span>
-</form>
-<form method="post" asp-page-handler="Preview" asp-route-id="@l.Id" asp-route-who="@Model.Who">
-    <div class="form-grid">
-        <span>Holder</span>
-        <span>
-            <label><input type="radio" name="Input.HolderId" value="@l.HolderId" checked="@(Model.Input.HolderId == l.HolderId || Model.Input.HolderId == 0)" />
-                @(l.Holder?.DisplayName ?? l.HolderNameSnapshot) <span class="muted">(current)</span></label><br />
-            @foreach (var person in Model.People.Where(x => x.Id != l.HolderId))
-            {
-                <label><input type="radio" name="Input.HolderId" value="@person.Id" checked="@(Model.Input.HolderId == person.Id)" />
-                    @person.DisplayName <span class="muted">@person.Username · @person.Email@(person.IsActive ? "" : " · inactive")</span></label><br />
-            }
-        </span>
-        <label for="start">Started (UTC)</label>
-        <input id="start" name="Input.StartedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.StartedAt)" />
-        <label for="due">Due date (blank = none)</label>
-        <input id="due" name="Input.DueDate" type="date" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
-        @if (Model.IsTagged)
-        {
-            <label for="ret">Returned at (UTC; set to mark returned)</label>
-            <input id="ret" name="Input.ReturnedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
-            @if (!l.IsOpen)
-            {
-                <label for="reopen">Not actually returned (reopen)</label>
-                <input id="reopen" name="Input.Reopen" type="checkbox" value="true" checked="@Model.Input.Reopen" />
-            }
-        }
-        else
-        {
-            <label for="qty"><strong>Quantity checked out</strong></label>
-            <input id="qty" name="Input.Quantity" type="number" min="1" value="@Model.Input.Quantity" class="qty" />
-            <label for="rq"><strong>Quantity returned</strong></label>
-            <input id="rq" name="Input.ReturnedQuantity" type="number" min="0" value="@Model.Input.ReturnedQuantity" class="qty" />
-            <label for="ret">Fully returned at (UTC)</label>
-            <input id="ret" name="Input.ReturnedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
-        }
-        <div class="full"><button type="submit">Preview</button> <a asp-page="Details" asp-route-id="@l.Id">Cancel</a></div>
-    </div>
-</form>
+<section class="card" aria-labelledby="change-h">
+    <h2 id="change-h">@(Model.Preview is null ? "Correction" : "Change the correction")</h2>
+    <form method="get" class="search-row" role="search">
+        <div class="field field--grow">
+            <label for="f-who">Find another holder</label>
+            <input id="f-who" name="who" value="@Model.Who" type="search" placeholder="Name, username or email" />
+        </div>
+        <button type="submit">Search</button>
+        <span class="hint">Includes inactive people.</span>
+    </form>
+    <form method="post" asp-page-handler="Preview" asp-route-id="@l.Id" asp-route-who="@Model.Who" class="stack">
+        <fieldset>
+            <legend>Holder</legend>
+            <ul class="picker">
+                <li>
+                    <label class="picker-option">
+                        <input type="radio" name="Input.HolderId" value="@l.HolderId" checked="@(Model.Input.HolderId == l.HolderId || Model.Input.HolderId == 0)" />
+                        <span class="avatar" aria-hidden="true">@Ui.Initials(currentHolder)</span>
+                        <span class="picker-text"><span class="picker-name">@currentHolder</span><span class="picker-meta">(current)</span></span>
+                        <span class="picker-check">@Ui.Icon("check", 18, 2.4)</span>
+                    </label>
+                </li>
+                @foreach (var person in Model.People.Where(x => x.Id != l.HolderId))
+                {
+                    <li>
+                        <label class="picker-option @(person.IsActive ? "" : "picker-option--inactive")">
+                            <input type="radio" name="Input.HolderId" value="@person.Id" checked="@(Model.Input.HolderId == person.Id)" />
+                            <span class="avatar" aria-hidden="true">@Ui.Initials(person.DisplayName)</span>
+                            <span class="picker-text">
+                                <span class="picker-name">@person.DisplayName</span>
+                                <span class="picker-meta">@person.Username · @person.Email@(person.IsActive ? "" : " · inactive")</span>
+                            </span>
+                            <span class="picker-check">@Ui.Icon("check", 18, 2.4)</span>
+                        </label>
+                    </li>
+                }
+            </ul>
+        </fieldset>
+        <fieldset>
+            <legend>Dates and quantities</legend>
+            <div class="fields">
+                <div class="field">
+                    <label for="start">Started (UTC)</label>
+                    <input id="start" name="Input.StartedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.StartedAt)" />
+                </div>
+                <div class="field">
+                    <label for="due">Due date</label>
+                    <input id="due" name="Input.DueDate" type="date" value="@Model.Input.DueDate?.ToString("yyyy-MM-dd")" />
+                    <span class="hint">Blank = none.</span>
+                </div>
+                @if (Model.IsTagged)
+                {
+                    <div class="field">
+                        <label for="ret">Returned at (UTC)</label>
+                        <input id="ret" name="Input.ReturnedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
+                        <span class="hint">Set to mark returned.</span>
+                    </div>
+                    @if (!l.IsOpen)
+                    {
+                        <div class="field">
+                            <span class="field-label">Reopen</span>
+                            <label class="check" for="reopen"><input id="reopen" name="Input.Reopen" type="checkbox" value="true" checked="@Model.Input.Reopen" /> Not actually returned (reopen)</label>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="field">
+                        <label for="qty">Quantity checked out</label>
+                        <div class="stepper stepper--sm" data-stepper>
+                            <button type="button" aria-label="Decrease quantity checked out" data-step="-1">−</button>
+                            <input id="qty" name="Input.Quantity" type="number" min="1" value="@Model.Input.Quantity" />
+                            <button type="button" aria-label="Increase quantity checked out" data-step="1">+</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="rq">Quantity returned</label>
+                        <div class="stepper stepper--sm" data-stepper>
+                            <button type="button" aria-label="Decrease quantity returned" data-step="-1">−</button>
+                            <input id="rq" name="Input.ReturnedQuantity" type="number" min="0" value="@Model.Input.ReturnedQuantity" />
+                            <button type="button" aria-label="Increase quantity returned" data-step="1">+</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="ret">Fully returned at (UTC)</label>
+                        <input id="ret" name="Input.ReturnedAt" type="datetime-local" step="1" value="@CorrectModel.Local(Model.Input.ReturnedAt)" />
+                    </div>
+                }
+            </div>
+        </fieldset>
+        <div class="form-actions"><button type="submit" class="@(Model.Preview is null ? "btn--primary" : "")">Preview</button> <a class="text-link" asp-page="Details" asp-route-id="@l.Id">Cancel</a></div>
+    </form>
+</section>

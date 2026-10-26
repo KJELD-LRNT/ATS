@@ -4,72 +4,119 @@
     var a = Model.Asset;
     ViewData["Title"] = $"Edit {a.Tag}";
 }
-<h1>Edit @a.Tag <span class="muted">@a.Type at @a.Site?.Key — @a.State</span></h1>
-<div asp-validation-summary="All" class="error"></div>
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a asp-page="Index">Assets</a><span aria-hidden="true">/</span>
+    <a class="mono" asp-page="Details" asp-route-id="@a.Id">@a.Tag</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Edit</span>
+</nav>
+<header class="page-header page-header--top">
+    <div class="page-heading">
+        <div class="title-row">
+            <h1>Edit <span class="title-mono">@a.Tag</span></h1>
+            @Ui.Pill(a.State)
+        </div>
+        <p class="title-meta">@a.Type at @a.Site?.Key</p>
+    </div>
+</header>
+<div asp-validation-summary="All" class="alert alert--error"></div>
 
 @if (a.State != AssetState.Retired)
 {
-    <form method="post">
-        <div class="form-grid">
-            <label asp-for="Input.Description">Description / model</label>
-            <input asp-for="Input.Description" required maxlength="500" />
-            <label asp-for="Input.Condition">Condition</label>
-            <input asp-for="Input.Condition" maxlength="200" />
-            <label asp-for="Input.SerialNumber">Serial number</label>
-            <input asp-for="Input.SerialNumber" maxlength="128" />
+    <form method="post" class="card form-card" aria-labelledby="edit-h">
+        <h2 id="edit-h">Details</h2>
+        <div class="fields">
+            <div class="field span-all">
+                <label asp-for="Input.Description">Description / model</label>
+                <input asp-for="Input.Description" required maxlength="500" />
+            </div>
+            <div class="field">
+                <label asp-for="Input.Condition">Condition</label>
+                <input asp-for="Input.Condition" maxlength="200" />
+            </div>
+            <div class="field">
+                <label asp-for="Input.SerialNumber">Serial number</label>
+                <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
+            </div>
             @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
             {
-                <label asp-for="Input.PhoneNumber">Phone number</label>
-                <input asp-for="Input.PhoneNumber" />
+                <div class="field">
+                    <label asp-for="Input.PhoneNumber">Phone number</label>
+                    <input asp-for="Input.PhoneNumber" class="mono" />
+                </div>
             }
             @if (a.Type == AssetType.Phone)
             {
-                <label asp-for="Input.Imei">IMEI</label>
-                <input asp-for="Input.Imei" />
+                <div class="field">
+                    <label asp-for="Input.Imei">IMEI</label>
+                    <input asp-for="Input.Imei" class="mono" />
+                </div>
             }
-            <div class="full"><button type="submit">Save</button> <a asp-page="Details" asp-route-id="@a.Id">Cancel</a></div>
         </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Save</button> <a class="text-link" asp-page="Details" asp-route-id="@a.Id">Cancel</a></div>
     </form>
 
-    <div class="actions">
-        @if (a.State == AssetState.Available)
-        {
-            <form method="post" asp-page-handler="MarkUnavailable" asp-route-id="@a.Id">
-                <strong>Mark unavailable</strong><br />
-                <input name="reason" placeholder="Reason (e.g. repair)" />
-                <button type="submit">Mark unavailable</button>
-            </form>
-        }
-        @if (a.State == AssetState.Unavailable)
-        {
-            <form method="post" asp-page-handler="MarkAvailable" asp-route-id="@a.Id">
-                <strong>Return to circulation</strong><br />
-                <input name="reason" placeholder="Reason (optional)" />
-                <button type="submit">Mark available</button>
-            </form>
-        }
-        @if (a.State is AssetState.Available or AssetState.Unavailable)
-        {
-            <form method="post" asp-page-handler="Transfer" asp-route-id="@a.Id">
-                <strong>Move to site</strong><br />
-                <select name="toSiteId" asp-items="Model.Sites"></select>
-                <input name="reason" placeholder="Reason (optional)" />
-                <button type="submit">Move</button>
-            </form>
-            <form method="post" asp-page-handler="Retire" asp-route-id="@a.Id"
-                  data-confirm="Retire this asset? This cannot be undone.">
-                <strong>Retire</strong><br />
-                <input name="reason" placeholder="Reason (optional)" />
-                <button type="submit">Retire</button>
-            </form>
-        }
+    <section class="stack stack--tight" aria-labelledby="state-h">
+        <h2 id="state-h">State and site</h2>
         @if (a.State == AssetState.CheckedOut)
         {
-            <p class="muted">The asset is checked out: return it before changing its state or site.</p>
+            <div class="alert alert--info" role="note">@Ui.Icon("error", 18, 2)<div class="alert-body">The asset is checked out: return it before changing its state or site.</div></div>
         }
-    </div>
+        else
+        {
+            <div class="action-grid">
+                @if (a.State == AssetState.Available)
+                {
+                    <form method="post" asp-page-handler="MarkUnavailable" asp-route-id="@a.Id" class="action-card">
+                        <h3>Mark unavailable</h3>
+                        <span class="hint">Takes the asset out of circulation, e.g. for repair.</span>
+                        <div class="field">
+                            <label for="mu-reason">Reason</label>
+                            <input id="mu-reason" name="reason" placeholder="Reason (e.g. repair)" />
+                        </div>
+                        <button type="submit">Mark unavailable</button>
+                    </form>
+                }
+                @if (a.State == AssetState.Unavailable)
+                {
+                    <form method="post" asp-page-handler="MarkAvailable" asp-route-id="@a.Id" class="action-card">
+                        <h3>Return to circulation</h3>
+                        <div class="field">
+                            <label for="ma-reason">Reason <span class="optional">(optional)</span></label>
+                            <input id="ma-reason" name="reason" placeholder="Reason (optional)" />
+                        </div>
+                        <button type="submit">Mark available</button>
+                    </form>
+                }
+                @if (a.State is AssetState.Available or AssetState.Unavailable)
+                {
+                    <form method="post" asp-page-handler="Transfer" asp-route-id="@a.Id" class="action-card">
+                        <h3>Move to site</h3>
+                        <div class="field">
+                            <label for="tr-site">Site</label>
+                            <select id="tr-site" name="toSiteId" asp-items="Model.Sites"></select>
+                        </div>
+                        <div class="field">
+                            <label for="tr-reason">Reason <span class="optional">(optional)</span></label>
+                            <input id="tr-reason" name="reason" placeholder="Reason (optional)" />
+                        </div>
+                        <button type="submit">Move</button>
+                    </form>
+                    <form method="post" asp-page-handler="Retire" asp-route-id="@a.Id" class="action-card action-card--danger"
+                          data-confirm="Retire this asset? This cannot be undone.">
+                        <h3>Retire</h3>
+                        <span class="hint">Permanent: a retired asset can no longer be edited or lent.</span>
+                        <div class="field">
+                            <label for="rt-reason">Reason <span class="optional">(optional)</span></label>
+                            <input id="rt-reason" name="reason" placeholder="Reason (optional)" />
+                        </div>
+                        <button type="submit" class="btn--danger">Retire</button>
+                    </form>
+                }
+            </div>
+        }
+    </section>
 }
 else
 {
-    <p class="muted">This asset is retired and can no longer be edited.</p>
+    <div class="alert alert--info" role="note">@Ui.Icon("error", 18, 2)<div class="alert-body">This asset is retired and can no longer be edited.</div></div>
 }

@@ -262,7 +262,7 @@ public class ReportTests : IClassFixture<AppFactory>
             var html = await (await _f.CreateClientAs(TestUser.It).GetAsync($"/Loans?overdue=true&siteId={plus14Site.Id}"))
                 .Content.ReadAsStringAsync();
             Assert.Contains("ROK-DUE-0303", html);
-            Assert.Contains("(due today)", html);
+            Assert.Contains("<span class=\"pill pill--due-today\">Due today</span>", html); // status pill (was "(due today)" text)
             Assert.DoesNotContain("ROK-DUE-0304", html);
         }
         finally

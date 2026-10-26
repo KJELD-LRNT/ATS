@@ -3,66 +3,82 @@
 @{
     ViewData["Title"] = "Privacy: anonymize a person";
 }
-<h1>Anonymize a person</h1>
-<p>
-    Use only under a documented client instruction (see <em>docs/privacy-and-retention.md</em>).
-    Anonymization replaces the person's name, username, title, email and site with a pseudonym, scrubs holder
-    details on their loans and related notifications, and removes their manager grants. Loan quantities, dates and
-    stock balances are kept. It <strong>cannot be undone</strong>. Audit records are retained unchanged.
-</p>
-<p>Only people who are inactive in the directory snapshot and have no open loans can be anonymized.</p>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Anonymize a person</h1>
+        <div class="prose">
+            <p>
+                Use only under a documented client instruction (see <em>docs/privacy-and-retention.md</em>).
+                Anonymization replaces the person's name, username, title, email and site with a pseudonym, scrubs holder
+                details on their loans and related notifications, and removes their manager grants. Loan quantities, dates and
+                stock balances are kept. It <strong>cannot be undone</strong>. Audit records are retained unchanged.
+            </p>
+            <p>Only people who are inactive in the directory snapshot and have no open loans can be anonymized.</p>
+        </div>
+    </div>
+</header>
 
 @if (Model.Message is not null)
 {
-    <p class="notice">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<div asp-validation-summary="ModelOnly" class="error"></div>
+<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
 
-<form method="get">
-    <label for="q">Find inactive person (name, username or email)</label>
-    <input id="q" name="q" value="@Model.Q" minlength="2" />
-    <button type="submit">Search</button>
-</form>
+<section class="card card--flush" aria-labelledby="find-h">
+    <div class="card-header"><h2 id="find-h">Find a person</h2></div>
+    <div class="card-body">
+        <form method="get" class="search-row" role="search">
+            <div class="field field--grow">
+                <label for="q">Find inactive person (name, username or email)</label>
+                <input id="q" name="q" value="@Model.Q" minlength="2" type="search" />
+            </div>
+            <button type="submit">Search</button>
+        </form>
+    </div>
 
-@if (!string.IsNullOrWhiteSpace(Model.Q))
-{
-    @if (Model.Candidates.Count == 0)
+    @if (!string.IsNullOrWhiteSpace(Model.Q))
     {
-        <p>No inactive, not yet anonymized people match.</p>
+        @if (Model.Candidates.Count == 0)
+        {
+            <div class="empty-state"><strong>No inactive, not yet anonymized people match.</strong></div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Site</th><th scope="col">Last synced</th><th scope="col">Loans (open)</th><th scope="col">Anonymize</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in Model.Candidates)
+                    {
+                        <tr>
+                            <td>@c.DisplayName</td>
+                            <td>@c.Username</td>
+                            <td>@(c.Email ?? "(none)")</td>
+                            <td>@(c.SiteKey ?? "-")</td>
+                            <td class="nowrap">@c.LastSyncedAt.ToString("yyyy-MM-dd") UTC</td>
+                            <td>@c.TotalLoans (@c.OpenLoans)</td>
+                            <td>
+                                @if (c.OpenLoans > 0)
+                                {
+                                    <span class="muted">Resolve open loans first</span>
+                                }
+                                else
+                                {
+                                    <form method="post" asp-page-handler="Anonymize" asp-route-q="@Model.Q" class="inline-form"
+                                          data-confirm="Anonymize this person? This cannot be undone.">
+                                        <input type="hidden" name="personId" value="@c.Id" />
+                                        <label for="reason-@c.Id" class="visually-hidden">Reason for @c.DisplayName</label>
+                                        <input id="reason-@c.Id" name="reason" required maxlength="2000" placeholder="Reason / client instruction ref." />
+                                        <label class="check"><input type="checkbox" name="confirm" value="true" /> I confirm</label>
+                                        <button type="submit" class="btn--danger">Anonymize</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
     }
-    else
-    {
-        <table>
-            <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Site</th><th>Last synced</th><th>Loans (open)</th><th></th></tr></thead>
-            <tbody>
-            @foreach (var c in Model.Candidates)
-            {
-                <tr>
-                    <td>@c.DisplayName</td>
-                    <td>@c.Username</td>
-                    <td>@(c.Email ?? "(none)")</td>
-                    <td>@(c.SiteKey ?? "-")</td>
-                    <td>@c.LastSyncedAt.ToString("yyyy-MM-dd") UTC</td>
-                    <td>@c.TotalLoans (@c.OpenLoans)</td>
-                    <td>
-                        @if (c.OpenLoans > 0)
-                        {
-                            <span class="muted">Resolve open loans first</span>
-                        }
-                        else
-                        {
-                            <form method="post" asp-page-handler="Anonymize" asp-route-q="@Model.Q"
-                                  data-confirm="Anonymize this person? This cannot be undone.">
-                                <input type="hidden" name="personId" value="@c.Id" />
-                                <input name="reason" required maxlength="2000" placeholder="Reason / client instruction ref." />
-                                <label><input type="checkbox" name="confirm" value="true" /> I confirm</label>
-                                <button type="submit">Anonymize</button>
-                            </form>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    }
-}
+</section>

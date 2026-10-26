@@ -5,49 +5,80 @@
 }
 @if (Model.Message is not null)
 {
-    <p class="flash">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<h1>Current loans</h1>
-@if (Model.CanEdit)
-{
-    <p><a asp-page="Checkout">Check out</a></p>
-}
-<form method="get" class="filters">
-    <label>Search<br /><input name="q" value="@Model.Q" placeholder="Holder, tag or SKU" size="30" /></label>
-    <label>Site<br />
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Current loans</h1>
+        <p class="page-subtitle">Open loans of tagged assets and pool quantities. Due dates follow each site's local calendar.</p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <div class="page-actions">
+            <a class="btn btn--primary" asp-page="Checkout">@Ui.Icon("plus", 16, 2.2) Check out</a>
+        </div>
+    }
+</header>
+<form method="get" class="filters" role="search">
+    <div class="field field--grow">
+        <label for="f-q">Search</label>
+        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="Holder, tag or SKU" />
+    </div>
+    <div class="field">
+        <label for="SiteId">Site</label>
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
-    </label>
-    <label><input type="checkbox" name="overdue" value="true" checked="@Model.Overdue" /> Overdue only</label>
-    <button type="submit">Filter</button>
+    </div>
+    <label class="check"><input type="checkbox" name="overdue" value="true" checked="@Model.Overdue" /> Overdue only</label>
+    <div class="filters-actions"><button type="submit">Filter</button></div>
 </form>
-<table>
-    <thead>
-    <tr><th>Loan</th><th>Item</th><th>Site</th><th>Holder</th><th class="num">Quantity</th><th class="num">Outstanding</th><th>Started (UTC)</th><th>Due</th><th></th></tr>
-    </thead>
-    <tbody>
-    @foreach (var l in Model.Results.Items)
-    {
-        <tr>
-            <td><a asp-page="Details" asp-route-id="@l.Id">#@l.Id</a></td>
-            <td>@(l.Asset is { } a ? a.Tag : $"{l.Pool?.Sku} (pool)")</td>
-            <td>@(l.Asset?.Site?.Key ?? l.Pool?.Site?.Key)</td>
-            <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)@(l.Holder is { IsActive: false } ? " (inactive)" : "")</td>
-            <td class="num"><strong>@l.Quantity</strong></td>
-            <td class="num">@l.OutstandingQuantity</td>
-            <td>@l.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
-            <td>@l.DueDate@(Model.DueStatus(l) is { } status ? $" ({status})" : "")</td>
-            <td>
-                @if (Model.CanEdit && l.IsOpen)
-                {
-                    <a asp-page="Return" asp-route-id="@l.Id">Return</a>
-                }
-            </td>
-        </tr>
-    }
-    @if (Model.Results.TotalCount == 0)
-    {
-        <tr><td colspan="9" class="muted">No open loans match.</td></tr>
-    }
-    </tbody>
-</table>
-<partial name="_Pager" model="Model.Pager" />
+<section class="card card--flush" aria-label="Loans">
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr><th scope="col">Loan</th><th scope="col">Item</th><th scope="col">Site</th><th scope="col">Holder</th><th scope="col" class="num">Quantity</th><th scope="col" class="num">Outstanding</th><th scope="col">Started (UTC)</th><th scope="col">Due</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var l in Model.Results.Items)
+            {
+                var status = Model.DueStatus(l);
+                <tr>
+                    <td><a class="mono" asp-page="Details" asp-route-id="@l.Id">#@l.Id</a></td>
+                    <td>
+                        @if (l.Asset is { } a)
+                        {
+                            <span class="mono">@a.Tag</span>
+                        }
+                        else
+                        {
+                            <span class="cell-row"><span class="mono">@l.Pool?.Sku</span><span class="badge">pool</span></span>
+                        }
+                    </td>
+                    <td>@(l.Asset?.Site?.Key ?? l.Pool?.Site?.Key)</td>
+                    <td><span class="cell-row">@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)@if (l.Holder is { IsActive: false }) { <span class="badge badge--muted">Inactive</span> }</span></td>
+                    <td class="num"><strong>@l.Quantity</strong></td>
+                    <td class="num">@l.OutstandingQuantity</td>
+                    <td class="nowrap">@l.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <div class="cell-stack">
+                            <span class="nowrap">@(l.DueDate?.ToString("yyyy-MM-dd") ?? "—")</span>
+                            @if (status == "due today") { @Ui.Pill("due-today", "Due today") }
+                            else if (status is not null) { @Ui.Pill("overdue", "Overdue") }
+                        </div>
+                    </td>
+                    <td class="actions-cell">
+                        @if (Model.CanEdit && l.IsOpen)
+                        {
+                            <a class="btn btn--sm" asp-page="Return" asp-route-id="@l.Id">Return</a>
+                        }
+                    </td>
+                </tr>
+            }
+            @if (Model.Results.TotalCount == 0)
+            {
+                <tr><td colspan="9" class="empty">No open loans match.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <partial name="_Pager" model="Model.Pager" />
+</section>

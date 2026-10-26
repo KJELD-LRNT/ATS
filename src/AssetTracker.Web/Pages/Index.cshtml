@@ -1,14 +1,160 @@
 @page
 @model IndexModel
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = "Overview";
 }
-<h1>Asset Tracker</h1>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Overview</h1>
+        <p class="page-subtitle">Signed in as <strong>@Model.UserName</strong>@(Model.CanRead ? " · figures cover the sites you can see; due dates use each site's local calendar" : "")</p>
+    </div>
+    @if (Model.CanRead)
+    {
+        <div class="page-actions">
+            <form method="get" action="@Url.Page("/Assets/Index")" role="search" class="searchbox">
+                @Ui.Icon("search", 16, 2)
+                <label for="overview-q" class="visually-hidden">Search assets</label>
+                <input id="overview-q" name="q" type="search" placeholder="Search tag, description, serial…" />
+            </form>
+            @if (Model.CanEdit)
+            {
+                <a class="btn btn--primary" asp-page="/Loans/Checkout">@Ui.Icon("plus", 16, 2.2) Check out</a>
+            }
+        </div>
+    }
+</header>
+
 @if (Model.Roles == AppRoles.None)
 {
-    <p>You do not have access to this application. Contact IT if you believe this is wrong.</p>
+    <div class="alert alert--info" role="note">
+        @Ui.Icon("error", 18, 2)
+        <div class="alert-body">You do not have access to this application. Contact IT if you believe this is wrong.</div>
+    </div>
+}
+else if (Model.Summary is not { } s)
+{
+    <section class="card">
+        <h2>Welcome</h2>
+        <p>Signed in as <strong>@Model.UserName</strong>. Roles: @Model.Roles.</p>
+        <p class="secondary">Your role has no inventory access; use the admin pages in the menu.</p>
+    </section>
 }
 else
 {
-    <p>Signed in as <strong>@Model.UserName</strong>. Roles: @Model.Roles.</p>
+    <section class="kpis" aria-label="Key figures">
+        <div class="kpi">
+            <span class="kpi-label">Open loans</span>
+            <span class="kpi-value">@s.OpenLoans</span>
+            <span class="kpi-sub">@s.OpenPoolUnits pool units out</span>
+        </div>
+        <div class="kpi @(s.OverdueLoans > 0 ? "kpi--overdue" : "")">
+            <span class="kpi-label">Overdue or due today</span>
+            <span class="kpi-value">@s.OverdueLoans</span>
+            <span class="kpi-sub"><a asp-page="/Reports/Overdue">Open the overdue report</a></span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Tagged assets available</span>
+            <span class="kpi-value">@Model.AssetsAvailable</span>
+            <span class="kpi-sub">of @Model.AssetsTotal in service</span>
+        </div>
+        <div class="kpi">
+            <span class="kpi-label">Pool units available</span>
+            <span class="kpi-value">@Model.PoolAvailable</span>
+            <span class="kpi-sub">of @Model.PoolOnHand on hand · @Model.PoolCount pool(s)</span>
+        </div>
+    </section>
+
+    <div class="columns">
+        <section class="card card--flush col-main" aria-labelledby="overdue-h">
+            <div class="card-header">
+                <h2 id="overdue-h">Overdue and due today</h2>
+                <div class="card-actions">
+                    <a class="btn btn--sm" asp-page="/Reports/Overdue">Overdue report</a>
+                    <a class="text-link" asp-page="/Loans/Index">All loans</a>
+                </div>
+            </div>
+            @if (Model.Overdue.Count == 0)
+            {
+                <div class="empty-state"><strong>Nothing is overdue.</strong><span>Loans appear here from the start of their due date.</span></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="table--fixed-min">
+                        <thead><tr><th scope="col">Item</th><th scope="col">Holder</th><th scope="col">Site</th><th scope="col">Due</th><th scope="col" class="num">Status</th></tr></thead>
+                        <tbody>
+                        @foreach (var r in Model.Overdue)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="cell-stack">
+                                        <span class="cell-row">
+                                            <a class="mono" asp-page="/Loans/Details" asp-route-id="@r.LoanId">@r.ItemLabel</a>
+                                            @if (r.IsPool) { <span class="badge">@r.OutstandingQuantity of @r.Quantity out</span> }
+                                        </span>
+                                        <span class="cell-sub">@r.Type · @r.ItemDescription</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="cell-stack">
+                                        <span class="cell-row">@r.HolderDisplayName @if (!r.HolderActive) { <span class="badge badge--muted">Inactive</span> }</span>
+                                        @if (r.HolderJobTitle is not null) { <span class="cell-sub">@r.HolderJobTitle</span> }
+                                    </div>
+                                </td>
+                                <td>@r.SiteKey</td>
+                                <td class="nowrap">@r.DueDate?.ToString("yyyy-MM-dd")</td>
+                                <td class="num">@Ui.OverduePill(r.DaysOverdue ?? 0)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                @if (Model.OverdueTotal > Model.Overdue.Count)
+                {
+                    <div class="card-footer"><a class="text-link" asp-page="/Reports/Overdue">Show all @Model.OverdueTotal overdue loans</a></div>
+                }
+            }
+        </section>
+
+        <div class="col-side">
+            <section class="card" aria-labelledby="stock-h">
+                <div class="card-header">
+                    <h2 id="stock-h">Pool stock</h2>
+                    <a class="text-link" asp-page="/Pools/Index">All pools</a>
+                </div>
+                @if (Model.LowStock.Count == 0)
+                {
+                    <p class="secondary">No quantity pools yet.</p>
+                }
+                else
+                {
+                    <p class="card-note">Lowest availability first.</p>
+                    <ul class="stock-list">
+                        @foreach (var p in Model.LowStock)
+                        {
+                            var m = Ui.Stock(p.Available, p.OnHand);
+                            <li class="stock">
+                                <div class="stock-head">
+                                    <span><a class="mono" asp-page="/Pools/Details" asp-route-id="@p.Id">@p.Sku</a> · @p.SiteKey</span>
+                                    <span class="stock-left stock-left--@m.Level">@p.Available left</span>
+                                </div>
+                                <meter class="meter" min="0" max="@m.Max" low="@m.Low" high="@m.High" optimum="@m.Max" value="@p.Available"
+                                       aria-label="@p.Sku at @p.SiteKey: @p.Available of @p.OnHand available">@p.Available of @p.OnHand</meter>
+                                <span class="stock-sub">@p.Available available · @p.Outstanding out · @p.OnHand on hand</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="go-h">
+                <h2 id="go-h">Go to</h2>
+                <ul class="link-list">
+                    <li><a asp-page="/Reports/Assignments">Current assignments</a> <span class="muted">· who holds what</span></li>
+                    <li><a asp-page="/Reports/Inventory">Inventory report</a> <span class="muted">· assets and pool balances</span></li>
+                    <li><a asp-page="/Reports/History">Loan history</a> <span class="muted">· including corrections</span></li>
+                </ul>
+            </section>
+        </div>
+    </div>
 }

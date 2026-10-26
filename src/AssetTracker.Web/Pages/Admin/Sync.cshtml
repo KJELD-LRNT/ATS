@@ -4,84 +4,98 @@
 @{
     ViewData["Title"] = "Directory sync";
 }
-<h1>Directory sync</h1>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Directory sync</h1>
+        @if (Model.Status is { } st)
+        {
+            <p class="page-subtitle cell-row">
+                <span>Last successful sync:
+                    <strong>@(st.LastSuccessAt is { } last ? last.ToString("yyyy-MM-dd HH:mm") + " UTC" : "never")</strong></span>
+                @if (st.IsStale) { <span class="pill pill--overdue">Stale</span><span class="visually-hidden">(stale)</span> }
+            </p>
+        }
+    </div>
+    @if (Model.CanRun)
+    {
+        <form method="post" asp-page-handler="Run" class="page-actions">
+            <small class="hint">Runs a full directory sync and waits for it to finish.</small>
+            <button type="submit" class="btn--primary">@Ui.Icon("sync", 16, 2) Run sync now</button>
+        </form>
+    }
+</header>
 
 @if (Model.Message is not null)
 {
-    <p class="notice">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<div asp-validation-summary="ModelOnly" class="error"></div>
+<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
 
-@if (Model.Status is { } st)
+@if (!Model.CanRun)
 {
-    <p>
-        Last successful sync:
-        <strong>@(st.LastSuccessAt is { } last ? last.ToString("yyyy-MM-dd HH:mm") + " UTC" : "never")</strong>
-        @if (st.IsStale) { <span class="error">(stale)</span> }
-    </p>
+    <div class="alert alert--info" role="note">@Ui.Icon("error", 18, 2)<div class="alert-body">Read-only view. An application admin can run a sync manually. Failed or rejected runs are also mailed to the IT mailbox.</div></div>
 }
 
-@if (Model.CanRun)
-{
-    <form method="post" asp-page-handler="Run">
-        <button type="submit">Run sync now</button>
-        <small>Runs a full directory sync and waits for it to finish.</small>
-    </form>
-}
-else
-{
-    <p class="muted">Read-only view. An application admin can run a sync manually. Failed or rejected runs are also mailed to the IT mailbox.</p>
-}
-
-<h2>History</h2>
-<table>
-    <thead>
-    <tr><th>#</th><th>Started (UTC)</th><th>Finished</th><th>Status</th><th>By</th><th>Fetched</th><th>Mapped</th><th>Quarantined</th><th>Created</th><th>Updated</th><th>Deactivated</th></tr>
-    </thead>
-    <tbody>
-    @foreach (var r in Model.Runs.Items)
-    {
-        var issues = SyncModel.Issues(r);
-        <tr>
-            <td>@r.Id</td>
-            <td>@r.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-            <td>@r.FinishedAt?.ToString("HH:mm:ss")</td>
-            <td class="@(r.Status is AssetTracker.Core.Domain.SyncRunStatus.Succeeded ? "" : "error")">@r.Status</td>
-            <td>@r.TriggeredBy</td>
-            <td>@r.Fetched</td>
-            <td>@r.Mapped</td>
-            <td>@r.Quarantined</td>
-            <td>@r.Created</td>
-            <td>@r.Updated</td>
-            <td>@r.Deactivated</td>
-        </tr>
-        @if (r.Error is not null || issues.Count > 0)
-        {
-            <tr>
-                <td></td>
-                <td colspan="10">
-                    @if (r.Error is not null) { <div class="error">@r.Error</div> }
-                    @if (issues.Count > 0)
-                    {
-                        <details>
-                            <summary>@issues.Count issue(s)</summary>
-                            <ul>
-                                @foreach (var i in issues)
+<section class="card card--flush" aria-labelledby="hist-h">
+    <div class="card-header"><h2 id="hist-h">History</h2></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr><th scope="col">#</th><th scope="col">Started (UTC)</th><th scope="col">Finished</th><th scope="col">Status</th><th scope="col">By</th><th scope="col" class="num">Fetched</th><th scope="col" class="num">Mapped</th><th scope="col" class="num">Quarantined</th><th scope="col" class="num">Created</th><th scope="col" class="num">Updated</th><th scope="col" class="num">Deactivated</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model.Runs.Items)
+            {
+                var issues = SyncModel.Issues(r);
+                <tr>
+                    <td class="mono">@r.Id</td>
+                    <td class="nowrap">@r.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td class="nowrap">@r.FinishedAt?.ToString("HH:mm:ss")</td>
+                    <td>@Ui.Pill(r.Status)</td>
+                    <td>@r.TriggeredBy</td>
+                    <td class="num">@r.Fetched</td>
+                    <td class="num">@r.Mapped</td>
+                    <td class="num">@r.Quarantined</td>
+                    <td class="num">@r.Created</td>
+                    <td class="num">@r.Updated</td>
+                    <td class="num">@r.Deactivated</td>
+                </tr>
+                @if (r.Error is not null || issues.Count > 0)
+                {
+                    <tr class="detail-row">
+                        <td></td>
+                        <td colspan="10">
+                            <div class="stack stack--tight">
+                                @if (r.Error is not null) { <div class="error">@r.Error</div> }
+                                @if (issues.Count > 0)
                                 {
-                                    <li><code>@i.Code</code> @i.Message @(i.Username is null ? "" : $"[{i.Username}]") @(i.DirectoryId is null ? "" : $"({i.DirectoryId})")</li>
+                                    <details>
+                                        <summary>@issues.Count issue(s)</summary>
+                                        <ul>
+                                            @foreach (var i in issues)
+                                            {
+                                                <li><code>@i.Code</code> @i.Message @(i.Username is null ? "" : $"[{i.Username}]") @(i.DirectoryId is null ? "" : $"({i.DirectoryId})")</li>
+                                            }
+                                        </ul>
+                                    </details>
                                 }
-                            </ul>
-                        </details>
-                    }
-                </td>
-            </tr>
-        }
-    }
-    </tbody>
-</table>
-
-<p>
-    @if (Model.Runs.HasPrevious) { <a asp-page="/Admin/Sync" asp-route-p="@(Model.Runs.Page - 1)">Newer</a> }
-    Page @Model.Runs.Page of @Model.Runs.PageCount
-    @if (Model.Runs.HasNext) { <a asp-page="/Admin/Sync" asp-route-p="@(Model.Runs.Page + 1)">Older</a> }
-</p>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+            @if (Model.Runs.Items.Count == 0)
+            {
+                <tr><td colspan="11" class="empty">No sync has run yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <nav class="pager" aria-label="Pages">
+        <span>Page @Model.Runs.Page of @Model.Runs.PageCount</span>
+        <span class="pager-links">
+            @if (Model.Runs.HasPrevious) { <a class="btn btn--sm" asp-page="/Admin/Sync" asp-route-p="@(Model.Runs.Page - 1)">Newer</a> }
+            @if (Model.Runs.HasNext) { <a class="btn btn--sm" asp-page="/Admin/Sync" asp-route-p="@(Model.Runs.Page + 1)">Older</a> }
+        </span>
+    </nav>
+</section>

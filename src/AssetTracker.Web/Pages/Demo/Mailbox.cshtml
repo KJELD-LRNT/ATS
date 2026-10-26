@@ -3,58 +3,65 @@
 @{
     ViewData["Title"] = "Demo mailbox";
 }
-<h1>Demo mailbox</h1>
-<p>Every mail the app sends in demo mode (checkout, return, correction, overdue reminders, sync alerts, test mail)
-    lands here instead of a mail relay. The outbox sender delivers about every 10 seconds; reload to see new mail.</p>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Demo mailbox</h1>
+        <p class="page-subtitle">Every mail the app sends in demo mode (checkout, return, correction, overdue reminders, sync alerts, test mail)
+            lands here instead of a mail relay. The outbox sender delivers about every 10 seconds; reload to see new mail.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" asp-page="/Demo/Mailbox">Reload</a>
+        <form method="post" asp-page-handler="Clear" data-confirm="Delete every message in the demo mailbox?" class="demo-inline">
+            <button type="submit" id="demo-mailbox-clear" class="btn--danger">Clear mailbox</button>
+        </form>
+    </div>
+</header>
 
 @if (Model.Message is not null)
 {
-    <p class="flash">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
 
-<form method="post" asp-page-handler="Clear" data-confirm="Delete every message in the demo mailbox?" class="demo-inline">
-    <button type="submit" id="demo-mailbox-clear">Clear mailbox</button>
-</form>
-<a asp-page="/Demo/Mailbox">Reload</a>
-
 <div class="demo-mailbox">
-    <div>
-        <h2>@Model.Messages.Count message(s)</h2>
+    <section class="card card--flush" aria-labelledby="mail-list-h">
+        <div class="card-header"><h2 id="mail-list-h">@Model.Messages.Count message(s)</h2></div>
         @if (Model.Messages.Count == 0)
         {
-            <p>No mail yet.</p>
+            <div class="empty-state"><strong>No mail yet.</strong><span>Check out an item to send one.</span></div>
         }
         else
         {
-            <table id="demo-mail-list">
-                <thead><tr><th>Received (demo time)</th><th>To</th><th>Subject</th></tr></thead>
-                <tbody>
-                @foreach (var m in Model.Messages)
-                {
-                    <tr class="@(m.Id == Model.Id ? "selected" : "")">
-                        <td class="nowrap">@m.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td>
-                        <td>@m.To</td>
-                        <td><a asp-page="/Demo/Mailbox" asp-route-id="@m.Id">@(string.IsNullOrWhiteSpace(m.Subject) ? "(no subject)" : m.Subject)</a></td>
-                    </tr>
-                }
-                </tbody>
-            </table>
+            <div class="table-wrap">
+                <table id="demo-mail-list">
+                    <thead><tr><th scope="col">Received (demo time)</th><th scope="col">To</th><th scope="col">Subject</th></tr></thead>
+                    <tbody>
+                    @foreach (var m in Model.Messages)
+                    {
+                        <tr class="@(m.Id == Model.Id ? "selected" : "")">
+                            <td class="nowrap">@m.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td>
+                            <td>@m.To</td>
+                            <td><a asp-page="/Demo/Mailbox" asp-route-id="@m.Id" aria-current="@(m.Id == Model.Id ? "true" : null)">@(string.IsNullOrWhiteSpace(m.Subject) ? "(no subject)" : m.Subject)</a></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
         }
-    </div>
-    <div>
+    </section>
+    <section class="card" aria-label="Message">
         @if (Model.Selected is { } s)
         {
             <h2 id="demo-mail-subject">@s.Subject</h2>
-            <table>
-                <tr><th>From</th><td>@s.From</td></tr>
-                <tr><th>To</th><td>@s.To</td></tr>
-                <tr><th>Date</th><td>@s.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
+            <table class="kv-table">
+                <tr><th scope="row">From</th><td>@s.From</td></tr>
+                <tr><th scope="row">To</th><td>@s.To</td></tr>
+                <tr><th scope="row">Date</th><td>@s.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC</td></tr>
             </table>
             <pre class="demo-mail-body" id="demo-mail-body">@s.Body</pre>
         }
         else
         {
-            <p class="muted">Select a message to read it.</p>
+            <div class="empty-state"><span>Select a message to read it.</span></div>
         }
-    </div>
+    </section>
 </div>

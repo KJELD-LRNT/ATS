@@ -4,71 +4,101 @@
     ViewData["Title"] = "Operations";
     var d = Model.Dashboard;
 }
-<h1>Operations</h1>
-<p class="muted">Monitoring endpoints: <code>/health</code> (liveness) and <code>/health/ready</code> (readiness). See the runbook for what to alert on.</p>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Operations</h1>
+        <p class="page-subtitle">Monitoring endpoints: <code>/health</code> (liveness) and <code>/health/ready</code> (readiness). See the runbook for what to alert on.</p>
+    </div>
+</header>
 
-<h2>Application</h2>
-<table class="summary">
-    <tr><th>Web app version</th><td id="app-version">@d.AppVersion</td></tr>
-    <tr><th>Database</th><td id="db-status" class="@(d.DatabaseReachable ? "" : "error")">@(d.DatabaseReachable ? "Reachable" : "NOT reachable")</td></tr>
-</table>
+<div class="grid-cards">
+    <section class="card card--flush" aria-labelledby="app-h">
+        <div class="card-header">
+            <h2 id="app-h">Application</h2>
+            @if (d.DatabaseReachable) { @Ui.Pill("available", "Healthy") } else { @Ui.Pill("overdue", "Database down") }
+        </div>
+        <table class="kv-table">
+            <tr><th scope="row">Web app version</th><td id="app-version" class="mono">@d.AppVersion</td></tr>
+            <tr><th scope="row">Database</th><td id="db-status" class="@(d.DatabaseReachable ? "" : "error")">@(d.DatabaseReachable ? "Reachable" : "NOT reachable")</td></tr>
+        </table>
+    </section>
 
+    @if (d.DatabaseReachable)
+    {
+        <section class="card card--flush" aria-labelledby="worker-h">
+            <div class="card-header">
+                <h2 id="worker-h">Worker</h2>
+                @if (d.Worker is { } ww) { @(ww.LastSeenAt is null ? Ui.Pill("unavailable", "Never reported") : ww.IsStale ? Ui.Pill("overdue", "Stale") : Ui.Pill("available", "Running")) }
+            </div>
+            @if (d.Worker is { } w)
+            {
+                <table class="kv-table">
+                    <tr><th scope="row">Status</th><td id="worker-status" class="@(w.IsStale ? "error" : "")">@(w.LastSeenAt is null ? "Never reported" : w.IsStale ? "STALE" : "Running")</td></tr>
+                    <tr><th scope="row">Last heartbeat</th><td>@IndexModel.Utc(w.LastSeenAt) (@IndexModel.Age(w.Age) ago)</td></tr>
+                    <tr><th scope="row">Worker version</th><td class="mono">@(w.Version ?? "unknown")</td></tr>
+                    <tr><th scope="row">Stale after</th><td>@IndexModel.Age(d.WorkerStaleAfter) without a heartbeat</td></tr>
+                </table>
+            }
+            else
+            {
+                <div class="card-body"><p class="warning">Worker status unavailable.</p></div>
+            }
+        </section>
+
+        <section class="card card--flush" aria-labelledby="sync-h">
+            <div class="card-header">
+                <h2 id="sync-h">Directory sync</h2>
+                @if (d.Sync is { } ss) { @(ss.IsStale ? Ui.Pill("overdue", "Stale") : Ui.Pill("available", "Current")) }
+            </div>
+            @if (d.Sync is { } s)
+            {
+                <table class="kv-table">
+                    <tr><th scope="row">Last successful sync</th><td id="sync-last-success" class="@(s.IsStale ? "error" : "")">@IndexModel.Utc(s.LastSuccessAt)@(s.IsStale ? " (STALE)" : "")</td></tr>
+                    <tr><th scope="row">Stale after</th><td>@IndexModel.Age(d.SyncStaleAfter)</td></tr>
+                    <tr><th scope="row">Latest run</th><td id="sync-last-run">@(s.LastRunStatus?.ToString() ?? "none") @(s.LastRunAt is null ? "" : $"(started {IndexModel.Utc(s.LastRunAt)})")</td></tr>
+                    <tr><th scope="row">Issues in latest run</th><td id="sync-issues">@(d.LastRunIssueCount?.ToString() ?? "n/a")</td></tr>
+                    @if (s.LastRunError is not null)
+                    {
+                        <tr><th scope="row">Latest run error</th><td class="error">@s.LastRunError</td></tr>
+                    }
+                </table>
+                <div class="card-body">
+                    <p class="hint">Run details and manual rerun are on the admin directory sync page (application admins).</p>
+                </div>
+            }
+            else
+            {
+                <div class="card-body"><p class="warning">Directory sync status unavailable.</p></div>
+            }
+        </section>
+
+        <section class="card card--flush" aria-labelledby="outbox-h">
+            <div class="card-header">
+                <h2 id="outbox-h">Mail outbox</h2>
+                @if (d.Outbox is { } oo) { @(oo.FailedCount > 0 ? Ui.Pill("overdue", "Failures") : Ui.Pill("available", "OK")) }
+            </div>
+            @if (d.Outbox is { } o)
+            {
+                <table class="kv-table">
+                    <tr><th scope="row">Pending</th><td id="outbox-pending">@o.PendingCount</td></tr>
+                    <tr><th scope="row">Failed (retries exhausted)</th><td id="outbox-failed" class="@(o.FailedCount > 0 ? "error" : "")">@o.FailedCount</td></tr>
+                    <tr><th scope="row">Skipped recipients</th><td id="outbox-skipped">@o.SkippedCount</td></tr>
+                    <tr><th scope="row">Oldest pending</th><td class="@(o.OldestPendingAge > d.OutboxPendingMaxAge ? "error" : "")">@(o.OldestPendingAge is null ? "none" : IndexModel.Age(o.OldestPendingAge))</td></tr>
+                    <tr><th scope="row">Last error</th><td>@(o.LastError is null ? "none" : $"{IndexModel.Utc(o.LastErrorAt)}: {o.LastError}")</td></tr>
+                </table>
+                <div class="card-body">
+                    <p><a asp-page="/Ops/Mail">Open the mail queue</a> to inspect and requeue failed notifications.</p>
+                    <p><a asp-page="/Admin/Sync">Directory sync history</a> lists every run with its issues (read-only for IT).</p>
+                </div>
+            }
+            else
+            {
+                <div class="card-body"><p class="warning">Mail outbox status unavailable.</p></div>
+            }
+        </section>
+    }
+</div>
 @if (!d.DatabaseReachable)
 {
-    <p class="warning">The database cannot be reached; sync, mail and worker status are unavailable.</p>
-}
-else
-{
-    <h2>Worker</h2>
-    @if (d.Worker is { } w)
-    {
-        <table class="summary">
-            <tr><th>Status</th><td id="worker-status" class="@(w.IsStale ? "error" : "")">@(w.LastSeenAt is null ? "Never reported" : w.IsStale ? "STALE" : "Running")</td></tr>
-            <tr><th>Last heartbeat</th><td>@IndexModel.Utc(w.LastSeenAt) (@IndexModel.Age(w.Age) ago)</td></tr>
-            <tr><th>Worker version</th><td>@(w.Version ?? "unknown")</td></tr>
-            <tr><th>Stale after</th><td>@IndexModel.Age(d.WorkerStaleAfter) without a heartbeat</td></tr>
-        </table>
-    }
-    else
-    {
-        <p class="warning">Worker status unavailable.</p>
-    }
-
-    <h2>Directory sync</h2>
-    @if (d.Sync is { } s)
-    {
-        <table class="summary">
-            <tr><th>Last successful sync</th><td id="sync-last-success" class="@(s.IsStale ? "error" : "")">@IndexModel.Utc(s.LastSuccessAt)@(s.IsStale ? " (STALE)" : "")</td></tr>
-            <tr><th>Stale after</th><td>@IndexModel.Age(d.SyncStaleAfter)</td></tr>
-            <tr><th>Latest run</th><td id="sync-last-run">@(s.LastRunStatus?.ToString() ?? "none") @(s.LastRunAt is null ? "" : $"(started {IndexModel.Utc(s.LastRunAt)})")</td></tr>
-            <tr><th>Issues in latest run</th><td id="sync-issues">@(d.LastRunIssueCount?.ToString() ?? "n/a")</td></tr>
-            @if (s.LastRunError is not null)
-            {
-                <tr><th>Latest run error</th><td class="error">@s.LastRunError</td></tr>
-            }
-        </table>
-        <p class="muted">Run details and manual rerun are on the admin directory sync page (application admins).</p>
-    }
-    else
-    {
-        <p class="warning">Directory sync status unavailable.</p>
-    }
-
-    <h2>Mail outbox</h2>
-    @if (d.Outbox is { } o)
-    {
-        <table class="summary">
-            <tr><th>Pending</th><td id="outbox-pending">@o.PendingCount</td></tr>
-            <tr><th>Failed (retries exhausted)</th><td id="outbox-failed" class="@(o.FailedCount > 0 ? "error" : "")">@o.FailedCount</td></tr>
-            <tr><th>Skipped recipients</th><td id="outbox-skipped">@o.SkippedCount</td></tr>
-            <tr><th>Oldest pending</th><td class="@(o.OldestPendingAge > d.OutboxPendingMaxAge ? "error" : "")">@(o.OldestPendingAge is null ? "none" : IndexModel.Age(o.OldestPendingAge))</td></tr>
-            <tr><th>Last error</th><td>@(o.LastError is null ? "none" : $"{IndexModel.Utc(o.LastErrorAt)}: {o.LastError}")</td></tr>
-        </table>
-        <p><a asp-page="/Ops/Mail">Open the mail queue</a> to inspect and requeue failed notifications.</p>
-        <p><a asp-page="/Admin/Sync">Directory sync history</a> lists every run with its issues (read-only for IT).</p>
-    }
-    else
-    {
-        <p class="warning">Mail outbox status unavailable.</p>
-    }
+    <div class="alert alert--error" role="alert">@Ui.Icon("error", 18, 2)<div class="alert-body">The database cannot be reached; sync, mail and worker status are unavailable.</div></div>
 }

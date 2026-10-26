@@ -3,59 +3,130 @@
 @{
     var a = Model.Asset;
     ViewData["Title"] = a.Tag;
+    var open = Model.Loans.FirstOrDefault(l => l.IsOpen);
+    // Timeline: each loan contributes its checkout and (when closed) its return, newest first.
+    var entries = Model.Loans
+        .SelectMany(l => l.ClosedAt is { } closed
+            ? new[] { (Loan: l, Returned: true, At: closed), (Loan: l, Returned: false, At: l.StartedAt) }
+            : new[] { (Loan: l, Returned: false, At: l.StartedAt) })
+        .OrderByDescending(e => e.At).ToList();
 }
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Assets</a><span aria-hidden="true">/</span><span aria-current="page" class="mono">@a.Tag</span></nav>
 @if (Model.Message is not null)
 {
-    <p class="flash">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<h1>@a.Tag <span class="muted">@a.Type</span></h1>
-<dl class="form-grid">
-    <dt>State</dt><dd>@a.State@(a.RetiredAt is { } r ? $" (retired {r:yyyy-MM-dd})" : "")</dd>
-    <dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd>
-    <dt>Description</dt><dd>@a.Description</dd>
-    <dt>Condition</dt><dd>@a.Condition</dd>
-    <dt>Serial number</dt><dd>@a.SerialNumber</dd>
-    @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
+<header class="page-header page-header--top">
+    <div class="page-heading">
+        <div class="title-row">
+            <h1 class="title-mono">@a.Tag</h1>
+            @Ui.Pill(a.State)
+        </div>
+        <p class="title-meta">@a.Type · @a.Description · at <strong>@a.Site?.Key – @a.Site?.Name</strong></p>
+    </div>
+    @if (Model.CanEdit)
     {
-        <dt>Phone number</dt><dd>@a.PhoneNumber</dd>
+        <div class="page-actions">
+            <a class="btn" asp-page="Edit" asp-route-id="@a.Id">Edit / change state</a>
+            @if (open is not null)
+            {
+                <a class="btn" asp-page="/Loans/Correct" asp-route-id="@open.Id">Correct loan</a>
+                <a class="btn btn--primary" asp-page="/Loans/Return" asp-route-id="@open.Id">Return</a>
+            }
+            @if (a.State == AssetState.Available)
+            {
+                <a class="btn btn--primary" asp-page="/Loans/Checkout" asp-route-assetId="@a.Id">Check out</a>
+            }
+        </div>
     }
-    @if (a.Type == AssetType.Phone)
-    {
-        <dt>IMEI</dt><dd>@a.Imei</dd>
-    }
-    <dt>Created</dt><dd>@a.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd>
-</dl>
-@if (Model.CanEdit)
-{
-    <p><a asp-page="Edit" asp-route-id="@a.Id">Edit / change state</a>
-        @if (a.State == AssetState.Available)
+</header>
+
+<div class="columns">
+    <div class="col-narrow">
+        @if (open is not null)
         {
-            <text> · </text><a asp-page="/Loans/Checkout" asp-route-assetId="@a.Id">Check out</a>
+            <section class="card" aria-labelledby="loan-h">
+                <div class="card-header">
+                    <h2 id="loan-h">Current loan</h2>
+                    <a class="text-link" asp-page="/Loans/Details" asp-route-id="@open.Id">Loan #@open.Id</a>
+                </div>
+                <div class="person">
+                    <span class="avatar avatar--lg" aria-hidden="true">@Ui.Initials(open.Holder?.DisplayName ?? open.HolderNameSnapshot)</span>
+                    <span class="person-text">
+                        <span class="person-name">@(open.Holder?.DisplayName ?? open.HolderNameSnapshot)</span>
+                        @if (open.Holder is { } h)
+                        {
+                            <span class="person-meta">@(string.Join(" · ", new[] { h.JobTitle, h.Email }.Where(x => !string.IsNullOrEmpty(x))))@(h.IsActive ? "" : " · inactive")</span>
+                        }
+                    </span>
+                </div>
+                <dl class="dl-grid">
+                    <div><dt>Since</dt><dd>@open.StartedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd></div>
+                    <div><dt>Due</dt><dd>@(open.DueDate?.ToString("yyyy-MM-dd") ?? "none")</dd></div>
+                    <div><dt>Condition at checkout</dt><dd>@(open.CheckoutCondition ?? "—")</dd></div>
+                    <div><dt>Checked out by</dt><dd>@open.CreatedBy</dd></div>
+                </dl>
+            </section>
         }
-        @if (Model.Loans.FirstOrDefault(l => l.IsOpen) is { } open)
+
+        <section class="card" aria-labelledby="det-h">
+            <h2 id="det-h">Details</h2>
+            <dl class="dl-grid">
+                <div><dt>State</dt><dd>@Ui.Label(a.State)@(a.RetiredAt is { } r ? $" (retired {r:yyyy-MM-dd})" : "")</dd></div>
+                <div><dt>Type</dt><dd>@a.Type</dd></div>
+                <div><dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd></div>
+                <div><dt>Condition</dt><dd>@(string.IsNullOrEmpty(a.Condition) ? "—" : a.Condition)</dd></div>
+                <div class="span-all"><dt>Description</dt><dd>@a.Description</dd></div>
+                <div><dt>Serial number</dt><dd class="mono">@(string.IsNullOrEmpty(a.SerialNumber) ? "—" : a.SerialNumber)</dd></div>
+                @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
+                {
+                    <div><dt>Phone number</dt><dd class="mono">@a.PhoneNumber</dd></div>
+                }
+                @if (a.Type == AssetType.Phone)
+                {
+                    <div><dt>IMEI</dt><dd class="mono">@a.Imei</dd></div>
+                }
+                <div><dt>Created</dt><dd>@a.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd></div>
+                <div><dt>Internal ID</dt><dd class="mono">#@a.Id</dd></div>
+            </dl>
+        </section>
+    </div>
+
+    <section class="card card--flush col-wide" aria-labelledby="hist-h">
+        <div class="card-header">
+            <h2 id="hist-h">Assignment history</h2>
+            <span class="card-note">Every loan of this asset; open a loan for its full event trail and corrections.</span>
+        </div>
+        @if (entries.Count == 0)
         {
-            <text> · </text><a asp-page="/Loans/Return" asp-route-id="@open.Id">Return</a>
+            <div class="empty-state"><strong>Never assigned.</strong><span>Loans of this asset will appear here.</span></div>
         }
-    </p>
-}
-<h2>Assignment history</h2>
-<table>
-    <thead><tr><th>Loan</th><th>Holder</th><th>Started</th><th>Due</th><th>Returned</th></tr></thead>
-    <tbody>
-    @foreach (var l in Model.Loans)
-    {
-        <tr>
-            <td><a asp-page="/Loans/Details" asp-route-id="@l.Id">#@l.Id</a></td>
-            <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</td>
-            <td>@l.StartedAt.ToString("yyyy-MM-dd")</td>
-            <td>@l.DueDate</td>
-            <td>@(l.ClosedAt?.ToString("yyyy-MM-dd") ?? "open")</td>
-        </tr>
-    }
-    @if (Model.Loans.Count == 0)
-    {
-        <tr><td colspan="5" class="muted">Never assigned.</td></tr>
-    }
-    </tbody>
-</table>
-<p><a asp-page="Index">Back to assets</a></p>
+        else
+        {
+            <ol class="timeline">
+                @foreach (var e in entries)
+                {
+                    var l = e.Loan;
+                    var holder = l.Holder?.DisplayName ?? l.HolderNameSnapshot;
+                    <li class="timeline-item">
+                        <div class="timeline-rail">
+                            <span class="timeline-marker timeline-marker--@(e.Returned ? "available" : "checked-out")">@Ui.Icon(e.Returned ? "arrow-in" : "arrow-out", 14, 2.2)</span>
+                        </div>
+                        <div class="timeline-content">
+                            @if (e.Returned)
+                            {
+                                <span class="timeline-title"><strong>Returned</strong> by @holder@(l.ReturnCondition is null ? "" : $" · condition: {l.ReturnCondition}")</span>
+                            }
+                            else
+                            {
+                                <span class="timeline-title"><strong>Checked out</strong> to @holder@(l.DueDate is { } due ? $" · due {due:yyyy-MM-dd}" : "")
+                                    @if (l.IsOpen) { <span class="pill pill--checked-out">Open</span> }</span>
+                            }
+                            <span class="timeline-meta">@e.At.ToString("yyyy-MM-dd HH:mm") UTC · <a asp-page="/Loans/Details" asp-route-id="@l.Id">loan #@l.Id</a>@(e.Returned ? "" : $" · by {l.CreatedBy}")</span>
+                        </div>
+                    </li>
+                }
+            </ol>
+        }
+    </section>
+</div>

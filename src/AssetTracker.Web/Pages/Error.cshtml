@@ -2,5 +2,13 @@
 @{
     ViewData["Title"] = "Error";
 }
-<h1>Something went wrong</h1>
-<p>The error has been logged. Please try again or contact IT.</p>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Something went wrong</h1>
+    </div>
+</header>
+<div class="alert alert--error" role="alert">
+    @Ui.Icon("error", 18, 2)
+    <div class="alert-body">The error has been logged. Please try again or contact IT.</div>
+</div>
+<p class="back-link"><a href="~/">Back to the overview</a></p>

@@ -4,42 +4,67 @@
     var l = Model.History.Loan;
     ViewData["Title"] = $"Return loan #{l.Id}";
 }
-<h1>Return loan #@l.Id</h1>
-<p>
-    @(l.Asset is { } a ? $"{a.Tag} – {a.Description}" : $"{l.Pool?.Sku} (pool at {l.Pool?.Site?.Key})")
-    held by <strong>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</strong>@(l.Holder is { IsActive: false } ? " (inactive)" : "")
-</p>
-<div class="balances">
-    <div><strong>@l.Quantity</strong>Checked out</div>
-    <div><strong>@l.ReturnedQuantity</strong>Returned</div>
-    <div><strong>@l.OutstandingQuantity</strong>Outstanding</div>
-</div>
-<div asp-validation-summary="All" class="error"></div>
+<nav class="breadcrumb" aria-label="Breadcrumb">
+    <a asp-page="Index">Loans</a><span aria-hidden="true">/</span>
+    <a asp-page="Details" asp-route-id="@l.Id">Loan #@l.Id</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Return</span>
+</nav>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Return loan <span class="title-mono">#@l.Id</span></h1>
+        <p class="title-meta">
+            @if (l.Asset is { } a) { <span class="mono">@a.Tag</span> <text>– @a.Description</text> }
+            else { <span class="mono">@l.Pool?.Sku</span> <text>(pool at @l.Pool?.Site?.Key)</text> }
+            held by <strong>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</strong>@(l.Holder is { IsActive: false } ? " (inactive)" : "")
+        </p>
+    </div>
+</header>
+<section class="kpis balances" aria-label="Quantities">
+    <div class="kpi"><span class="kpi-label">Checked out</span><span class="kpi-value">@l.Quantity</span></div>
+    <div class="kpi"><span class="kpi-label">Returned</span><span class="kpi-value">@l.ReturnedQuantity</span></div>
+    <div class="kpi kpi--accent"><span class="kpi-label">Outstanding</span><span class="kpi-value">@l.OutstandingQuantity</span></div>
+</section>
+<div asp-validation-summary="All" class="alert alert--error"></div>
 @if (!l.IsOpen)
 {
-    <p class="muted">This loan has already been fully returned.</p>
+    <div class="alert alert--info" role="note">@Ui.Icon("check", 18, 2.4)<div class="alert-body">This loan has already been fully returned.</div></div>
 }
 else
 {
-    <form method="post">
-        <div class="form-grid">
+    <form method="post" class="card form-card">
+        <div class="fields">
             @if (l.PoolId is not null)
             {
-                <label asp-for="Input.Quantity"><strong>Quantity returned now</strong></label>
-                <input asp-for="Input.Quantity" type="number" min="1" max="@l.OutstandingQuantity" required class="qty" />
+                <div class="field span-all">
+                    <label asp-for="Input.Quantity">Quantity returned now</label>
+                    <div class="stepper" data-stepper>
+                        <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
+                        <input asp-for="Input.Quantity" type="number" min="1" max="@l.OutstandingQuantity" required />
+                        <button type="button" aria-label="Increase quantity" data-step="1">+</button>
+                    </div>
+                    <span class="hint">At most @l.OutstandingQuantity outstanding.</span>
+                </div>
             }
-            <label asp-for="Input.ReturnedAt">Returned at (UTC, blank = now)</label>
-            <input asp-for="Input.ReturnedAt" type="datetime-local" />
-            <label asp-for="Input.Condition">Condition</label>
-            <input asp-for="Input.Condition" maxlength="200" />
-            <label asp-for="Input.Note">Note</label>
-            <input asp-for="Input.Note" maxlength="2000" />
+            <div class="field">
+                <label asp-for="Input.ReturnedAt">Returned at (UTC)</label>
+                <input asp-for="Input.ReturnedAt" type="datetime-local" />
+                <span class="hint">Leave blank for now.</span>
+            </div>
+            <div class="field">
+                <label asp-for="Input.Condition">Condition</label>
+                <input asp-for="Input.Condition" maxlength="200" />
+            </div>
+            <div class="field span-all">
+                <label asp-for="Input.Note">Note <span class="optional">(optional)</span></label>
+                <input asp-for="Input.Note" maxlength="2000" />
+            </div>
             @if (l.AssetId is not null)
             {
-                <label asp-for="Input.MarkUnavailable">Mark unavailable (repair / retirement)</label>
-                <input asp-for="Input.MarkUnavailable" type="checkbox" />
+                <div class="field span-all">
+                    <label class="check"><input asp-for="Input.MarkUnavailable" type="checkbox" /> Mark unavailable (repair / retirement)</label>
+                </div>
             }
-            <div class="full"><button type="submit">Record return</button> <a asp-page="Details" asp-route-id="@l.Id">Cancel</a></div>
         </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Record return</button> <a class="text-link" asp-page="Details" asp-route-id="@l.Id">Cancel</a></div>
     </form>
 }

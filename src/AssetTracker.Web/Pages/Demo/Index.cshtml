@@ -4,76 +4,88 @@
     ViewData["Title"] = "Demo controls";
     var roles = Model.Current.Roles;
 }
-<h1>Demo controls</h1>
-<p>This app runs in <strong>local demo mode</strong>: every person, site and asset is fictional, mail goes to the
-    <a asp-page="/Demo/Mailbox">demo mailbox</a> instead of a relay, and the background jobs run inside this process.
-    See <code>docs/testing-guide.md</code> for test scenarios.</p>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Demo controls</h1>
+        <p class="page-subtitle">This app runs in <strong>local demo mode</strong>: every person, site and asset is fictional, mail goes to the
+            <a asp-page="/Demo/Mailbox">demo mailbox</a> instead of a relay, and the background jobs run inside this process.
+            See <code>docs/testing-guide.md</code> for test scenarios.</p>
+    </div>
+</header>
 
 @if (Model.Message is not null)
 {
-    <p class="flash" id="demo-message">@Model.Message</p>
+    <div class="alert alert--success" role="status" id="demo-message">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
 
-<section class="demo-panel" id="demo-identity">
-    <h2>Who am I?</h2>
-    <p>Currently <strong>@Model.Current.UserName</strong> with roles
-        <strong>@(roles == AppRoles.None ? "none" : roles.ToString())</strong>.
-        Roles come from simulated AD group SIDs, exactly like Windows sign-in; the person decides which manager grants apply.</p>
-    <form method="post" asp-page-handler="Identity">
-        <fieldset class="demo-roles">
-            <legend>Roles (any combination, including none)</legend>
-            <label><input type="checkbox" name="it" value="true" checked="@roles.HasFlag(AppRoles.It)" /> IT / editor</label>
-            <label><input type="checkbox" name="manager" value="true" checked="@roles.HasFlag(AppRoles.Manager)" /> Manager / viewer</label>
-            <label><input type="checkbox" name="admin" value="true" checked="@roles.HasFlag(AppRoles.Admin)" /> Application admin</label>
-        </fieldset>
-        <p>
-            <label for="personSid">Act as person</label><br />
-            <select id="personSid" name="personSid">
-                @foreach (var p in Model.People)
-                {
-                    <option value="@p.Sid" selected="@(p.Sid == Model.Current.Sid)">@p.Label</option>
-                }
-            </select>
-        </p>
-        <p class="muted">Tip: <em>Demo Manager (AMS)</em> + only the Manager role shows what a site manager with a grant
-            for Amsterdam sees.</p>
-        <button type="submit" id="demo-apply-identity">Apply</button>
-    </form>
-</section>
+<div class="demo-grid">
+    <section class="demo-panel" id="demo-identity" aria-labelledby="demo-identity-h">
+        <h2 id="demo-identity-h">Who am I?</h2>
+        <p>Currently <strong>@Model.Current.UserName</strong> with roles
+            <strong>@(roles == AppRoles.None ? "none" : roles.ToString())</strong>.
+            Roles come from simulated AD group SIDs, exactly like Windows sign-in; the person decides which manager grants apply.</p>
+        <form method="post" asp-page-handler="Identity" class="stack">
+            <fieldset class="demo-roles">
+                <legend>Roles (any combination, including none)</legend>
+                <label class="check"><input type="checkbox" name="it" value="true" checked="@roles.HasFlag(AppRoles.It)" /> IT / editor</label>
+                <label class="check"><input type="checkbox" name="manager" value="true" checked="@roles.HasFlag(AppRoles.Manager)" /> Manager / viewer</label>
+                <label class="check"><input type="checkbox" name="admin" value="true" checked="@roles.HasFlag(AppRoles.Admin)" /> Application admin</label>
+            </fieldset>
+            <div class="field">
+                <label for="personSid">Act as person</label>
+                <select id="personSid" name="personSid">
+                    @foreach (var p in Model.People)
+                    {
+                        <option value="@p.Sid" selected="@(p.Sid == Model.Current.Sid)">@p.Label</option>
+                    }
+                </select>
+            </div>
+            <p class="hint">Tip: <em>Demo Manager (AMS)</em> + only the Manager role shows what a site manager with a grant
+                for Amsterdam sees.</p>
+            <div class="form-actions"><button type="submit" id="demo-apply-identity" class="btn--primary">Apply</button></div>
+        </form>
+    </section>
 
-<section class="demo-panel" id="demo-time">
-    <h2>Time travel</h2>
-    <p>Demo time: <strong>@Model.DemoUtcNow.ToString("yyyy-MM-dd HH:mm") UTC</strong>
-        @(Model.Offset > TimeSpan.Zero ? $"(real time + {Model.Offset.TotalDays:0.#} days)" : "(real time)")</p>
-    <table>
-        <thead><tr><th>Site</th><th>Timezone</th><th>Local date and time</th></tr></thead>
-        <tbody>
-        @foreach (var s in Model.SiteTimes)
-        {
-            <tr><td>@s.Key — @s.Name</td><td>@s.TimeZone</td><td>@s.LocalNow.ToString("ddd yyyy-MM-dd HH:mm")</td></tr>
-        }
-        </tbody>
-    </table>
-    <p class="muted">Overdue status, due dates, reports and reminders all follow this clock. Reminders are queued once per
-        loan, site-local day and recipient after 08:00 site time.</p>
-    <form method="post" asp-page-handler="Travel" class="demo-inline">
-        <input type="hidden" name="days" value="1" />
-        <button type="submit" id="demo-plus-1">+1 day</button>
-    </form>
-    <form method="post" asp-page-handler="Travel" class="demo-inline">
-        <input type="hidden" name="days" value="7" />
-        <button type="submit" id="demo-plus-7">+7 days</button>
-    </form>
-    <form method="post" asp-page-handler="TravelReset" class="demo-inline">
-        <button type="submit" id="demo-time-reset">Reset to now</button>
-    </form>
-</section>
+    <div class="stack">
+        <section class="demo-panel" id="demo-time" aria-labelledby="demo-time-h">
+            <h2 id="demo-time-h">Time travel</h2>
+            <p>Demo time: <strong>@Model.DemoUtcNow.ToString("yyyy-MM-dd HH:mm") UTC</strong>
+                @(Model.Offset > TimeSpan.Zero ? $"(real time + {Model.Offset.TotalDays:0.#} days)" : "(real time)")</p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Site</th><th scope="col">Timezone</th><th scope="col">Local date and time</th></tr></thead>
+                    <tbody>
+                    @foreach (var s in Model.SiteTimes)
+                    {
+                        <tr><td><span class="mono">@s.Key</span> — @s.Name</td><td>@s.TimeZone</td><td class="nowrap">@s.LocalNow.ToString("ddd yyyy-MM-dd HH:mm")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+            <p class="hint">Overdue status, due dates, reports and reminders all follow this clock. Reminders are queued once per
+                loan, site-local day and recipient after 08:00 site time.</p>
+            <div class="form-actions">
+                <form method="post" asp-page-handler="Travel" class="demo-inline">
+                    <input type="hidden" name="days" value="1" />
+                    <button type="submit" id="demo-plus-1">+1 day</button>
+                </form>
+                <form method="post" asp-page-handler="Travel" class="demo-inline">
+                    <input type="hidden" name="days" value="7" />
+                    <button type="submit" id="demo-plus-7">+7 days</button>
+                </form>
+                <form method="post" asp-page-handler="TravelReset" class="demo-inline">
+                    <button type="submit" id="demo-time-reset">Reset to now</button>
+                </form>
+            </div>
+        </section>
 
-<section class="demo-panel" id="demo-data">
-    <h2>Demo data</h2>
-    <p>Data folder: <code>@Model.DataDirectory</code> (database <code>demo.db</code>, mail in <code>mail</code>, keys in <code>keys</code>).
-        Demo mailbox: @Model.MailCount message(s).</p>
-    <form method="post" asp-page-handler="Reset" data-confirm="Delete all demo data and mail and seed it again?">
-        <button type="submit" id="demo-reset">Reset demo data</button>
-    </form>
-</section>
+        <section class="demo-panel" id="demo-data" aria-labelledby="demo-data-h">
+            <h2 id="demo-data-h">Demo data</h2>
+            <p>Data folder: <code>@Model.DataDirectory</code> (database <code>demo.db</code>, mail in <code>mail</code>, keys in <code>keys</code>).
+                Demo mailbox: @Model.MailCount message(s).</p>
+            <form method="post" asp-page-handler="Reset" data-confirm="Delete all demo data and mail and seed it again?">
+                <button type="submit" id="demo-reset" class="btn--danger">Reset demo data</button>
+            </form>
+        </section>
+    </div>
+</div>
