@@ -1,5 +1,7 @@
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Data;
+using AssetTracker.Core.Notifications;
+using AssetTracker.Infrastructure.Mail;
 using AssetTracker.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +23,10 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.Configure<ClockOptions>(config.GetSection("Clock"));
         services.AddSingleton<IClock, SystemClock>();
+
+        services.Configure<NotificationOptions>(config.GetSection(NotificationOptions.SectionName));
+        services.Configure<MailOptions>(config.GetSection(MailOptions.SectionName));
+        services.AddSingleton<IMailRelay, SmtpMailRelay>();
         return services;
     }
 }

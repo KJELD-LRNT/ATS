@@ -19,11 +19,26 @@ public class NotificationOutbox
     public string Body { get; set; } = "";
 
     public int? LoanId { get; set; }
+
+    /// <summary>
+    /// Navigation so a row staged together with a new (unsaved) loan gets its <see cref="LoanId"/> on SaveChanges.
+    /// </summary>
+    public Loan? Loan { get; set; }
+
+    /// <summary>The effective loan event (checkout/return/correction) this notice is about. Null for reminders.</summary>
     public long? LoanEventId { get; set; }
+
+    /// <summary>
+    /// Navigation so a row staged together with a new (unsaved) event gets its <see cref="LoanEventId"/> on SaveChanges.
+    /// </summary>
+    public LoanEvent? LoanEvent { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset NextAttemptAt { get; set; }
     public int Attempts { get; set; }
+
+    /// <summary>When the sender last tried this row (success or failure). Drives the "last error" ops view.</summary>
+    public DateTimeOffset? LastAttemptAt { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public string? LastError { get; set; }
 }

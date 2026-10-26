@@ -33,32 +33,6 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "NotificationOutbox",
-                columns: table => new
-                {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Kind = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    DedupeKey = table.Column<string>(type: "nvarchar(400)", maxLength: 400, nullable: false),
-                    RecipientEmail = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
-                    SkipReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    Subject = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    Body = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    LoanId = table.Column<int>(type: "int", nullable: true),
-                    LoanEventId = table.Column<long>(type: "bigint", nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    NextAttemptAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    Attempts = table.Column<int>(type: "int", nullable: false),
-                    SentAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    LastError = table.Column<string>(type: "nvarchar(max)", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_NotificationOutbox", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Settings",
                 columns: table => new
                 {
@@ -333,6 +307,45 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "NotificationOutbox",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    DedupeKey = table.Column<string>(type: "nvarchar(400)", maxLength: 400, nullable: false),
+                    RecipientEmail = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
+                    SkipReason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Subject = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    Body = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    LoanId = table.Column<int>(type: "int", nullable: true),
+                    LoanEventId = table.Column<long>(type: "bigint", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    NextAttemptAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    Attempts = table.Column<int>(type: "int", nullable: false),
+                    LastAttemptAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    SentAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    LastError = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NotificationOutbox", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_NotificationOutbox_LoanEvents_LoanEventId",
+                        column: x => x.LoanEventId,
+                        principalTable: "LoanEvents",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_NotificationOutbox_Loans_LoanId",
+                        column: x => x.LoanId,
+                        principalTable: "Loans",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_AuditEvents_EntityType_EntityId",
                 table: "AuditEvents",
@@ -418,6 +431,16 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_NotificationOutbox_LoanEventId",
+                table: "NotificationOutbox",
+                column: "LoanEventId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_NotificationOutbox_LoanId",
+                table: "NotificationOutbox",
+                column: "LoanId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_NotificationOutbox_Status_NextAttemptAt",
                 table: "NotificationOutbox",
                 columns: new[] { "Status", "NextAttemptAt" });
@@ -487,9 +510,6 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                 name: "AuditEvents");
 
             migrationBuilder.DropTable(
-                name: "LoanEvents");
-
-            migrationBuilder.DropTable(
                 name: "ManagerSiteGrants");
 
             migrationBuilder.DropTable(
@@ -503,6 +523,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "SyncRuns");
+
+            migrationBuilder.DropTable(
+                name: "LoanEvents");
 
             migrationBuilder.DropTable(
                 name: "Loans");

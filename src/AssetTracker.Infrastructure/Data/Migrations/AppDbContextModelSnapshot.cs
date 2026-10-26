@@ -17,7 +17,7 @@ namespace AssetTracker.Infrastructure.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -383,6 +383,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("int");
 
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("LastError")
                         .HasColumnType("nvarchar(max)");
 
@@ -418,6 +421,10 @@ namespace AssetTracker.Infrastructure.Data.Migrations
 
                     b.HasIndex("DedupeKey")
                         .IsUnique();
+
+                    b.HasIndex("LoanEventId");
+
+                    b.HasIndex("LoanId");
 
                     b.HasIndex("Status", "NextAttemptAt");
 
@@ -734,6 +741,23 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.NotificationOutbox", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.LoanEvent", "LoanEvent")
+                        .WithMany()
+                        .HasForeignKey("LoanEventId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetTracker.Core.Domain.Loan", "Loan")
+                        .WithMany()
+                        .HasForeignKey("LoanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Loan");
+
+                    b.Navigation("LoanEvent");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Person", b =>

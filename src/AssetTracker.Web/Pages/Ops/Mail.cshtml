@@ -1,0 +1,72 @@
+@page
+@using AssetTracker.Core.Domain
+@model AssetTracker.Web.Pages.Ops.MailModel
+@{
+    ViewData["Title"] = "Mail queue";
+    var s = Model.Status;
+}
+<h1>Mail queue</h1>
+
+@if (Model.Message is not null)
+{
+    <p class="warning">@Model.Message</p>
+}
+
+<table class="summary">
+    <tr><th>Pending</th><td id="pending-count">@s.PendingCount</td></tr>
+    <tr><th>Failed (retries exhausted)</th><td id="failed-count" class="@(s.FailedCount > 0 ? "error" : "")">@s.FailedCount</td></tr>
+    <tr><th>Skipped recipients</th><td id="skipped-count">@s.SkippedCount</td></tr>
+    <tr><th>Oldest pending</th><td>@(s.OldestPendingAge is { } age ? $"{(int)age.TotalMinutes} min (queued {s.OldestPendingCreatedAt:yyyy-MM-dd HH:mm} UTC)" : "none")</td></tr>
+    <tr><th>Last error</th><td>@(s.LastError is null ? "none" : $"{s.LastErrorAt:yyyy-MM-dd HH:mm} UTC: {s.LastError}")</td></tr>
+</table>
+
+@if (s.FailedCount > 0)
+{
+    <form method="post" asp-page-handler="RequeueAll">
+        <button type="submit">Requeue all failed (@s.FailedCount)</button>
+    </form>
+}
+
+<h2>Failed and skipped notifications</h2>
+<p>Skipped rows had no usable recipient (inactive holder, missing or invalid address, or IT mailbox not configured). They are not retried.</p>
+@if (Model.Rows.Total == 0)
+{
+    <p>None.</p>
+}
+else
+{
+    <table>
+        <thead>
+        <tr><th>Id</th><th>Created (UTC)</th><th>Kind</th><th>Status</th><th>Recipient</th><th>Subject</th><th>Loan</th><th>Attempts</th><th>Reason / last error</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.Rows.Rows)
+        {
+            <tr>
+                <td>@r.Id</td>
+                <td>@r.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                <td>@r.Kind</td>
+                <td class="@(r.Status == NotificationStatus.Failed ? "error" : "")">@r.Status</td>
+                <td>@(r.RecipientEmail ?? "(none)")</td>
+                <td>@r.Subject</td>
+                <td>@r.LoanId</td>
+                <td>@r.Attempts</td>
+                <td>@(r.Status == NotificationStatus.Skipped ? r.SkipReason : r.LastError)</td>
+                <td>
+                    @if (r.Status == NotificationStatus.Failed)
+                    {
+                        <form method="post" asp-page-handler="Requeue" asp-route-id="@r.Id">
+                            <button type="submit">Requeue</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    <p>
+        Page @Model.Rows.Page of @Model.Rows.PageCount (@Model.Rows.Total rows)
+        @if (Model.Rows.Page > 1) { <a asp-route-p="@(Model.Rows.Page - 1)">Previous</a> }
+        @if (Model.Rows.Page < Model.Rows.PageCount) { <a asp-route-p="@(Model.Rows.Page + 1)">Next</a> }
+    </p>
+}

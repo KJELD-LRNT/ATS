@@ -167,6 +167,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Subject).HasMaxLength(500);
             e.HasIndex(x => x.DedupeKey).IsUnique();
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.HasOne(x => x.Loan).WithMany().HasForeignKey(x => x.LoanId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.LoanEvent).WithMany().HasForeignKey(x => x.LoanEventId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<SyncRun>(e =>

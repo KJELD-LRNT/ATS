@@ -1,5 +1,6 @@
 using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Inventory;
+using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Security;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,6 +15,13 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<AuditWriter>();
         services.AddScoped<AssetService>();
         services.AddScoped<PoolService>();
+
+        // Notifications (WP2.3). Options are bound from "Notifications" by the infrastructure layer.
+        services.AddOptions<NotificationOptions>();
+        services.AddScoped<NotificationService>();
+        services.AddScoped<OutboxSender>();
+        services.AddScoped<OutboxMonitor>();
+        services.AddScoped<OverdueReminderService>();
         return services;
     }
 }
