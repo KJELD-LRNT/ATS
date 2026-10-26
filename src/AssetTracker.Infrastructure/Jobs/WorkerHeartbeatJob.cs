@@ -1,7 +1,10 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using AssetTracker.Core.Ops;
 using Microsoft.Extensions.Options;
 
-namespace AssetTracker.Worker.Jobs;
+namespace AssetTracker.Infrastructure.Jobs;
 
 /// <summary>Settings for the worker host itself (config section <c>Worker</c>).</summary>
 public class WorkerOptions
@@ -22,7 +25,9 @@ public class WorkerOptions
 public class WorkerHeartbeatJob(IServiceScopeFactory scopes, IOptions<WorkerOptions> options,
     ILogger<WorkerHeartbeatJob> logger) : BackgroundService
 {
-    private static readonly string Version = AppVersion.Of(typeof(WorkerHeartbeatJob).Assembly);
+    /// <summary>Version of the hosting application (the worker executable, or the web app in demo mode).</summary>
+    private static readonly string Version =
+        AppVersion.Of(System.Reflection.Assembly.GetEntryAssembly() ?? typeof(WorkerHeartbeatJob).Assembly);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

@@ -76,6 +76,12 @@
     }
 }
 <h1>Settings</h1>
+@if (HttpContext.RequestServices.GetService(typeof(AssetTracker.Infrastructure.Demo.DemoOptions)) is not null)
+{
+    <p class="warning" id="demo-settings-note">Local demo mode: the directory is the fictional demo directory and mail is
+        written to the <a asp-page="/Demo/Mailbox">demo mailbox</a>, whatever the relay and Active Directory values below
+        say. Saving, <em>Test directory query</em> and <em>Send test email</em> still work (the test email lands in the demo mailbox).</p>
+}
 
 @if (Model.Message is not null)
 {

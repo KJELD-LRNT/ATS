@@ -1,0 +1,9 @@
+@model AssetTracker.Web.ViewComponents.DemoBannerModel
+<div class="demo-banner" role="note" id="demo-banner">
+    <strong class="demo-banner-title">DEMO MODE — fictional data</strong>
+    <span>Signed in as <strong id="demo-user">@Model.UserName</strong></span>
+    <span>Roles: <strong id="demo-roles">@(Model.Roles == AppRoles.None ? "none" : Model.Roles.ToString())</strong></span>
+    <span>Demo time: <strong id="demo-time">@Model.DemoNow.ToString("ddd yyyy-MM-dd HH:mm") (Amsterdam)</strong>@(Model.Offset > TimeSpan.Zero ? $" — time travel +{Model.Offset.TotalDays:0.#} days" : "")</span>
+    <a asp-page="/Demo/Index">Switch role / time travel / reset</a>
+    <a asp-page="/Demo/Mailbox">Demo mailbox (@Model.MailCount)</a>
+</div>

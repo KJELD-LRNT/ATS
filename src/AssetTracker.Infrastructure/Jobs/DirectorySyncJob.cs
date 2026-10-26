@@ -1,8 +1,11 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Directory;
 using Microsoft.Extensions.Options;
 
-namespace AssetTracker.Worker.Jobs;
+namespace AssetTracker.Infrastructure.Jobs;
 
 /// <summary>
 /// Runs a full directory sync at startup and then every <c>DirectorySync:Interval</c>. The interval is re-read
