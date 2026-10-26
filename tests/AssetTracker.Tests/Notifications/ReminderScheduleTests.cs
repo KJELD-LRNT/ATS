@@ -53,15 +53,15 @@ public class ReminderScheduleTests
             ["Notifications:ReminderPollInterval"] = "00:05:00",
             ["Notifications:PollInterval"] = "00:01:00",
             ["Notifications:MaxAttempts"] = "5",
-            ["Notifications:IncludePhoneNumberInMail"] = "true",
+            ["Notifications:IncludePhoneNumberInMail"] = "false",
         }).Build();
         var o = config.GetSection(NotificationOptions.SectionName).Get<NotificationOptions>()!;
         Assert.Equal(new TimeOnly(7, 30), o.ReminderTimeOfDay);
         Assert.Equal(TimeSpan.FromMinutes(5), o.ReminderPollInterval);
         Assert.Equal(TimeSpan.FromMinutes(1), o.PollInterval);
         Assert.Equal(5, o.MaxAttempts);
-        Assert.True(o.IncludePhoneNumberInMail);
-        Assert.False(new NotificationOptions().IncludePhoneNumberInMail);
+        Assert.False(o.IncludePhoneNumberInMail);
+        Assert.True(new NotificationOptions().IncludePhoneNumberInMail); // sponsor decision D5: default true
         Assert.Equal(TimeSpan.FromMinutes(15), new NotificationOptions().ReminderPollInterval);
     }
 }

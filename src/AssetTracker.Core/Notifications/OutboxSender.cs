@@ -23,7 +23,7 @@ public sealed record OutboxBatchResult(int Claimed, int Sent, int Retrying, int 
 /// </para>
 /// Requires no role (runs in the worker as the system user).
 /// </summary>
-public class OutboxSender(AppDbContext db, IMailRelay relay, IClock clock, IOptions<NotificationOptions> options,
+public class OutboxSender(AppDbContext db, IMailRelay relay, IClock clock, IOptionsMonitor<NotificationOptions> options,
     ILogger<OutboxSender> logger)
 {
     public const int MaxErrorLength = 2000;
@@ -31,7 +31,7 @@ public class OutboxSender(AppDbContext db, IMailRelay relay, IClock clock, IOpti
     /// <summary>Claims and sends up to <paramref name="batchSize"/> due rows.</summary>
     public async Task<OutboxBatchResult> ProcessDueAsync(int batchSize, CancellationToken ct)
     {
-        var o = options.Value;
+        var o = options.CurrentValue;
         var now = clock.UtcNow;
         var due = await db.Outbox.AsNoTracking()
             .Where(x => x.Status == NotificationStatus.Pending && x.NextAttemptAt <= now)

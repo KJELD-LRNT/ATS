@@ -5,27 +5,49 @@ using Microsoft.Extensions.Options;
 namespace AssetTracker.Worker.Jobs;
 
 /// <summary>
-/// Runs a full directory sync at startup and then every <c>DirectorySync:Interval</c>.
-/// Each run gets its own DI scope; failures are logged and never stop the schedule.
-/// Without a configured interval the job does not schedule (no production default is guessed); the IT stale-sync
-/// warning then makes the gap visible.
+/// Runs a full directory sync at startup and then every <c>DirectorySync:Interval</c>. The interval is re-read
+/// (<see cref="IOptionsMonitor{TOptions}.CurrentValue"/>) at least every <see cref="RecheckEvery"/>, so a change on
+/// Admin → Settings applies without a restart. Each run gets its own DI scope; failures are logged and never stop
+/// the schedule. Without a configured interval the job does not sync (no production default is guessed) and keeps
+/// checking whether one has been set; the IT stale-sync warning makes the gap visible.
 /// </summary>
-public class DirectorySyncJob(IServiceScopeFactory scopes, IOptions<DirectorySyncOptions> options, ILogger<DirectorySyncJob> logger)
-    : BackgroundService
+public class DirectorySyncJob(IServiceScopeFactory scopes, IOptionsMonitor<DirectorySyncOptions> options,
+    ILogger<DirectorySyncJob> logger) : BackgroundService
 {
+    /// <summary>Longest single sleep, so interval changes are noticed.</summary>
+    public static readonly TimeSpan RecheckEvery = TimeSpan.FromMinutes(1);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (options.Value.Interval is not { } interval || interval <= TimeSpan.Zero)
+        DateTimeOffset? lastRun = null;
+        var warned = false;
+        while (!stoppingToken.IsCancellationRequested)
         {
-            logger.LogError("DirectorySync:Interval is not configured; scheduled directory sync is disabled.");
-            return;
-        }
+            var wait = RecheckEvery;
+            if (options.CurrentValue.Interval is not { } interval || interval <= TimeSpan.Zero)
+            {
+                if (!warned)
+                    logger.LogError("DirectorySync:Interval is not configured; scheduled directory sync is disabled until it is set.");
+                warned = true;
+            }
+            else
+            {
+                if (warned) logger.LogInformation("DirectorySync:Interval is now {Interval}; scheduled directory sync enabled.", interval);
+                warned = false;
+                var due = lastRun is null ? DateTimeOffset.UtcNow : lastRun.Value + interval;
+                if (DateTimeOffset.UtcNow >= due)
+                {
+                    lastRun = DateTimeOffset.UtcNow;
+                    await RunOnceAsync(stoppingToken);
+                    due = lastRun.Value + interval;
+                }
+                var remaining = due - DateTimeOffset.UtcNow;
+                if (remaining < wait) wait = remaining < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : remaining;
+            }
 
-        using var timer = new PeriodicTimer(interval);
-        do
-        {
-            await RunOnceAsync(stoppingToken);
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            try { await Task.Delay(wait, stoppingToken); }
+            catch (OperationCanceledException) { break; }
+        }
     }
 
     private async Task RunOnceAsync(CancellationToken ct)

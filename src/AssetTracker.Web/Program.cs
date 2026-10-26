@@ -1,6 +1,8 @@
 using AssetTracker.Core;
 using AssetTracker.Core.Security;
 using AssetTracker.Infrastructure;
+using AssetTracker.Infrastructure.Configuration;
+using AssetTracker.Infrastructure.Security;
 using AssetTracker.Web.Health;
 using AssetTracker.Web.Security;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -9,9 +11,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 
 var builder = WebApplication.CreateBuilder(args);
+// Settings saved on Admin → Settings (AppSettings table) override the appsettings files. Keep this the last source.
+builder.Configuration.AddDatabaseSettings();
 
 builder.Services.AddAssetTrackerCore();
 builder.Services.AddAssetTrackerInfrastructure(builder.Configuration);
+// Shared key ring with the worker (encrypted SMTP password); also protects antiforgery/TempData cookies.
+builder.Services.AddAssetTrackerDataProtection(builder.Configuration, builder.Environment);
 
 // Integrated Windows Authentication (IIS in-process passes the Windows identity through Negotiate).
 // The Testing environment substitutes a simulated Windows principal scheme (see tests).
@@ -52,6 +58,8 @@ builder.Services.Configure<CookieTempDataProviderOptions>(o =>
 });
 
 var app = builder.Build();
+// First load of database settings before anything reads options (tolerates a database that is not migrated yet).
+await app.Services.LoadDatabaseSettingsAsync();
 
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
 {

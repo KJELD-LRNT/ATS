@@ -15,7 +15,7 @@ public sealed record ItMailbox(string? Address, string? SkipReason);
 /// notice exists if and only if the business change committed. The worker's <see cref="OutboxSender"/> delivers.
 /// <para>Requires no role: the caller (checkout/return/correction service) has already authorized the change.</para>
 /// </summary>
-public class NotificationService(AppDbContext db, IClock clock, IOptions<NotificationOptions> options)
+public class NotificationService(AppDbContext db, IClock clock, IOptionsMonitor<NotificationOptions> options)
 {
     public const string ItMailboxNotConfigured = "IT mailbox not configured";
     public const string ItMailboxInvalid = "IT mailbox setting is not a valid email address";
@@ -167,7 +167,7 @@ public class NotificationService(AppDbContext db, IClock clock, IOptions<Notific
         if (site is null && siteId is { } sid) site = await db.Sites.FindAsync([sid], ct);
         if (string.IsNullOrWhiteSpace(loan.HolderNameSnapshot) && loan.Holder is null && loan.HolderId > 0)
             await db.People.FindAsync([loan.HolderId], ct);
-        return LoanMailFacts.From(loan, asset, pool, site, options.Value.IncludePhoneNumberInMail);
+        return LoanMailFacts.From(loan, asset, pool, site, options.CurrentValue.IncludePhoneNumberInMail);
     }
 
     internal static NotificationOutbox NewRow(NotificationKind kind, string dedupeKey, string? email, string? skipReason,

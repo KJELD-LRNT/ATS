@@ -1,4 +1,3 @@
-using System.Net.Mail;
 using System.Text.RegularExpressions;
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Auditing;
@@ -19,7 +18,8 @@ public sealed record GrantRow(int Id, int SiteId, string SiteKey, string SiteNam
 public sealed record PersonPick(int Id, string Username, string DisplayName, string? JobTitle, string? SiteKey, bool IsActive);
 
 /// <summary>
-/// Application-admin functions: sites and their AD mapping, manager site grants, settings, and manual sync.
+/// Application-admin functions: sites and their AD mapping, manager site grants, and manual sync
+/// (settings: <see cref="Settings.SettingsService"/>).
 /// Every method requires the admin role (which grants no inventory access by itself), except reading the sync
 /// history, which IT may also do (D7). All changes are audited.
 /// </summary>
@@ -226,42 +226,7 @@ public partial class AdminService(
         await db.SaveChangesAsync(ct);
     }
 
-    // ---- Settings ----------------------------------------------------------------------------------------
-
-    public async Task<string?> GetItMailboxAsync(CancellationToken ct = default)
-    {
-        scope.EnsureAdmin();
-        return await db.Settings.AsNoTracking().Where(s => s.Key == AppSetting.ItMailbox)
-            .Select(s => s.Value).SingleOrDefaultAsync(ct);
-    }
-
-    public async Task SetItMailboxAsync(string? address, CancellationToken ct = default)
-    {
-        scope.EnsureAdmin();
-        address = address?.Trim() ?? "";
-        if (!IsValidEmail(address))
-            throw new DomainException("settings.it-mailbox", "Enter a single valid email address (e.g. it-desk@example.com).");
-
-        var setting = await db.Settings.SingleOrDefaultAsync(s => s.Key == AppSetting.ItMailbox, ct);
-        var before = setting?.Value;
-        if (setting is null)
-        {
-            setting = new AppSetting { Key = AppSetting.ItMailbox };
-            db.Settings.Add(setting);
-        }
-        setting.Value = address;
-        setting.UpdatedAt = clock.UtcNow;
-        setting.UpdatedBy = user.Name;
-        audit.Record("setting.update", nameof(AppSetting), AppSetting.ItMailbox, null,
-            details: new { before, after = address });
-        await db.SaveChangesAsync(ct);
-    }
-
-    public static bool IsValidEmail(string address) =>
-        address.Length is > 0 and <= 320 &&
-        MailAddress.TryCreate(address, out var parsed) &&
-        parsed.Address == address && string.IsNullOrEmpty(parsed.DisplayName) &&
-        parsed.Host.Contains('.') && !address.Contains(' ');
+    // Settings moved to SettingsService (Core/Settings, WP4.1).
 
     // ---- Directory sync ----------------------------------------------------------------------------------
 

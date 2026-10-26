@@ -24,3 +24,10 @@ td.num, th.num { text-align: right; }
 .filters label { margin-right: .75rem; }
 code.details { font-size: .8em; word-break: break-all; }
 .qty { width: 6em; font-size: 1.2em; font-weight: 600; }
+.settings-toc { display: flex; flex-wrap: wrap; gap: 1rem; margin: .5rem 0 1rem; }
+.settings-section { margin-bottom: 2rem; }
+.settings-table td { vertical-align: top; }
+.settings-test { margin-top: .75rem; }
+.settings-result { margin-top: .5rem; border: 1px solid #d0d7de; border-radius: 6px; padding: .5rem .75rem; }
+.source { font-size: .85em; padding: 0 .3rem; border-radius: 4px; background: #f6f8fa; border: 1px solid #d0d7de; }
+.source-database { background: #ddf4ff; border-color: #54aeff; }

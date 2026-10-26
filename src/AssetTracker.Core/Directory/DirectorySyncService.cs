@@ -39,7 +39,7 @@ public class DirectorySyncService(
     IClock clock,
     AuditWriter audit,
     NotificationService notifications,
-    IOptions<DirectorySyncOptions> options,
+    IOptionsMonitor<DirectorySyncOptions> options,
     ILogger<DirectorySyncService> logger)
 {
     /// <summary>Individual issues kept per run; the remainder is summarized.</summary>
@@ -56,7 +56,7 @@ public class DirectorySyncService(
 
     public async Task<SyncRun> RunAsync(string triggeredBy, CancellationToken ct = default)
     {
-        var o = options.Value;
+        var o = options.CurrentValue;
         var startedAt = clock.UtcNow;
         var runningCutoff = startedAt - o.RunningTimeout;
         var running = await db.SyncRuns.Where(r => r.Status == SyncRunStatus.Running)
@@ -111,7 +111,7 @@ public class DirectorySyncService(
         var last = await db.SyncRuns.OrderByDescending(r => r.Id)
             .Select(r => new { r.Status, r.StartedAt, r.Error }).FirstOrDefaultAsync(ct);
 
-        var stale = lastSuccess is null || clock.UtcNow - lastSuccess.Value > options.Value.StaleAfter;
+        var stale = lastSuccess is null || clock.UtcNow - lastSuccess.Value > options.CurrentValue.StaleAfter;
         return new DirectorySyncStatus(lastSuccess, stale, last?.Status, last?.StartedAt,
             last is { Status: SyncRunStatus.Failed or SyncRunStatus.Rejected } ? last.Error : null);
     }
@@ -120,11 +120,45 @@ public class DirectorySyncService(
         string DirectoryId, string? Sid, string Username, string DisplayName, string? JobTitle, string? Email,
         string? SiteValue, bool Enabled);
 
-    private async Task ApplyAsync(SyncRun run, IReadOnlyList<DirectoryEntry> entries, DirectorySyncOptions o,
-        CancellationToken ct)
+    private sealed record Classification(
+        List<SyncIssue> Issues, Dictionary<string, Candidate> Valid, HashSet<string> QuarantinedIds,
+        Dictionary<string, int> SiteByValue);
+
+    /// <summary>
+    /// Read-only dry run for the settings page: fetches from the directory with the current settings and applies the
+    /// same validation and safety checks as <see cref="RunAsync"/>, but writes nothing (no sync run, no people changes).
+    /// Fetch errors propagate. Not authorization-guarded (see <c>SettingsService.PreviewDirectoryAsync</c>).
+    /// </summary>
+    /// <param name="sampleSize">Maximum number of sample entries returned.</param>
+    public async Task<DirectoryPreview> PreviewAsync(int sampleSize = 5, CancellationToken ct = default)
+    {
+        var entries = await source.FetchAllUsersAsync(ct);
+        var c = await ClassifyAsync(entries, ct);
+        var people = await db.People.AsNoTracking().ToListAsync(ct);
+        var rejection = SafetyRejection(c, people, options.CurrentValue, out var currentActive, out var wouldDeactivate);
+        var valid = c.Valid.Values.ToList();
+        return new DirectoryPreview(
+            Fetched: entries.Count,
+            Valid: valid.Count,
+            Quarantined: entries.Count - valid.Count,
+            MappedToSite: valid.Count(v => v.SiteValue is not null && c.SiteByValue.ContainsKey(v.SiteValue)),
+            UnmappedSite: valid.Count(v => v.SiteValue is not null && !c.SiteByValue.ContainsKey(v.SiteValue)),
+            MissingSite: valid.Count(v => v.SiteValue is null),
+            Disabled: valid.Count(v => !v.Enabled),
+            CurrentActive: currentActive,
+            WouldDeactivate: wouldDeactivate,
+            WouldReject: rejection,
+            Issues: c.Issues.Take(MaxIssues).ToList(),
+            Sample: valid.Take(Math.Max(0, sampleSize))
+                .Select(v => new DirectoryPreviewSample(v.Username, v.DisplayName, v.SiteValue,
+                    v.SiteValue is not null && c.SiteByValue.ContainsKey(v.SiteValue), v.Enabled))
+                .ToList());
+    }
+
+    /// <summary>Steps 1–3: per-entry validation, duplicate quarantine and site mapping (no changes).</summary>
+    private async Task<Classification> ClassifyAsync(IReadOnlyList<DirectoryEntry> entries, CancellationToken ct)
     {
         var issues = new List<SyncIssue>();
-        run.Fetched = entries.Count;
 
         // 1. Per-entry validation.
         var candidates = new List<Candidate>(entries.Count);
@@ -163,12 +197,10 @@ public class DirectorySyncService(
         }
         var valid = candidates.Where(c => !quarantinedIds.Contains(c.DirectoryId))
             .ToDictionary(c => c.DirectoryId, StringComparer.OrdinalIgnoreCase);
-        run.Mapped = valid.Count;
-        run.Quarantined = run.Fetched - run.Mapped;
 
         // 3. Site mapping (unmapped people are still synced, without a site, and reported).
         var siteByValue = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var s in await db.Sites.Where(s => s.DirectoryValue != null).ToListAsync(ct))
+        foreach (var s in await db.Sites.AsNoTracking().Where(s => s.DirectoryValue != null).ToListAsync(ct))
             siteByValue.TryAdd(s.DirectoryValue!.Trim(), s.Id);
         foreach (var g in valid.Values.Where(c => c.SiteValue is not null && !siteByValue.ContainsKey(c.SiteValue))
                      .GroupBy(c => c.SiteValue!, StringComparer.OrdinalIgnoreCase))
@@ -179,21 +211,42 @@ public class DirectorySyncService(
             issues.Add(new SyncIssue("missing-site", $"{missingSite} people have no site value; synced without a site.",
                 Count: missingSite));
 
+        return new Classification(issues, valid, quarantinedIds, siteByValue);
+    }
+
+    /// <summary>Step 4: safety checks against the current snapshot; returns the rejection reason or null.</summary>
+    private static string? SafetyRejection(Classification c, List<Person> people, DirectorySyncOptions o,
+        out int currentActive, out int wouldDeactivate)
+    {
+        var valid = c.Valid;
+        currentActive = people.Count(p => p.IsActive);
+        wouldDeactivate = people.Count(p => p.IsActive && !c.QuarantinedIds.Contains(p.DirectoryId) &&
+                                            (!valid.TryGetValue(p.DirectoryId, out var v) || !v.Enabled));
+        var active = currentActive;
+        var drop = wouldDeactivate;
+        return valid.Count == 0 ? "The directory returned no valid entries."
+            : o.MinimumExpectedCount > 0 && valid.Count < o.MinimumExpectedCount
+                ? $"Only {valid.Count} valid entries; at least {o.MinimumExpectedCount} expected."
+            : o.MaxDropFraction is { } f && active > 0 && drop > active * f
+                ? $"Run would deactivate {drop} of {active} active people (limit {f:P0})."
+            : null;
+    }
+
+    private async Task ApplyAsync(SyncRun run, IReadOnlyList<DirectoryEntry> entries, DirectorySyncOptions o,
+        CancellationToken ct)
+    {
+        run.Fetched = entries.Count;
+        var classification = await ClassifyAsync(entries, ct);
+        var (issues, valid, quarantinedIds, siteByValue) = classification;
+        run.Mapped = valid.Count;
+        run.Quarantined = run.Fetched - run.Mapped;
+
         // 4. Safety checks against the current snapshot.
         var people = await db.People.ToListAsync(ct);
         var byId = new Dictionary<string, Person>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in people) byId.TryAdd(p.DirectoryId, p);
 
-        var currentActive = people.Count(p => p.IsActive);
-        var wouldDeactivate = people.Count(p => p.IsActive && !quarantinedIds.Contains(p.DirectoryId) &&
-                                                (!valid.TryGetValue(p.DirectoryId, out var c) || !c.Enabled));
-        var rejection =
-            valid.Count == 0 ? "The directory returned no valid entries."
-            : o.MinimumExpectedCount > 0 && valid.Count < o.MinimumExpectedCount
-                ? $"Only {valid.Count} valid entries; at least {o.MinimumExpectedCount} expected."
-            : o.MaxDropFraction is { } f && currentActive > 0 && wouldDeactivate > currentActive * f
-                ? $"Run would deactivate {wouldDeactivate} of {currentActive} active people (limit {f:P0})."
-            : null;
+        var rejection = SafetyRejection(classification, people, o, out _, out _);
         if (rejection is not null)
         {
             issues.Add(new SyncIssue("low-count", rejection + " Snapshot not applied."));

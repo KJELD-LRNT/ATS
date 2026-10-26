@@ -2,39 +2,11 @@
   "ConnectionStrings": {
     "AssetTracker": "Server=<SQL-HOST>\\SQLEXPRESS;Database=AssetTracker;Integrated Security=True;Encrypt=True"
   },
-  "Clock": {
-    "TimeZoneId": "<CLIENT-TIMEZONE-ID>"
+  "DataProtection": {
+    "KeyPath": "<DATA-PROTECTION-KEY-FOLDER>"
   },
-  "Mail": {
-    "Host": "<INTERNAL-RELAY-HOST>",
-    "Port": 25,
-    "SecureSocket": "StartTls",
-    "Username": "",
-    "Password": "",
-    "FromAddress": "<SENDING-ADDRESS>",
-    "FromName": "Asset Tracker",
-    "Timeout": "00:00:30"
-  },
-  "Notifications": {
-    "IncludePhoneNumberInMail": false,
-    "MaxAttempts": 8,
-    "InitialRetryDelay": "00:01:00",
-    "MaxRetryDelay": "01:00:00",
-    "ClaimLease": "00:05:00",
-    "PollInterval": "00:00:30",
-    "BatchSize": 50,
-    "ReminderTimeOfDay": "08:00"
-  },
-  "DirectorySync": {
-    "Interval": "<SYNC-INTERVAL e.g. 01:00:00>",
-    "MinimumExpectedCount": 0,
-    "MaxDropFraction": 0.2,
-    "StaleAfter": "1.00:00:00",
-    "RunningTimeout": "01:00:00"
-  },
-  "ActiveDirectory": {
-    "SearchRoot": "LDAP://<DC-OR-DOMAIN>/OU=<USERS-OU>,DC=<DOMAIN>,DC=<TLD>",
-    "SiteAttribute": "<AD-SITE-ATTRIBUTE>"
+  "Settings": {
+    "ReloadInterval": "00:00:30"
   },
   "Worker": {
     "HeartbeatInterval": "00:01:00"

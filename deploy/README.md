@@ -16,46 +16,61 @@ holds real hostnames, SIDs, addresses or credentials. Do not commit filled-in co
 server configuration backup (runbook, "Backup and restore").
 
 **Secrets:** the connection strings use Windows integrated security (the app pool / service gMSA), so they contain no
-password. `Mail:Username`/`Mail:Password` stay empty for an IP-restricted relay. If the client's relay does need
-credentials, restrict the file's NTFS ACL to Administrators and the worker gMSA (or use the client's secret store);
-never put them in source control.
+password. The SMTP password (only for an authenticated relay) is entered on **Admin → Settings**, which stores it
+encrypted with ASP.NET Core Data Protection; it is never shown again, logged or written to the audit log. The key ring
+lives in `DataProtection:KeyPath` (see below) and must be backed up with the database.
 
-JSON has no comments, so every setting is described below. "Both" means the same value in the web and worker files.
+## Where settings live
 
-## Settings
+Since WP4.1 most settings are edited in the app (**Admin → Settings**, admins only) and stored in the database
+(`AppSettings` table, one row per configuration key). Database values override the files; an empty field on the
+page removes the override, so the file value or built-in default applies again. The page shows each setting's
+effective value and its source (database / config file / default). Changes apply without a restart: immediately in
+the web app, and in the worker within `Settings:ReloadInterval`. The files keep only bootstrap settings, which the
+app needs before it can read the database or which must not be changeable from inside the app (connection string,
+role group SIDs).
 
-| Setting | App | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `ConnectionStrings:AssetTracker` | Both | Yes | none | SQL Server connection. Integrated security as the app pool / worker gMSA. `Encrypt=True`; add `TrustServerCertificate=True` only if the SQL certificate cannot be trusted. |
-| `Clock:TimeZoneId` | Both | Yes | none | Client timezone (Windows or IANA id, e.g. `W. Europe Standard Time`). Drives due dates and the daily overdue rule. |
-| `AllowedHosts` | Web | Recommended | `*` | The internal DNS name(s) of the site, `;`-separated. Rejects requests with other `Host` headers. |
-| `Roles:ItGroupSids` | Web | Yes | `[]` | SIDs of the AD group(s) for IT/editor. |
-| `Roles:ManagerGroupSids` | Web | Yes | `[]` | SIDs of the AD group(s) for managers/viewers (site access via grants). |
-| `Roles:AdminGroupSids` | Web | Yes | `[]` | SIDs of the AD group(s) for application admins (settings, grants, sync rerun, privacy). |
-| `Notifications:IncludePhoneNumberInMail` | Both | No | `false` | Whether mail may contain a phone asset's number (Stage 0, §7.4). Same value in both. |
-| `Notifications:MaxAttempts` | Worker | No | `8` | Send attempts before a mail becomes `Failed`. |
-| `Notifications:InitialRetryDelay` / `MaxRetryDelay` | Worker | No | `00:01:00` / `01:00:00` | Exponential retry backoff. |
-| `Notifications:ClaimLease` | Worker | No | `00:05:00` | How long a claimed row is reserved; must exceed `Mail:Timeout`. |
-| `Notifications:PollInterval` / `BatchSize` | Worker | No | `00:00:30` / `50` | Outbox polling. |
-| `Notifications:ReminderTimeOfDay` | Worker | No | `08:00` | Client-local time for the daily overdue reminder run. |
-| `Mail:Host` / `Port` | Worker | Yes | none / `25` | Approved internal relay. |
-| `Mail:SecureSocket` | Worker | No | `StartTls` | `StartTls` (required TLS), `SslOnConnect` (port 465) or `None` (only if Stage 0 confirms no TLS). |
-| `Mail:Username` / `Password` | Worker | No | empty | Only for an authenticated relay. |
-| `Mail:FromAddress` / `FromName` | Worker | Yes / No | none / `Asset Tracker` | Approved sending identity. |
-| `Mail:Timeout` | Worker | No | `00:00:30` | SMTP timeout. |
-| `DirectorySync:Interval` | Worker | Yes | none | Full AD sync schedule. Unset ⇒ no scheduled sync (stale warning appears). |
-| `DirectorySync:MinimumExpectedCount` | Both | Recommended | `0` (off) | Reject a run with fewer valid entries (set from the directory size). Both apps run syncs (worker schedule, admin rerun in web). |
-| `DirectorySync:MaxDropFraction` | Both | No | `0.2` | Reject a run that would deactivate more than this fraction of active people. |
-| `DirectorySync:StaleAfter` | Both | No | `1.00:00:00` | People data is "stale" (IT banner, checkout audit, `/health/ready` Degraded) after this. Set to ~2-3× the interval. |
-| `DirectorySync:RunningTimeout` | Both | No | `01:00:00` | A run stuck in `Running` longer than this no longer blocks a new run. |
-| `ActiveDirectory:SearchRoot` | Both | Yes | none | LDAP path of the in-scope OU. |
-| `ActiveDirectory:SiteAttribute` | Both | Yes | none | AD attribute holding the person's site (mapped via Admin → Sites "directory value"). |
-| `ActiveDirectory:Filter`, `PageSize`, `ClientTimeout`, `IdAttribute`, `UsernameAttribute`, `DisplayNameAttribute`, `TitleAttribute`, `MailAttribute`, `SidAttribute`, `UserAccountControlAttribute` | Both | No | standard AD | Override only if Stage 0 requires it (see `docs/development.md`). |
-| `Ops:WorkerHeartbeatInterval` | Web | No | `00:01:00` | Must equal the worker's `Worker:HeartbeatInterval`. |
-| `Ops:WorkerStaleAfterIntervals` | Web | No | `3` | Worker reported stale after this many missed heartbeats. |
-| `Ops:OutboxPendingMaxAge` | Web | No | `00:30:00` | Pending mail older than this makes `/health/ready` Degraded. |
-| `Worker:HeartbeatInterval` | Worker | No | `00:01:00` | How often the worker records its heartbeat. |
-| `Logging:LogLevel:*` | Both | No | Information | Logs go to the Windows Event Log (worker, source `AssetTracker Worker`) and the ASP.NET Core Module / Event Log (web). |
+| Setting | Where | App | Required | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| `ConnectionStrings:AssetTracker` | File | Both | Yes | none | SQL Server connection. Integrated security as the app pool / worker gMSA. `Encrypt=True`; add `TrustServerCertificate=True` only if the SQL certificate cannot be trusted. |
+| `AllowedHosts` | File | Web | Recommended | `*` | The internal DNS name(s) of the site, `;`-separated. Rejects requests with other `Host` headers. |
+| `Roles:ItGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for IT/editor. |
+| `Roles:ManagerGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for managers/viewers (site access via grants). |
+| `Roles:AdminGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for application admins (settings, grants, sync rerun, privacy). |
+| `DataProtection:KeyPath` | File | Both | Yes (Production) | none | Folder holding the Data Protection key ring, **the same folder for web and worker** (e.g. `D:\AppData\AssetTracker\DataProtection-Keys`, outside the web root). Keys are encrypted with machine DPAPI, so the folder only works on this server. Both service accounts need Modify on it. Startup fails in Production when it is not set. |
+| `Settings:ReloadInterval` | File | Both | No | `00:00:30` | How often each app re-reads database settings. `00:00:00` disables periodic reloads (the web app still reloads after each save). |
+| `Ops:WorkerHeartbeatInterval` | File | Web | No | `00:01:00` | Must equal the worker's `Worker:HeartbeatInterval`. |
+| `Ops:WorkerStaleAfterIntervals` | File | Web | No | `3` | Worker reported stale after this many missed heartbeats. |
+| `Ops:OutboxPendingMaxAge` | File | Web | No | `00:30:00` | Pending mail older than this makes `/health/ready` Degraded. |
+| `Worker:HeartbeatInterval` | File | Worker | No | `00:01:00` | How often the worker records its heartbeat. |
+| `Logging:LogLevel:*` | File | Both | No | Information | Logs go to the Windows Event Log (worker, source `AssetTracker Worker`) and the ASP.NET Core Module / Event Log (web). |
+| `Clock:TimeZoneId` | App | Both | Yes | none | Default time zone (Windows or IANA id, e.g. `W. Europe Standard Time`) for every site without its own time zone (Admin → Sites). Drives due dates and the overdue rule. Set it first. |
+| `ActiveDirectory:SearchRoot` | App | Both | Yes | none | LDAP path of the in-scope OU (`LDAP://...` or `GC://...`). |
+| `ActiveDirectory:SiteAttribute` | App | Both | Yes | none | AD attribute holding the person's site (mapped via Admin → Sites "directory value"). |
+| `ActiveDirectory:Filter`, `PageSize`, `ClientTimeout`, `IdAttribute`, `UsernameAttribute`, `DisplayNameAttribute`, `TitleAttribute`, `MailAttribute`, `SidAttribute`, `UserAccountControlAttribute` | App | Both | No | standard AD | Override only if Stage 0 requires it (see `docs/development.md`). Page size 1–1000. |
+| `DirectorySync:Interval` | App | Worker | Yes | none | Full AD sync schedule. Unset ⇒ no scheduled sync (stale warning appears); the worker starts syncing within a minute of it being set. |
+| `DirectorySync:MinimumExpectedCount` | App | Both | Recommended | `0` (off) | Reject a run with fewer valid entries (set from the directory size). |
+| `DirectorySync:MaxDropFraction` | App | Both | No | `0.2` | Reject a run that would deactivate more than this fraction (0–1) of active people. |
+| `DirectorySync:StaleAfter` | App | Both | No | `1.00:00:00` | People data is "stale" (IT banner, checkout audit, `/health/ready` Degraded) after this. Set to ~2-3× the interval. |
+| `DirectorySync:RunningTimeout` | App | Both | No | `01:00:00` | A run stuck in `Running` longer than this no longer blocks a new run. |
+| `Mail:Host` / `Port` | App | Worker | Yes / No | none / `25` | Approved internal relay. Port 1–65535. |
+| `Mail:SecureSocket` | App | Worker | No | `StartTls` | `StartTls` (required TLS), `SslOnConnect` (port 465) or `None` (only if Stage 0 confirms no TLS). |
+| `Mail:Username` / `Password` | App | Worker | No | empty | Only for an authenticated relay. The password is write-only and stored encrypted. |
+| `Mail:FromAddress` / `FromName` | App | Worker | Yes / No | none / `Asset Tracker` | Approved sending identity. |
+| `Mail:Timeout` | App | Worker | No | `00:00:30` | SMTP timeout. |
+| `Notifications:IncludePhoneNumberInMail` | App | Both | No | `true` | Whether mail shows a phone asset's number (sponsor decision D5). |
+| `Notifications:ReminderTimeOfDay` | App | Worker | No | `08:00` | Time of day at which overdue reminders are queued, in each site's local time. |
+| `Notifications:ReminderPollInterval` | App | Worker | No | `00:15:00` | How often the worker checks whether a site's reminder time has been reached. |
+| `Notifications:MaxAttempts` | App | Worker | No | `8` | Send attempts (1–50) before a mail becomes `Failed`. |
+| `Notifications:InitialRetryDelay` / `MaxRetryDelay` | App | Worker | No | `00:01:00` / `01:00:00` | Exponential retry backoff. |
+| `Notifications:ClaimLease` | App | Worker | No | `00:05:00` | How long a claimed row is reserved; must exceed `Mail:Timeout`. |
+| `Notifications:PollInterval` / `BatchSize` | App | Worker | No | `00:00:30` / `50` | Outbox polling. |
+| IT mailbox | App | Both | Yes | none | Notifications section of the Settings page (stored as `Mail.ItMailbox`). |
+
+"App" settings can still be put in `appsettings.Production.json` (same key); the database value wins when both exist.
+The database never overrides keys outside the `ActiveDirectory`, `DirectorySync`, `Mail`, `Notifications` and
+`Clock` sections. The Settings page also has **Test directory query** (read-only preview of what a sync would see)
+and **Send test email** (sends directly through the relay), both audited.
 
 Environment: IIS sets `ASPNETCORE_ENVIRONMENT=Production` via `web.config`; the worker defaults to `Production`,
 so both load `appsettings.Production.json` next to the executable.

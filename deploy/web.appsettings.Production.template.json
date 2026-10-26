@@ -3,25 +3,16 @@
   "ConnectionStrings": {
     "AssetTracker": "Server=<SQL-HOST>\\SQLEXPRESS;Database=AssetTracker;Integrated Security=True;Encrypt=True"
   },
-  "Clock": {
-    "TimeZoneId": "<CLIENT-TIMEZONE-ID>"
-  },
   "Roles": {
     "ItGroupSids": [ "<IT-GROUP-SID>" ],
     "ManagerGroupSids": [ "<MANAGER-GROUP-SID>" ],
     "AdminGroupSids": [ "<ADMIN-GROUP-SID>" ]
   },
-  "Notifications": {
-    "IncludePhoneNumberInMail": false
+  "DataProtection": {
+    "KeyPath": "<DATA-PROTECTION-KEY-FOLDER>"
   },
-  "DirectorySync": {
-    "MinimumExpectedCount": 0,
-    "MaxDropFraction": 0.2,
-    "StaleAfter": "1.00:00:00"
-  },
-  "ActiveDirectory": {
-    "SearchRoot": "LDAP://<DC-OR-DOMAIN>/OU=<USERS-OU>,DC=<DOMAIN>,DC=<TLD>",
-    "SiteAttribute": "<AD-SITE-ATTRIBUTE>"
+  "Settings": {
+    "ReloadInterval": "00:00:30"
   },
   "Ops": {
     "WorkerHeartbeatInterval": "00:01:00",

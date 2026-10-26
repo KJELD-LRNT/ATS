@@ -1,7 +1,79 @@
 @page
 @model AssetTracker.Web.Pages.Admin.SettingsModel
+@using AssetTracker.Core.Settings
+@using AssetTracker.Web.Pages.Admin
 @{
     ViewData["Title"] = "Settings";
+
+    async Task Field(SettingView v)
+    {
+        var d = v.Definition;
+        var id = SettingsModel.FieldId(d.Key);
+        var value = Model.FieldValue(v);
+        var fallback = v.FileValue ?? d.Default;
+        var placeholder = fallback is null ? "not set" : (v.FileValue is not null ? "config file: " : "default: ") + fallback;
+        Model.FieldErrors.TryGetValue(d.Key, out var error);
+        <tr>
+            <td>
+                <label for="@id">@d.Label</label><br />
+                <code class="muted">@d.Key</code>
+            </td>
+            <td>
+                @switch (d.Kind)
+                {
+                    case SettingKind.Secret:
+                        <input id="@id" name="@d.Key" type="password" autocomplete="new-password" size="30" />
+                        <br />
+                        <small>Currently: <strong>@(v.SecretSet ? "set" : "not set")</strong>@(v.Source == SettingSource.ConfigFile ? " (config file)" : "")</small>
+                        <br />
+                        <label><input type="checkbox" name="@SettingsModel.ClearPasswordField" value="true" /> Clear the stored password</label>
+                        break;
+                    case SettingKind.Boolean:
+                    case SettingKind.Choice:
+                        var choices = d.Kind == SettingKind.Boolean ? new[] { "true", "false" } : (d.Choices ?? []).ToArray();
+                        <select id="@id" name="@d.Key">
+                            <option value="" selected="@(value == "")">(no override: @(fallback ?? "not set"))</option>
+                            @foreach (var c in choices)
+                            {
+                                <option value="@c" selected="@(string.Equals(value, c, StringComparison.OrdinalIgnoreCase))">@c</option>
+                            }
+                        </select>
+                        break;
+                    case SettingKind.TimeZone:
+                        <input id="@id" name="@d.Key" value="@value" list="tz-list" size="40" placeholder="@placeholder" />
+                        break;
+                    default:
+                        <input id="@id" name="@d.Key" value="@value" size="40" placeholder="@placeholder" />
+                        break;
+                }
+                @if (error is not null)
+                {
+                    <br /><span class="error">@error</span>
+                }
+                @if (!string.IsNullOrEmpty(d.Help))
+                {
+                    <br /><small class="muted">@d.Help</small>
+                }
+            </td>
+            <td>
+                @if (d.Kind == SettingKind.Secret)
+                {
+                    <span>@(v.SecretSet ? "set" : "not set")</span>
+                }
+                else
+                {
+                    <span>@(v.EffectiveValue ?? "—")</span>
+                }
+            </td>
+            <td>
+                <span class="source source-@v.Source.ToString().ToLowerInvariant()">@SettingsModel.SourceLabel(v.Source)</span>
+                @if (v.UpdatedBy is not null)
+                {
+                    <br /><small class="muted">@v.UpdatedBy, @v.UpdatedAt?.ToString("yyyy-MM-dd HH:mm") UTC</small>
+                }
+            </td>
+        </tr>
+    }
 }
 <h1>Settings</h1>
 
@@ -9,13 +81,151 @@
 {
     <p class="notice">@Model.Message</p>
 }
+@* Hand-written summary: the validation-summary tag helper emits an inline style, which the CSP blocks. *@
+@if (!ViewData.ModelState.IsValid)
+{
+    <ul class="error">
+        @foreach (var e in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+        {
+            <li>@e.ErrorMessage</li>
+        }
+    </ul>
+}
 
-<form method="post">
-    <div asp-validation-summary="All" class="error"></div>
-    <p>
-        <label asp-for="ItMailbox"></label><br />
-        <input asp-for="ItMailbox" type="email" size="50" />
-        <br /><small>Receives a copy of checkout, return, correction and overdue emails.</small>
-    </p>
-    <button type="submit">Save</button>
-</form>
+<p class="muted">
+    Values saved here are stored in the database and override the configuration files; leave a field empty to remove
+    the override (the config file value or the default applies again). Changes reach the web app immediately and the
+    worker within <code>Settings:ReloadInterval</code> (30 seconds by default). Connection strings, role groups and
+    the Data Protection key folder stay in <code>appsettings.Production.json</code>.
+</p>
+<nav class="settings-toc">
+    @foreach (var (id, title) in SettingsModel.Sections)
+    {
+        <a href="#@id">@title</a>
+    }
+</nav>
+
+@foreach (var (sec, title) in SettingsModel.Sections)
+{
+    <section id="@sec" class="settings-section">
+        <h2>@title</h2>
+        <form method="post">
+            <input type="hidden" name="section" value="@sec" />
+            <table class="settings-table">
+                <thead><tr><th>Setting</th><th>Override</th><th>Effective value</th><th>Source</th></tr></thead>
+                <tbody>
+                @foreach (var v in Model.Overview.InSection(sec))
+                {
+                    await Field(v);
+                }
+                @if (sec == SettingSections.Notifications)
+                {
+                    Model.FieldErrors.TryGetValue(SettingCatalog.ItMailboxField, out var itError);
+                    <tr>
+                        <td><label for="s-ItMailbox">IT mailbox / distribution list</label></td>
+                        <td>
+                            <input id="s-ItMailbox" name="@SettingCatalog.ItMailboxField" type="email" size="40" value="@Model.ItMailboxValue" />
+                            @if (itError is not null)
+                            {
+                                <br /><span class="error">@itError</span>
+                            }
+                            <br /><small class="muted">Receives a copy of checkout, return, correction and overdue emails.</small>
+                        </td>
+                        <td>@(Model.Overview.ItMailbox ?? "—")</td>
+                        <td><span class="source">@(Model.Overview.ItMailbox is null ? "not set" : "database")</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <button type="submit">Save @title.ToLowerInvariant()</button>
+        </form>
+
+        @if (sec == SettingSections.Directory)
+        {
+            <form method="post" asp-page-handler="TestDirectory" class="settings-test">
+                <button type="submit">Test directory query</button>
+                <small class="muted">Queries the directory with the <strong>saved</strong> settings and runs the sync's checks. Read-only: nothing is synced.</small>
+            </form>
+            @if (Model.Preview is { } outcome)
+            {
+                <div class="settings-result" id="directory-preview">
+                    @if (outcome.Error is not null)
+                    {
+                        <p class="error">Directory query failed: @outcome.Error</p>
+                    }
+                    else if (outcome.Preview is { } p)
+                    {
+                        <p>
+                            Fetched <strong>@p.Fetched</strong> entries: <strong>@p.Valid</strong> valid,
+                            <strong>@p.Quarantined</strong> would be quarantined.
+                            Of the valid entries, <strong>@p.MappedToSite</strong> map to a known site,
+                            @p.UnmappedSite have an unmapped site value and @p.MissingSite have none; @p.Disabled are disabled.
+                        </p>
+                        @if (p.WouldReject is not null)
+                        {
+                            <p class="warning">A sync now would be rejected: @p.WouldReject</p>
+                        }
+                        else
+                        {
+                            <p>A sync now would pass the safety checks (would deactivate @p.WouldDeactivate of @p.CurrentActive active people).</p>
+                        }
+                        @if (p.Sample.Count > 0)
+                        {
+                            <table>
+                                <thead><tr><th>Username</th><th>Display name</th><th>Site value</th><th>Site mapped</th><th>Enabled</th></tr></thead>
+                                <tbody>
+                                @foreach (var e in p.Sample)
+                                {
+                                    <tr><td>@e.Username</td><td>@e.DisplayName</td><td>@(e.SiteValue ?? "—")</td><td>@(e.SiteMapped ? "yes" : "no")</td><td>@(e.Enabled ? "yes" : "no")</td></tr>
+                                }
+                                </tbody>
+                            </table>
+                        }
+                        @if (p.Issues.Count > 0)
+                        {
+                            <details>
+                                <summary>@p.Issues.Count issue(s)</summary>
+                                <ul>
+                                    @foreach (var i in p.Issues.Take(50))
+                                    {
+                                        <li><code>@i.Code</code> @i.Message @(i.Username ?? i.DirectoryId)</li>
+                                    }
+                                </ul>
+                            </details>
+                        }
+                    }
+                </div>
+            }
+        }
+
+        @if (sec == SettingSections.Mail)
+        {
+            <form method="post" asp-page-handler="TestMail" class="settings-test">
+                <label for="TestMailTo">Send a test email to</label>
+                <input asp-for="TestMailTo" type="email" size="40" />
+                <button type="submit">Send test email</button>
+                <small class="muted">Sent directly through the relay with the <strong>saved</strong> settings (not via the outbox).</small>
+            </form>
+            @if (Model.MailTest is { } mt)
+            {
+                <div class="settings-result" id="mail-test">
+                    @if (mt.Success)
+                    {
+                        <p class="notice">Test email to @mt.To was accepted by the relay.</p>
+                    }
+                    else
+                    {
+                        <p class="error">Test email to @mt.To failed: @mt.Error</p>
+                    }
+                </div>
+            }
+        }
+    </section>
+}
+
+<datalist id="tz-list">
+    @foreach (var tz in SettingsModel.TimeZoneIds)
+    {
+        <option value="@tz"></option>
+    }
+</datalist>

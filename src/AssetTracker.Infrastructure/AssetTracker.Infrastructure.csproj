@@ -6,13 +6,19 @@
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.18.2" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
     <PackageReference Include="System.DirectoryServices" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AssetTracker.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

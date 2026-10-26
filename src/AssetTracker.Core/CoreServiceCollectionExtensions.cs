@@ -8,6 +8,7 @@ using AssetTracker.Core.Privacy;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
 using AssetTracker.Core.Security;
+using AssetTracker.Core.Settings;
 using AssetTracker.Core.Time;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -35,6 +36,8 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<AuditQueryService>();
         services.AddScoped<DirectorySyncService>();
         services.AddScoped<AdminService>();
+        // Database-backed settings (WP4.1). ISettingsReloader/ISecretProtector come from the infrastructure layer.
+        services.AddScoped<SettingsService>();
 
         // Lending (WP2.1/WP2.2). Staleness uses DirectorySyncOptions.StaleAfter via DirectorySyncService.
         services.AddScoped<IDirectoryFreshness, SyncRunDirectoryFreshness>();

@@ -1,15 +1,15 @@
 namespace AssetTracker.Core.Notifications;
 
-/// <summary>Bound from the "Notifications" configuration section.</summary>
+/// <summary>Bound from the "Notifications" configuration section (database-overridable via Admin → Settings).</summary>
 public class NotificationOptions
 {
     public const string SectionName = "Notifications";
 
     /// <summary>
-    /// Whether a phone/phone-number asset's normalized number may appear in mail bodies. Default false until
-    /// Stage 0 confirms what reminder/notification mail may contain (mvp-plan §7.4).
+    /// Whether a phone/phone-number asset's normalized number may appear in mail bodies.
+    /// Default true (sponsor decision D5); admins can turn it off on the Settings page.
     /// </summary>
-    public bool IncludePhoneNumberInMail { get; set; }
+    public bool IncludePhoneNumberInMail { get; set; } = true;
 
     /// <summary>Send attempts per row before it becomes <see cref="Domain.NotificationStatus.Failed"/>.</summary>
     public int MaxAttempts { get; set; } = 8;
