@@ -27,15 +27,25 @@
 </dl>
 @if (Model.CanEdit)
 {
-    <p><a asp-page="Edit" asp-route-id="@a.Id">Edit / change state</a></p>
+    <p><a asp-page="Edit" asp-route-id="@a.Id">Edit / change state</a>
+        @if (a.State == AssetState.Available)
+        {
+            <text> · </text><a asp-page="/Loans/Checkout" asp-route-assetId="@a.Id">Check out</a>
+        }
+        @if (Model.Loans.FirstOrDefault(l => l.IsOpen) is { } open)
+        {
+            <text> · </text><a asp-page="/Loans/Return" asp-route-id="@open.Id">Return</a>
+        }
+    </p>
 }
 <h2>Assignment history</h2>
 <table>
-    <thead><tr><th>Holder</th><th>Started</th><th>Due</th><th>Returned</th></tr></thead>
+    <thead><tr><th>Loan</th><th>Holder</th><th>Started</th><th>Due</th><th>Returned</th></tr></thead>
     <tbody>
     @foreach (var l in Model.Loans)
     {
         <tr>
+            <td><a asp-page="/Loans/Details" asp-route-id="@l.Id">#@l.Id</a></td>
             <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</td>
             <td>@l.StartedAt.ToString("yyyy-MM-dd")</td>
             <td>@l.DueDate</td>
@@ -44,7 +54,7 @@
     }
     @if (Model.Loans.Count == 0)
     {
-        <tr><td colspan="4" class="muted">Never assigned.</td></tr>
+        <tr><td colspan="5" class="muted">Never assigned.</td></tr>
     }
     </tbody>
 </table>

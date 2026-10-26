@@ -23,3 +23,4 @@ td.num, th.num { text-align: right; }
 .notice { background: #dafbe1; padding: .5rem; border: 1px solid #4ac26b; }
 .filters label { margin-right: .75rem; }
 code.details { font-size: .8em; word-break: break-all; }
+.qty { width: 6em; font-size: 1.2em; font-weight: 600; }
