@@ -3,6 +3,7 @@ using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Directory;
+using AssetTracker.Core.Reporting;
 using AssetTracker.Core.Security;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -27,6 +28,9 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<AuditQueryService>();
         services.AddScoped<DirectorySyncService>();
         services.AddScoped<AdminService>();
+
+        // Reports and CSV exports (WP3.1).
+        services.AddScoped<ReportService>();
         return services;
     }
 }

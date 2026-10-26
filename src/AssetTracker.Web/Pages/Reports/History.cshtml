@@ -1,0 +1,12 @@
+@page
+@model AssetTracker.Web.Pages.Reports.HistoryModel
+@{
+    ViewData["Title"] = "Loan history";
+}
+<h1>Loan history</h1>
+<p class="muted">All loans, open and returned, in their effective (corrected) state. Tagged assets are listed by their current site, including earlier holders.</p>
+<partial name="_ReportFilters" model="Model" />
+<p><a asp-all-route-data="@Model.ExportRoute(HistoryModel.EventsHandler)">Export event history CSV</a> (one row per event, including corrections and the event each supersedes)</p>
+<partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, History: true)" />
+<partial name="_Pager" model="Model.Pager" />
+<p><a asp-page="Index">Back to reports</a></p>

@@ -1,0 +1,11 @@
+@page
+@model AssetTracker.Web.Pages.Reports.OverdueModel
+@{
+    ViewData["Title"] = "Overdue";
+}
+<h1>Overdue assignments</h1>
+<p class="muted">Open loans past their due date as of @Model.Today.ToString("yyyy-MM-dd") (client timezone). Partially returned pool loans stay overdue for the outstanding quantity.</p>
+<partial name="_ReportFilters" model="Model" />
+<partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, Overdue: true)" />
+<partial name="_Pager" model="Model.Pager" />
+<p><a asp-page="Index">Back to reports</a></p>

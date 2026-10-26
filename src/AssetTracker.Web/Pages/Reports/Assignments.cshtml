@@ -1,0 +1,11 @@
+@page
+@model AssetTracker.Web.Pages.Reports.AssignmentsModel
+@{
+    ViewData["Title"] = "Current assignments";
+}
+<h1>Current assignments</h1>
+<p class="muted">Open loans of tagged assets and pool quantities. Pool rows show the quantity still outstanding.</p>
+<partial name="_ReportFilters" model="Model" />
+<partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items)" />
+<partial name="_Pager" model="Model.Pager" />
+<p><a asp-page="Index">Back to reports</a></p>
