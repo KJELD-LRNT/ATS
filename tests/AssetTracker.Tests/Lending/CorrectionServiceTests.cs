@@ -59,6 +59,7 @@ public class CorrectionServiceTests : IClassFixture<AppFactory>
         Assert.False(history.Events[1].IsSuperseded);
     }
 
+    /// <summary>Sponsor decision (docs/decisions.md): due-date-only corrections also notify holder and IT.</summary>
     [Fact]
     public async Task Correction_for_the_same_holder_notifies_holder_once_plus_it()
     {

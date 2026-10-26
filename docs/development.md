@@ -30,7 +30,7 @@ The production app requires `ConnectionStrings:AssetTracker`, `Clock:TimeZoneId`
 - **Tests.** Prefer `AppFactory` integration tests (HTTP via `CreateClientAs(TestUser.X)` or services via `RunAsAsync(TestUser.X, sp => ...)`). Use fictional fixture data from `Seed`. Use unique site keys/tags per test, because each test class shares one database.
 - **Service registration.** Add scoped services in `CoreServiceCollectionExtensions.AddAssetTrackerCore` and adapters in `InfrastructureServiceCollectionExtensions`.
 - **Append-only ledgers.** `AppDbContext.SaveChanges*` throws `InvalidOperationException` if an `AuditEvent`, `LoanEvent` or `StockEvent` is modified or deleted through the change tracker. Never use `ExecuteUpdate`/`ExecuteDelete` on those sets (they bypass the guard). The one permitted update is linking a transfer pair: `StockEvent.CounterpartEventId` may be set once, from null.
-- **Audit visibility: IT only; to be confirmed with client.** `/Audit` (policy `ItOnly`) and `AuditQueryService` (`EnsureIt`) are read-only; there is no edit/delete path. Admins cannot read or alter audit by the admin role alone.
+- **Audit visibility: IT only (sponsor decision D2, `docs/decisions.md`).** `/Audit` (policy `ItOnly`) and `AuditQueryService` (`EnsureIt`) are read-only; there is no edit/delete path. Admins cannot read or alter audit by the admin role alone.
 
 ## Directory sync (WP1.4)
 

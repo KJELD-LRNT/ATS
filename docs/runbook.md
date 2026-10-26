@@ -173,6 +173,8 @@ All settings, defaults and which app uses them: [`deploy/README.md`](../deploy/R
 | `mail-outbox` | (query failed) | any `Failed` mail, or oldest `Pending` older than `Ops:OutboxPendingMaxAge` |
 | `worker` | worker never wrote a heartbeat | heartbeat older than `Ops:WorkerHeartbeatInterval × Ops:WorkerStaleAfterIntervals` |
 
+A stopped worker stays `Degraded` however long the outage lasts (sponsor decision D3, `docs/decisions.md`), so alert on `worker` = `Degraded`, not only on 503.
+
 The same data, with details (last error, counts, versions), is on the IT **Ops** page (`/Ops`).
 
 ## 9. Monitoring and alerting

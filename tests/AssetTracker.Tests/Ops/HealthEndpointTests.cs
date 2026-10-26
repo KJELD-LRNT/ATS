@@ -156,6 +156,11 @@ public class HealthEndpointTests
         var (_, _, json) = await ReadyAsync(f);
         Assert.Equal("Degraded", CheckStatus(json, "worker"));
 
+        // Sponsor decision (docs/decisions.md): a long worker outage stays Degraded, never Unhealthy.
+        f.Clock.Advance(TimeSpan.FromDays(3));
+        (_, _, json) = await ReadyAsync(f);
+        Assert.Equal("Degraded", CheckStatus(json, "worker"));
+
         await HeartbeatAsync(f);
         Assert.False(Status().IsStale);
         var setting = await f.WithDbAsync(db => Task.FromResult(db.Settings.Single(s => s.Key == OpsStatusService.HeartbeatKey)));
