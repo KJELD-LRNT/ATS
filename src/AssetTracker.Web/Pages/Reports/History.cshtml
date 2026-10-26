@@ -3,10 +3,19 @@
 @{
     ViewData["Title"] = "Loan history";
 }
-<h1>Loan history</h1>
-<p class="muted">All loans, open and returned, in their effective (corrected) state. Tagged assets are listed by their current site, including earlier holders.</p>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Reports</a><span aria-hidden="true">/</span><span aria-current="page">Loan history</span></nav>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Loan history</h1>
+        <p class="page-subtitle">All loans, open and returned, in their effective (corrected) state. Tagged assets are listed by their current site, including earlier holders.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" asp-all-route-data="@Model.ExportRoute(HistoryModel.EventsHandler)">@Ui.Icon("download", 16, 2) Export event history CSV</a>
+    </div>
+</header>
+<p class="hint">The event history export has one row per event, including corrections and the event each supersedes.</p>
 <partial name="_ReportFilters" model="Model" />
-<p><a asp-all-route-data="@Model.ExportRoute(HistoryModel.EventsHandler)">Export event history CSV</a> (one row per event, including corrections and the event each supersedes)</p>
-<partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, History: true)" />
-<partial name="_Pager" model="Model.Pager" />
-<p><a asp-page="Index">Back to reports</a></p>
+<section class="card card--flush" aria-label="Loan history">
+    <partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, History: true)" />
+    <partial name="_Pager" model="Model.Pager" />
+</section>

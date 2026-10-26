@@ -3,9 +3,15 @@
 @{
     ViewData["Title"] = "Overdue";
 }
-<h1>Overdue assignments</h1>
-<p class="muted">Open loans whose due date is today or earlier in the local calendar of the loan's site: an item is overdue from the start of its due date. "Due today" means 0 days past the due date. Partially returned pool loans stay overdue for the outstanding quantity.</p>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Reports</a><span aria-hidden="true">/</span><span aria-current="page">Overdue</span></nav>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Overdue assignments</h1>
+        <p class="page-subtitle">Open loans whose due date is today or earlier in the local calendar of the loan's site: an item is overdue from the start of its due date. "Due today" means 0 days past the due date. Partially returned pool loans stay overdue for the outstanding quantity.</p>
+    </div>
+</header>
 <partial name="_ReportFilters" model="Model" />
-<partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, Overdue: true)" />
-<partial name="_Pager" model="Model.Pager" />
-<p><a asp-page="Index">Back to reports</a></p>
+<section class="card card--flush" aria-label="Overdue assignments">
+    <partial name="_LoanTable" model="new LoanTableModel(Model.Results.Items, Overdue: true)" />
+    <partial name="_Pager" model="Model.Pager" />
+</section>

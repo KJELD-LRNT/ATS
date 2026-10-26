@@ -1,55 +1,102 @@
 @inject ICurrentUser CurrentUser
+@{
+    var demoMode = Context.RequestServices.GetService(typeof(AssetTracker.Infrastructure.Demo.DemoOptions)) is not null;
+
+    // One sidebar link: the active page gets aria-current="page" (computed from the current page path, no JS).
+    void NavLink(string page, string label, string icon, params string[] current)
+    {
+        var isCurrent = Ui.IsCurrent(ViewContext, current.Length == 0 ? [page] : current);
+        <li><a class="nav-link" href="@Url.Page(page)" aria-current="@(isCurrent ? "page" : null)">@Ui.Icon(icon)<span class="nav-label">@label</span></a></li>
+    }
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Asset Tracker</title>
+    <link rel="preload" href="~/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="~/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <script src="~/js/site.js" asp-append-version="true" defer></script>
 </head>
 <body>
-<header>
-    @* Local demo mode only (renders nothing otherwise). *@
-    @await Component.InvokeAsync("DemoBanner")
-    <nav class="topnav">
-        <a class="brand" asp-page="/Index">Asset Tracker</a>
-        @* Feature work packages add nav links here, gated on role. *@
-        @if (CurrentUser.IsIt || CurrentUser.IsManager)
-        {
-            <a asp-page="/Assets/Index">Assets</a>
-            <a asp-page="/Pools/Index">Pools</a>
-            <a asp-page="/Loans/Index">Loans</a>
-            <a asp-page="/Reports/Index">Reports</a>
-        }
-        @if (CurrentUser.IsIt)
-        {
-            <a asp-page="/Ops/Index">Ops</a>
-            <a asp-page="/Ops/Mail">Mail queue</a>
-            @if (!CurrentUser.IsAdmin)
+<a class="skip-link" href="#main">Skip to content</a>
+@* Local demo mode only (renders nothing otherwise). *@
+@await Component.InvokeAsync("DemoBanner")
+<div class="app">
+    <nav class="sidebar" aria-label="Main">
+        <a class="brand" href="@Url.Page("/Index")">
+            <span class="brand-mark">@Ui.Icon("tag", 18, 2)</span>
+            <span class="brand-text"><span class="brand-name">Asset Tracker</span><span class="brand-sub">Internal IT</span></span>
+        </a>
+
+        <ul class="nav-group">
+            @{ NavLink("/Index", "Overview", "overview"); }
+            @if (CurrentUser.IsIt || CurrentUser.IsManager)
             {
-                <a asp-page="/Admin/Sync">Directory sync</a>
+                NavLink("/Assets/Index", "Assets", "assets", "/Assets/");
+                NavLink("/Pools/Index", "Pools", "pools", "/Pools/");
+                NavLink("/Loans/Index", "Loans", "loans", "/Loans/");
+                NavLink("/Reports/Index", "Reports", "reports", "/Reports/");
             }
-        }
+        </ul>
+
         @if (CurrentUser.IsIt)
         {
-            <a asp-page="/Audit/Index">Audit</a>
+            <ul class="nav-group" aria-labelledby="nav-it">
+                <li class="nav-heading" id="nav-it">IT</li>
+                @{
+                    NavLink("/Ops/Mail", "Mail queue", "mail");
+                    NavLink("/Ops/Index", "Ops", "ops");
+                    NavLink("/Audit/Index", "Audit log", "audit", "/Audit/");
+                    if (!CurrentUser.IsAdmin)
+                    {
+                        NavLink("/Admin/Sync", "Directory sync", "sync");
+                    }
+                }
+            </ul>
         }
+
         @if (CurrentUser.IsAdmin)
         {
-            <a asp-page="/Admin/Sites">Sites</a>
-            <a asp-page="/Admin/Grants">Grants</a>
-            <a asp-page="/Admin/Settings">Settings</a>
-            <a asp-page="/Admin/Sync">Directory sync</a>
-            <a asp-page="/Admin/Privacy">Privacy</a>
+            <ul class="nav-group" aria-labelledby="nav-admin">
+                <li class="nav-heading" id="nav-admin">Admin</li>
+                @{
+                    NavLink("/Admin/Sites", "Sites", "sites");
+                    NavLink("/Admin/Grants", "Grants", "grants");
+                    NavLink("/Admin/Settings", "Settings", "settings");
+                    NavLink("/Admin/Sync", "Directory sync", "sync");
+                    NavLink("/Admin/Privacy", "Privacy", "privacy");
+                }
+            </ul>
         }
-        <span class="user">@CurrentUser.Name (@CurrentUser.Roles)</span>
+
+        @if (demoMode)
+        {
+            <ul class="nav-group" aria-labelledby="nav-demo">
+                <li class="nav-heading" id="nav-demo">Demo</li>
+                @{
+                    NavLink("/Demo/Index", "Demo controls", "demo");
+                    NavLink("/Demo/Mailbox", "Demo mailbox", "inbox");
+                }
+            </ul>
+        }
+
+        <div class="user-card">
+            <span class="avatar" aria-hidden="true">@Ui.Initials(CurrentUser.Name)</span>
+            <span class="user-text">
+                <span class="user-name">@CurrentUser.Name</span>
+                <span class="user-roles">@Ui.RolesLabel(CurrentUser.Roles)</span>
+            </span>
+        </div>
     </nav>
-</header>
-<main>
-    @await Component.InvokeAsync("SyncStatus")
-    @RenderBody()
-</main>
+
+    <main class="main" id="main" tabindex="-1">
+        @await Component.InvokeAsync("SyncStatus")
+        @RenderBody()
+    </main>
+</div>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

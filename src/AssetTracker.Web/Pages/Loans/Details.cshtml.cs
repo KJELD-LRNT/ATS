@@ -28,5 +28,14 @@ public class DetailsModel(LoanHistoryService history, ICurrentUser user) : PageM
         _ => $"{c.Field}: {c.From} → {c.To}",
     };
 
+    /// <summary>One side of a change for display (holder ids become names; empty dates read "none"/"open").</summary>
+    public string Value(FieldChange c, string? v) => c.Field switch
+    {
+        "holderId" => Name(v),
+        "dueDate" => v ?? "none",
+        "closedAt" => v ?? "open",
+        _ => v ?? "–",
+    };
+
     private string Name(string? id) => int.TryParse(id, out var i) ? History.PersonName(i) : id ?? "";
 }

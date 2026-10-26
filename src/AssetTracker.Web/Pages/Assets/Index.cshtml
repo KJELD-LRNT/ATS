@@ -3,46 +3,63 @@
 @{
     ViewData["Title"] = "Assets";
 }
-<h1>Tagged assets</h1>
-@if (Model.CanEdit)
-{
-    <p><a asp-page="Create">New asset</a></p>
-}
-<form method="get" class="filters">
-    <label>Search<br /><input name="q" value="@Model.Q" placeholder="Tag, description, serial, phone, IMEI" size="36" /></label>
-    <label>Site<br />
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Tagged assets</h1>
+        <p class="page-subtitle">Individually tagged laptops, desktops, phones and phone numbers.</p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <div class="page-actions">
+            <a class="btn btn--primary" asp-page="Create">@Ui.Icon("plus", 16, 2.2) New asset</a>
+        </div>
+    }
+</header>
+<form method="get" class="filters" role="search">
+    <div class="field field--grow">
+        <label for="f-q">Search</label>
+        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="Tag, description, serial, phone, IMEI" />
+    </div>
+    <div class="field">
+        <label for="SiteId">Site</label>
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
-    </label>
-    <label>Type<br />
+    </div>
+    <div class="field">
+        <label for="Type">Type</label>
         <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
-    </label>
-    <label>State<br />
+    </div>
+    <div class="field">
+        <label for="State">State</label>
         <select name="state" asp-for="State" asp-items="InventoryUi.EnumOptions<AssetState>()"><option value="">All</option></select>
-    </label>
-    <button type="submit">Search</button>
+    </div>
+    <div class="filters-actions"><button type="submit">Search</button></div>
 </form>
-<table>
-    <thead>
-    <tr><th>Tag</th><th>Type</th><th>Description</th><th>Site</th><th>State</th><th>Serial</th><th>Phone</th><th>IMEI</th></tr>
-    </thead>
-    <tbody>
-    @foreach (var a in Model.Results.Items)
-    {
-        <tr>
-            <td><a asp-page="Details" asp-route-id="@a.Id">@a.Tag</a></td>
-            <td>@a.Type</td>
-            <td>@a.Description</td>
-            <td>@a.Site?.Key</td>
-            <td>@a.State</td>
-            <td>@a.SerialNumber</td>
-            <td>@a.PhoneNumber</td>
-            <td>@a.Imei</td>
-        </tr>
-    }
-    @if (Model.Results.TotalCount == 0)
-    {
-        <tr><td colspan="8" class="muted">No assets match.</td></tr>
-    }
-    </tbody>
-</table>
-<partial name="_Pager" model="Model.Pager" />
+<section class="card card--flush" aria-label="Assets">
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr><th scope="col">Tag</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col">State</th><th scope="col">Serial</th><th scope="col">Phone</th><th scope="col">IMEI</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var a in Model.Results.Items)
+            {
+                <tr>
+                    <td class="nowrap"><a class="mono" asp-page="Details" asp-route-id="@a.Id">@a.Tag</a></td>
+                    <td>@a.Type</td>
+                    <td>@a.Description</td>
+                    <td>@a.Site?.Key</td>
+                    <td>@Ui.Pill(a.State)</td>
+                    <td class="mono">@a.SerialNumber</td>
+                    <td class="mono nowrap">@a.PhoneNumber</td>
+                    <td class="mono">@a.Imei</td>
+                </tr>
+            }
+            @if (Model.Results.TotalCount == 0)
+            {
+                <tr><td colspan="8" class="empty">No assets match.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <partial name="_Pager" model="Model.Pager" />
+</section>

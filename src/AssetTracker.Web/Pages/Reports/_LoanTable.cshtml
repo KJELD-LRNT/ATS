@@ -2,15 +2,16 @@
 @{
     var cols = 9 + (Model.Overdue ? 1 : 0) + (Model.History ? 3 : 0);
 }
+<div class="table-wrap">
 <table>
     <thead>
     <tr>
-        <th>Item</th><th>Type</th><th>Site</th><th class="num">Outstanding</th>
-        <th>Started</th><th>Due</th>
-        @if (Model.Overdue) { <th class="num">Days overdue</th> }
-        @if (Model.History) { <th>Returned</th> }
-        <th>Holder</th><th>Holder details</th><th>Holder site</th>
-        @if (Model.History) { <th class="num">Corrections</th><th>Latest correction reason</th> }
+        <th scope="col">Item</th><th scope="col">Type</th><th scope="col">Site</th><th scope="col" class="num">Outstanding</th>
+        <th scope="col">Started</th><th scope="col">Due</th>
+        @if (Model.Overdue) { <th scope="col">Status</th> }
+        @if (Model.History) { <th scope="col">Returned</th> }
+        <th scope="col">Holder</th><th scope="col">Holder details</th><th scope="col">Holder site</th>
+        @if (Model.History) { <th scope="col" class="num">Corrections</th><th scope="col">Latest correction reason</th> }
     </tr>
     </thead>
     <tbody>
@@ -18,43 +19,47 @@
     {
         <tr>
             <td>
-                @if (r.IsPool)
-                {
-                    <span>Pool <strong>@r.PoolSku</strong></span>
-                }
-                else
-                {
-                    <strong>@r.AssetTag</strong>
-                }
-                <div class="muted">@r.ItemDescription</div>
+                <div class="cell-stack">
+                    @if (r.IsPool)
+                    {
+                        <span class="cell-row"><a class="mono" asp-page="/Loans/Details" asp-route-id="@r.LoanId">@r.PoolSku</a><span class="badge">pool</span></span>
+                    }
+                    else
+                    {
+                        <a class="mono" asp-page="/Loans/Details" asp-route-id="@r.LoanId">@r.AssetTag</a>
+                    }
+                    <span class="cell-sub">@r.ItemDescription</span>
+                </div>
             </td>
             <td>@r.Type</td>
             <td>@r.SiteKey</td>
             <td class="num">
                 <strong>@r.OutstandingQuantity</strong>
-                @if (r.IsPool) { <div class="muted">of @r.Quantity</div> }
+                @if (r.IsPool) { <div class="cell-sub">of @r.Quantity</div> }
             </td>
-            <td>@r.StartedAt.ToString("yyyy-MM-dd")</td>
-            <td>@(r.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
-            @if (Model.Overdue) { <td class="num"><strong>@(r.DaysOverdue == 0 ? "due today" : r.DaysOverdue.ToString())</strong></td> }
-            @if (Model.History) { <td>@(r.ClosedAt?.ToString("yyyy-MM-dd") ?? "open")</td> }
+            <td class="nowrap">@r.StartedAt.ToString("yyyy-MM-dd")</td>
+            <td class="nowrap">@(r.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+            @if (Model.Overdue) { <td>@Ui.OverduePill(r.DaysOverdue ?? 0)</td> }
+            @if (Model.History) { <td class="nowrap">@(r.ClosedAt?.ToString("yyyy-MM-dd") ?? "open")</td> }
             <td>
-                @r.HolderDisplayName
-                @if (!r.HolderActive) { <span class="muted">(inactive)</span> }
-                @if (r.HolderNameSnapshot != r.HolderDisplayName) { <div class="muted">at checkout: @r.HolderNameSnapshot</div> }
+                <div class="cell-stack">
+                    <span class="cell-row">@r.HolderDisplayName @if (!r.HolderActive) { <span class="badge badge--muted">Inactive</span> }</span>
+                    @if (r.HolderNameSnapshot != r.HolderDisplayName) { <span class="cell-sub">at checkout: @r.HolderNameSnapshot</span> }
+                </div>
             </td>
-            <td>@r.HolderUsername<div class="muted">@r.HolderEmail</div><div class="muted">@r.HolderJobTitle</div></td>
+            <td><div class="cell-stack"><span>@r.HolderUsername</span><span class="cell-sub">@r.HolderEmail</span><span class="cell-sub">@r.HolderJobTitle</span></div></td>
             <td>@r.HolderSiteKey</td>
             @if (Model.History)
             {
-                <td class="num">@r.CorrectionCount</td>
+                <td class="num">@if (r.CorrectionCount > 0) { @Ui.Pill("corrected", r.CorrectionCount.ToString()) } else { <span class="muted">0</span> }</td>
                 <td>@r.LatestCorrectionReason</td>
             }
         </tr>
     }
     @if (Model.Rows.Count == 0)
     {
-        <tr><td colspan="@cols" class="muted">Nothing matches.</td></tr>
+        <tr><td colspan="@cols" class="empty">Nothing matches.</td></tr>
     }
     </tbody>
 </table>
+</div>

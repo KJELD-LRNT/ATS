@@ -4,88 +4,147 @@
     var h = Model.History;
     var l = h.Loan;
     ViewData["Title"] = $"Loan #{l.Id}";
+    var holderName = l.Holder?.DisplayName ?? l.HolderNameSnapshot;
 }
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Loans</a><span aria-hidden="true">/</span><span aria-current="page">Loan #@l.Id</span></nav>
 @if (Model.Message is not null)
 {
-    <p class="flash">@Model.Message</p>
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<h1>Loan #@l.Id <span class="muted">@(l.IsOpen ? "open" : "returned")</span></h1>
+<header class="page-header page-header--top">
+    <div class="page-heading">
+        <div class="title-row">
+            <h1>Loan <span class="title-mono">#@l.Id</span></h1>
+            @if (l.IsOpen) { @Ui.Pill("checked-out", "Open") } else { @Ui.Pill("available", "Returned") }
+        </div>
+        <p class="title-meta">
+            @if (l.Asset is { } ta)
+            {
+                <a class="mono" asp-page="/Assets/Details" asp-route-id="@ta.Id">@ta.Tag</a> <text>· @ta.Description</text>
+            }
+            else if (l.Pool is { } tp)
+            {
+                <a class="mono" asp-page="/Pools/Details" asp-route-id="@tp.Id">@tp.Sku</a> <text>· @tp.Description</text>
+            }
+            · held by <strong>@holderName</strong>
+        </p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <div class="page-actions">
+            <a class="btn" asp-page="Correct" asp-route-id="@l.Id">Correct</a>
+            @if (l.IsOpen)
+            {
+                <a class="btn btn--primary" asp-page="Return" asp-route-id="@l.Id">Return</a>
+            }
+        </div>
+    }
+</header>
 @if (h.AnyDirectoryStale)
 {
-    <p class="warning">The people directory snapshot was stale when this loan was checked out.</p>
+    <div class="alert alert--warning" role="status">@Ui.Icon("warning", 18, 2)<div class="alert-body">The people directory snapshot was stale when this loan was checked out.</div></div>
 }
-<dl class="form-grid">
-    @if (l.Asset is { } a)
-    {
-        <dt>Asset</dt><dd><a asp-page="/Assets/Details" asp-route-id="@a.Id">@a.Tag</a> – @a.Description (@a.Type)</dd>
-        <dt>Site (current)</dt><dd>@a.Site?.Key – @a.Site?.Name</dd>
-    }
-    else if (l.Pool is { } p)
-    {
-        <dt>Pool</dt><dd><a asp-page="/Pools/Details" asp-route-id="@p.Id">@p.Sku</a> – @p.Description (@p.Type)</dd>
-        <dt>Site</dt><dd>@p.Site?.Key – @p.Site?.Name</dd>
-    }
-    <dt>Holder</dt>
-    <dd>
-        @(l.Holder?.DisplayName ?? l.HolderNameSnapshot)
-        @if (l.Holder is { } holder)
-        {
-            <span class="muted">@holder.Username · @holder.Email · @holder.JobTitle@(holder.IsActive ? "" : " · inactive")</span>
-        }
-    </dd>
-    <dt>Quantity</dt><dd><strong>@l.Quantity</strong> (returned @l.ReturnedQuantity, outstanding <strong>@l.OutstandingQuantity</strong>)</dd>
-    <dt>Started</dt><dd>@l.StartedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd>
-    <dt>Due date</dt><dd>@(l.DueDate?.ToString("yyyy-MM-dd") ?? "none")</dd>
-    <dt>Returned</dt><dd>@(l.ClosedAt?.ToString("yyyy-MM-dd HH:mm") + (l.ClosedAt is null ? "not yet" : " UTC"))</dd>
-    <dt>Checkout condition / note</dt><dd>@l.CheckoutCondition @l.CheckoutNote</dd>
-    <dt>Return condition / note</dt><dd>@l.ReturnCondition @l.ReturnNote</dd>
-    <dt>Checked out by</dt><dd>@l.CreatedBy</dd>
-</dl>
-@if (Model.CanEdit)
-{
-    <p>
-        @if (l.IsOpen)
-        {
-            <a asp-page="Return" asp-route-id="@l.Id">Return</a>
-            <text> · </text>
-        }
-        <a asp-page="Correct" asp-route-id="@l.Id">Correct</a>
-    </p>
-}
-<h2>History</h2>
-<table>
-    <thead>
-    <tr><th>#</th><th>Event</th><th>When (UTC)</th><th>Recorded by</th><th>Holder</th><th class="num">Qty</th><th>Due</th><th>Details</th></tr>
-    </thead>
-    <tbody>
-    @foreach (var e in h.Events)
-    {
-        var ev = e.Event;
-        <tr id="event-@ev.Id" class="@(e.IsSuperseded ? "muted" : "")">
-            <td>@ev.Id</td>
-            <td>
-                @ev.Type
-                @if (ev.DirectoryStale) { <span class="warning">directory stale</span> }
-                @if (e.SupersededByEventId is { } by) { <br /><small>superseded by <a href="#event-@by">#@by</a></small> }
-            </td>
-            <td>@ev.OccurredAt.ToString("yyyy-MM-dd HH:mm")</td>
-            <td>@ev.Actor</td>
-            <td>@h.PersonName(ev.HolderId)</td>
-            <td class="num">@ev.Quantity</td>
-            <td>@ev.DueDate</td>
-            <td>
-                @if (ev.SupersedesEventId is { } s) { <span>Corrects <a href="#event-@s">#@s</a>. </span> }
-                @if (ev.Reason is not null) { <span>Reason: @ev.Reason</span> }
-                @if (e.Changes.Count > 0)
+
+<div class="columns">
+    <div class="col-narrow">
+        <section class="card" aria-labelledby="holder-h">
+            <h2 id="holder-h">Holder</h2>
+            <div class="person">
+                <span class="avatar avatar--lg" aria-hidden="true">@Ui.Initials(holderName)</span>
+                <span class="person-text">
+                    <span class="person-name">@holderName</span>
+                    @if (l.Holder is { } holder)
+                    {
+                        <span class="person-meta">@holder.Username · @holder.Email · @holder.JobTitle@(holder.IsActive ? "" : " · inactive")</span>
+                    }
+                </span>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="loan-h">
+            <h2 id="loan-h">Loan</h2>
+            <dl class="dl-grid">
+                @if (l.Asset is { } a)
                 {
-                    <ul>
-                        @foreach (var c in e.Changes) { <li>@Model.Describe(c)</li> }
-                    </ul>
+                    <div><dt>Asset</dt><dd><a class="mono" asp-page="/Assets/Details" asp-route-id="@a.Id">@a.Tag</a> – @a.Description (@a.Type)</dd></div>
+                    <div><dt>Site (current)</dt><dd>@a.Site?.Key – @a.Site?.Name</dd></div>
                 }
-                @ev.Condition @ev.Note
-            </td>
-        </tr>
-    }
-    </tbody>
-</table>
-<p><a asp-page="Index">Back to loans</a></p>
+                else if (l.Pool is { } p)
+                {
+                    <div><dt>Pool</dt><dd><a class="mono" asp-page="/Pools/Details" asp-route-id="@p.Id">@p.Sku</a> – @p.Description (@p.Type)</dd></div>
+                    <div><dt>Site</dt><dd>@p.Site?.Key – @p.Site?.Name</dd></div>
+                }
+                <div><dt>Quantity</dt><dd><strong>@l.Quantity</strong> (returned @l.ReturnedQuantity, outstanding <strong>@l.OutstandingQuantity</strong>)</dd></div>
+                <div><dt>Started</dt><dd>@l.StartedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd></div>
+                <div><dt>Due date</dt><dd>@(l.DueDate?.ToString("yyyy-MM-dd") ?? "none")</dd></div>
+                <div><dt>Returned</dt><dd>@(l.ClosedAt?.ToString("yyyy-MM-dd HH:mm") + (l.ClosedAt is null ? "not yet" : " UTC"))</dd></div>
+                <div><dt>Checkout condition / note</dt><dd>@l.CheckoutCondition @l.CheckoutNote</dd></div>
+                <div><dt>Return condition / note</dt><dd>@l.ReturnCondition @l.ReturnNote</dd></div>
+                <div><dt>Checked out by</dt><dd>@l.CreatedBy</dd></div>
+            </dl>
+        </section>
+    </div>
+
+    <section class="card card--flush col-wide" aria-labelledby="hist-h">
+        <div class="card-header">
+            <h2 id="hist-h">History</h2>
+            <span class="card-note">Append-only: corrections supersede earlier events and never change them. Newest first, times in UTC.</span>
+        </div>
+        <ol class="timeline">
+            @foreach (var e in h.Events.Reverse())
+            {
+                var ev = e.Event;
+                var (marker, icon) = Ui.Marker(ev.Type);
+                <li id="event-@ev.Id" class="timeline-item @(e.IsSuperseded ? "is-superseded" : "")">
+                    <div class="timeline-rail"><span class="timeline-marker timeline-marker--@marker">@Ui.Icon(icon, 14, 2.2)</span></div>
+                    <div class="timeline-content">
+                        <span class="timeline-title cell-row">
+                            <span>
+                                <strong>@Ui.Label(ev.Type)</strong>
+                                @switch (ev.Type)
+                                {
+                                    case LoanEventType.CheckedOut:
+                                        <text>to @h.PersonName(ev.HolderId) · quantity @ev.Quantity@(ev.DueDate is { } d ? $" · due {d:yyyy-MM-dd}" : "")</text>
+                                        break;
+                                    case LoanEventType.Returned:
+                                    case LoanEventType.PartiallyReturned:
+                                        <text>by @h.PersonName(ev.HolderId) · quantity @ev.Quantity</text>
+                                        break;
+                                }
+                            </span>
+                            @if (ev.DirectoryStale) { <span class="badge badge--warning">directory stale</span> }
+                            @if (e.IsSuperseded) { @Ui.Pill("unavailable", "Superseded") }
+                        </span>
+                        @if (e.Changes.Count > 0)
+                        {
+                            <ul class="timeline-changes">
+                                @foreach (var c in e.Changes)
+                                {
+                                    <li class="change">
+                                        <span class="change-field">@CorrectModel.Label(c.Field)</span>
+                                        <del class="change-old">@Model.Value(c, c.From)</del>
+                                        <span aria-hidden="true" class="muted">→</span>
+                                        <ins class="change-new">@Model.Value(c, c.To)</ins>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        @if (ev.Reason is not null)
+                        {
+                            <span class="quote">Reason: “@ev.Reason”</span>
+                        }
+                        @if (!string.IsNullOrEmpty(ev.Condition) || !string.IsNullOrEmpty(ev.Note))
+                        {
+                            <span class="secondary small">@ev.Condition @ev.Note</span>
+                        }
+                        <span class="timeline-meta">
+                            @ev.OccurredAt.ToString("yyyy-MM-dd HH:mm") · @ev.Actor · event #@ev.Id
+                            @if (ev.SupersedesEventId is { } s) { <text>· supersedes <a href="#event-@s">event #@s</a></text> }
+                            @if (e.SupersededByEventId is { } by) { <text>· superseded by <a href="#event-@by">#@by</a></text> }
+                        </span>
+                    </div>
+                </li>
+            }
+        </ol>
+    </section>
+</div>

@@ -3,23 +3,40 @@
 @{
     ViewData["Title"] = "New pool";
 }
-<h1>New quantity pool</h1>
-<p class="muted">One pool per SKU and site. Only peripherals, webcams and headsets can be pooled.</p>
-<form method="post">
-    <div asp-validation-summary="All" class="error"></div>
-    <div class="form-grid">
-        <label asp-for="Input.Type">Type</label>
-        <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions(AssetTypes.PoolEligible)"></select>
-        <label asp-for="Input.Sku">SKU</label>
-        <input asp-for="Input.Sku" required maxlength="100" />
-        <label asp-for="Input.SiteId">Site</label>
-        <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
-        <label asp-for="Input.Description">Description</label>
-        <input asp-for="Input.Description" required maxlength="500" />
-        <label asp-for="Input.InitialQuantity">Initial quantity</label>
-        <input asp-for="Input.InitialQuantity" type="number" min="0" />
-        <label asp-for="Input.Reason">Reason for initial stock</label>
-        <input asp-for="Input.Reason" placeholder="Initial stock" maxlength="2000" />
-        <div class="full"><button type="submit">Create</button> <a asp-page="Index">Cancel</a></div>
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Pools</a><span aria-hidden="true">/</span><span aria-current="page">New pool</span></nav>
+<header class="page-header">
+    <div class="page-heading">
+        <h1>New quantity pool</h1>
+        <p class="page-subtitle">One pool per SKU and site. Only peripherals, webcams and headsets can be pooled.</p>
     </div>
+</header>
+<form method="post" class="card form-card">
+    <div asp-validation-summary="All" class="alert alert--error"></div>
+    <div class="fields">
+        <div class="field">
+            <label asp-for="Input.Type">Type</label>
+            <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions(AssetTypes.PoolEligible)"></select>
+        </div>
+        <div class="field">
+            <label asp-for="Input.Sku">SKU</label>
+            <input asp-for="Input.Sku" required maxlength="100" class="mono" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.SiteId">Site</label>
+            <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
+        </div>
+        <div class="field">
+            <label asp-for="Input.Description">Description</label>
+            <input asp-for="Input.Description" required maxlength="500" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.InitialQuantity">Initial quantity</label>
+            <input asp-for="Input.InitialQuantity" type="number" min="0" class="qty" />
+        </div>
+        <div class="field">
+            <label asp-for="Input.Reason">Reason for initial stock</label>
+            <input asp-for="Input.Reason" placeholder="Initial stock" maxlength="2000" />
+        </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn--primary">Create</button> <a class="text-link" asp-page="Index">Cancel</a></div>
 </form>
