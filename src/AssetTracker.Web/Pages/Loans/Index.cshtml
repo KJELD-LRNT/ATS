@@ -1,0 +1,53 @@
+@page
+@model AssetTracker.Web.Pages.Loans.IndexModel
+@{
+    ViewData["Title"] = "Current loans";
+}
+@if (Model.Message is not null)
+{
+    <p class="flash">@Model.Message</p>
+}
+<h1>Current loans</h1>
+@if (Model.CanEdit)
+{
+    <p><a asp-page="Checkout">Check out</a></p>
+}
+<form method="get" class="filters">
+    <label>Search<br /><input name="q" value="@Model.Q" placeholder="Holder, tag or SKU" size="30" /></label>
+    <label>Site<br />
+        <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
+    </label>
+    <label><input type="checkbox" name="overdue" value="true" checked="@Model.Overdue" /> Overdue only</label>
+    <button type="submit">Filter</button>
+</form>
+<table>
+    <thead>
+    <tr><th>Loan</th><th>Item</th><th>Site</th><th>Holder</th><th class="num">Quantity</th><th class="num">Outstanding</th><th>Started (UTC)</th><th>Due</th><th></th></tr>
+    </thead>
+    <tbody>
+    @foreach (var l in Model.Results.Items)
+    {
+        <tr>
+            <td><a asp-page="Details" asp-route-id="@l.Id">#@l.Id</a></td>
+            <td>@(l.Asset is { } a ? a.Tag : $"{l.Pool?.Sku} (pool)")</td>
+            <td>@(l.Asset?.Site?.Key ?? l.Pool?.Site?.Key)</td>
+            <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)@(l.Holder is { IsActive: false } ? " (inactive)" : "")</td>
+            <td class="num"><strong>@l.Quantity</strong></td>
+            <td class="num">@l.OutstandingQuantity</td>
+            <td>@l.StartedAt.ToString("yyyy-MM-dd HH:mm")</td>
+            <td>@l.DueDate@(Model.IsOverdue(l) ? " (overdue)" : "")</td>
+            <td>
+                @if (Model.CanEdit && l.IsOpen)
+                {
+                    <a asp-page="Return" asp-route-id="@l.Id">Return</a>
+                }
+            </td>
+        </tr>
+    }
+    @if (Model.Results.TotalCount == 0)
+    {
+        <tr><td colspan="9" class="muted">No open loans match.</td></tr>
+    }
+    </tbody>
+</table>
+<partial name="_Pager" model="Model.Pager" />

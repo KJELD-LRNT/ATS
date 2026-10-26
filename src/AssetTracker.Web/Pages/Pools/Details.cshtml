@@ -17,8 +17,34 @@
 </div>
 @if (Model.CanEdit)
 {
-    <p><a asp-page="Adjust" asp-route-id="@p.Id">Receipt / loss / count / transfer</a></p>
+    <p><a asp-page="Adjust" asp-route-id="@p.Id">Receipt / loss / count / transfer</a>
+        @if (p.Available > 0)
+        {
+            <text> · </text><a asp-page="/Loans/Checkout" asp-route-poolId="@p.Id">Check out</a>
+        }
+    </p>
 }
+<h2>Open loans</h2>
+<table>
+    <thead><tr><th>Loan</th><th>Holder</th><th class="num">Quantity</th><th class="num">Outstanding</th><th>Due</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var l in Model.OpenLoans)
+    {
+        <tr>
+            <td><a asp-page="/Loans/Details" asp-route-id="@l.Id">#@l.Id</a></td>
+            <td>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</td>
+            <td class="num">@l.Quantity</td>
+            <td class="num"><strong>@l.OutstandingQuantity</strong></td>
+            <td>@l.DueDate</td>
+            <td>@if (Model.CanEdit) { <a asp-page="/Loans/Return" asp-route-id="@l.Id">Return</a> }</td>
+        </tr>
+    }
+    @if (Model.OpenLoans.Count == 0)
+    {
+        <tr><td colspan="6" class="muted">No open loans.</td></tr>
+    }
+    </tbody>
+</table>
 <h2>Stock events</h2>
 <table>
     <thead>

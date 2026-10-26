@@ -1,6 +1,7 @@
 using AssetTracker.Core.Admin;
 using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Inventory;
+using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
@@ -29,6 +30,11 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<DirectorySyncService>();
         services.AddScoped<AdminService>();
 
+        // Lending (WP2.1/WP2.2). Staleness uses DirectorySyncOptions.StaleAfter via DirectorySyncService.
+        services.AddScoped<IDirectoryFreshness, SyncRunDirectoryFreshness>();
+        services.AddScoped<LendingService>();
+        services.AddScoped<CorrectionService>();
+        services.AddScoped<LoanHistoryService>();
         // Reports and CSV exports (WP3.1).
         services.AddScoped<ReportService>();
         return services;
