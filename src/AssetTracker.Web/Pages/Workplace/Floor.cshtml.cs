@@ -10,14 +10,14 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace AssetTracker.Web.Pages.Workplace;
 
 /// <summary>
-/// One floor plan. Everyone who can read it can pan, zoom, find a seat, room, team, person or desktop, and print (part
+/// One floor plan. Everyone who can read it can pan, zoom, find a seat, room, zone, person or desktop, and print (part
 /// of) it. IT and facility drag people, desktops and screens onto desks, release them, make seats desks or not, give a
-/// table (or part of one) a team, switch seats off or mark shapes of a plain drawing as seats. Seats have no names of
-/// their own: a desk is known by who sits there, its desktop, its team and its room. The selection and dragging
+/// table (or part of one) a zone, switch seats off or mark shapes of a plain drawing as seats. Seats have no names of
+/// their own: a desk is known by who sits there, its desktop, its zone and its room. The selection and dragging
 /// happen in the browser; forms (or fetch, for drops, so the map keeps its view) post the ids.
 /// </summary>
 [Authorize(Policy = Policies.WorkplaceRead)]
-public class FloorModel(FloorService floors, WorkspotService spots, TeamService teams, AssignmentService assignments, AccessScope access) : PageModel
+public class FloorModel(FloorService floors, WorkspotService spots, ZoneService zones, AssignmentService assignments, AccessScope access) : PageModel
 {
     private const int MaxIds = 2000;
 
@@ -29,7 +29,7 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
     /// <summary>Whether the drawing declares its own seats; if not, shapes are marked by hand.</summary>
     public bool HasDeclaredSeats { get; private set; }
 
-    public IReadOnlyDictionary<int, int> TeamSeats { get; private set; } = new Dictionary<int, int>();
+    public IReadOnlyDictionary<int, int> ZoneSeats { get; private set; } = new Dictionary<int, int>();
 
     /// <summary>Desks, who sits where, free desks and the seats that need a look.</summary>
     public FloorStatus Status { get; private set; } = new(0, 0, [], 0, 0, []);
@@ -87,30 +87,30 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         RunAsync(id, async () => $"{await spots.SetDeskAsync(Ids(ids), desk, ct)} seat(s) {(desk ? "made desks" : "are no longer desks")}.", ct, FocusOn(ids));
 
     /// <summary>
-    /// Gives the selected seats (a table, part of a table, a room) a team: an existing one (<paramref name="team"/> is its id),
-    /// a new one (<c>new</c>, named <paramref name="name"/>) or none (<c>none</c>). A table is split between teams by
-    /// giving some of its seats another team.
+    /// Gives the selected seats (a table, part of a table, a room) a zone: an existing one (<paramref name="zone"/> is its id),
+    /// a new one (<c>new</c>, named <paramref name="name"/>) or none (<c>none</c>). A table is split between zones by
+    /// giving some of its seats another zone.
     /// </summary>
-    public Task<IActionResult> OnPostSetTeamAsync(int id, string? ids, string? team, string? name, CancellationToken ct)
+    public Task<IActionResult> OnPostSetZoneAsync(int id, string? ids, string? zone, string? name, CancellationToken ct)
     {
         var seats = Ids(ids);
-        return RunAsync(id, async () => team switch
+        return RunAsync(id, async () => zone switch
         {
-            "none" => $"{await teams.RemoveAsync(seats, ct)} seat(s) taken out of their team.",
-            "new" => $"Team '{(await teams.CreateAsync(name ?? "", seats, ct)).Name}' created with {seats.Count} seat(s).",
-            _ when int.TryParse(team, out var teamId) => $"{await teams.AddAsync(teamId, seats, ct)} seat(s) added to the team.",
-            _ => throw new DomainException("team.choose", "Choose a team, a new team or no team."),
+            "none" => $"{await zones.RemoveAsync(seats, ct)} seat(s) taken out of their zone.",
+            "new" => $"Zone '{(await zones.CreateAsync(name ?? "", seats, ct)).Name}' created with {seats.Count} seat(s).",
+            _ when int.TryParse(zone, out var zoneId) => $"{await zones.AddAsync(zoneId, seats, ct)} seat(s) added to the zone.",
+            _ => throw new DomainException("zone.choose", "Choose a zone, a new zone or no zone."),
         }, ct, FocusOn(ids));
     }
 
-    public Task<IActionResult> OnPostTeamRenameAsync(int id, int teamId, string? name, CancellationToken ct) =>
-        RunAsync(id, async () => { await teams.RenameAsync(teamId, name ?? "", ct); return "Team renamed."; }, ct);
+    public Task<IActionResult> OnPostZoneRenameAsync(int id, int zoneId, string? name, CancellationToken ct) =>
+        RunAsync(id, async () => { await zones.RenameAsync(zoneId, name ?? "", ct); return "Zone renamed."; }, ct);
 
-    public Task<IActionResult> OnPostTeamColorAsync(int id, int teamId, int color, CancellationToken ct) =>
-        RunAsync(id, async () => { await teams.SetColorAsync(teamId, color, ct); return "Colour changed."; }, ct);
+    public Task<IActionResult> OnPostZoneColorAsync(int id, int zoneId, int color, CancellationToken ct) =>
+        RunAsync(id, async () => { await zones.SetColorAsync(zoneId, color, ct); return "Colour changed."; }, ct);
 
-    public Task<IActionResult> OnPostTeamDeleteAsync(int id, int teamId, CancellationToken ct) =>
-        RunAsync(id, async () => { await teams.DeleteAsync(teamId, ct); return "Team deleted; its workspots stay on the floor."; }, ct);
+    public Task<IActionResult> OnPostZoneDeleteAsync(int id, int zoneId, CancellationToken ct) =>
+        RunAsync(id, async () => { await zones.DeleteAsync(zoneId, ct); return "Zone deleted; its workspots stay on the floor."; }, ct);
 
     public Task<IActionResult> OnPostRetireAsync(int id, string? ids, CancellationToken ct) =>
         RunAsync(id, async () => $"{await spots.SetActiveAsync(Ids(ids), false, ct)} seat(s) switched off.", ct, FocusOn(ids));
@@ -165,12 +165,12 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         if (view is null) return false;
         View = view;
         var states = await assignments.StatesAsync(view.Spots, ct);
-        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Teams, states);
+        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Zones, states);
         Status = await assignments.StatusAsync(view.Spots, ct);
         HasDeclaredSeats = view.Spots.Any(s => s.RoomId is not null || s.TableId is not null) ||
                            view.Floor.Svg.Contains("data-kind=\"seat\"", StringComparison.Ordinal);
         FocusIds = await spots.ElementIdsForFocusAsync(id, Focus, ct);
-        TeamSeats = view.ActiveSpots.Where(s => s.TeamId != null).GroupBy(s => s.TeamId!.Value).ToDictionary(g => g.Key, g => g.Count());
+        ZoneSeats = view.ActiveSpots.Where(s => s.ZoneId != null).GroupBy(s => s.ZoneId!.Value).ToDictionary(g => g.Key, g => g.Count());
         return true;
     }
 

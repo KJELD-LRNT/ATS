@@ -1,11 +1,11 @@
 @model string
-@* Find a room, a team, or a person or desktop at a desk, on any floor. site.js ([data-workplace-find]) fills the list; picking a result opens its floor with the seats highlighted. *@
+@* Find a room, a zone, or a person or desktop at a desk, on any floor. site.js ([data-workplace-find]) fills the list; picking a result opens its floor with the seats highlighted. *@
 <div class="combo" data-workplace-find data-url="@Url.Page("/Workplace/Index", "Find")" data-floor-url="@Url.Page("/Workplace/Floor", new { id = 123456789 })">
     <div class="searchbox searchbox--wide">
         @Ui.Icon("search", 16, 2)
-        <label for="@Model" class="visually-hidden">Find a person, desktop, room or team</label>
+        <label for="@Model" class="visually-hidden">Find a person, desktop, room or zone</label>
         <input id="@Model" type="search" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded="false"
-               aria-controls="@(Model)-list" placeholder="Find a person, desktop, room or team…" />
+               aria-controls="@(Model)-list" placeholder="Find a person, desktop, room or zone…" />
     </div>
-    <ul id="@(Model)-list" class="combo-list" role="listbox" aria-label="Matching workspots, rooms and teams" hidden></ul>
+    <ul id="@(Model)-list" class="combo-list" role="listbox" aria-label="Matching workspots, rooms and zones" hidden></ul>
 </div>

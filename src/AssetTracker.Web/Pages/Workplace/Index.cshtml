@@ -6,7 +6,7 @@
 <header class="page-header">
     <div class="page-heading">
         <h1>Workplace</h1>
-        <p class="page-subtitle">Floor plans with their workspots. Find a seat, a room or a team on any floor.</p>
+        <p class="page-subtitle">Floor plans with their workspots. Find a seat, a room or a zone on any floor.</p>
     </div>
     @if (Model.CanEdit)
     {
@@ -45,14 +45,14 @@
         <div class="card-header"><h2>@site.Key</h2></div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th scope="col">Floor</th><th scope="col" class="num">Workspots</th><th scope="col" class="num">Teams</th><th scope="col">Drawing imported</th></tr></thead>
+                <thead><tr><th scope="col">Floor</th><th scope="col" class="num">Workspots</th><th scope="col" class="num">Zones</th><th scope="col">Drawing imported</th></tr></thead>
                 <tbody>
                 @foreach (var f in site)
                 {
                     <tr>
                         <td><a asp-page="Floor" asp-route-id="@f.Id"><strong>@f.Name</strong></a>@if (!f.IsActive) { <span class="badge badge--muted">Archived</span> }</td>
                         <td class="num">@f.Spots</td>
-                        <td class="num">@f.Teams</td>
+                        <td class="num">@f.Zones</td>
                         <td class="nowrap">@f.ImportedAt.ToString("yyyy-MM-dd")</td>
                     </tr>
                 }

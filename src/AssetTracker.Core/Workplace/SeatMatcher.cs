@@ -6,7 +6,7 @@ using AssetTracker.Core.Domain;
 namespace AssetTracker.Core.Workplace;
 
 /// <summary>
-/// Finds the seats of a floor again in a revised drawing, so their teams, placements and settings carry over even when
+/// Finds the seats of a floor again in a revised drawing, so their zones, placements and settings carry over even when
 /// the drawing is re-made: first by element id, then by the drawing's own seat id (<c>data-id</c>), then by position
 /// (the nearest seat within half the usual distance between seats, in the drawing's coordinates or, when the drawing was
 /// re-scaled, relative to its viewBox, whichever finds more). An automatic id (<c>fp-e12</c>, given to shapes without one)

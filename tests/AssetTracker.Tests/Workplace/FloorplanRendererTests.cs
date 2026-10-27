@@ -33,7 +33,7 @@ public class FloorplanRendererTests
         Assert.Contains("<title>Free desk · Fox room</title>", svg);
         Assert.Contains("<title>Seat, not a desk · Fox room</title>", svg);
         Assert.DoesNotContain(">R7-T01-S0", svg); // no seat id in any text
-        Assert.DoesNotContain("fp-teamlayer", svg);
+        Assert.DoesNotContain("zone-layer", svg);
         // the icon shapes for the markers are in the drawing, and nothing is drawn for empty seats
         Assert.Contains("<symbol id=\"fp-i-person\"", svg);
         Assert.DoesNotContain("data-mark=", svg);
@@ -86,53 +86,53 @@ public class FloorplanRendererTests
     }
 
     [Fact]
-    public void Team_members_are_coloured_and_the_team_is_outlined_and_labelled_and_names_are_escaped()
+    public void Zone_members_are_coloured_and_the_zone_is_outlined_and_labelled_and_names_are_escaped()
     {
         var (floor, spots) = Build();
-        var team = new FloorTeam { Id = 5, FloorId = 1, Name = "Fox & <b>Co</b>", ColorIndex = 3 };
-        spots[0].TeamId = 5;
-        spots[1].TeamId = 5;
-        var svg = FloorplanRenderer.Render(floor, spots, [team]);
+        var zone = new FloorZone { Id = 5, FloorId = 1, Name = "Fox & <b>Co</b>", ColorIndex = 3 };
+        spots[0].ZoneId = 5;
+        spots[1].ZoneId = 5;
+        var svg = FloorplanRenderer.Render(floor, spots, [zone]);
 
-        Assert.Contains("fp-free fp-team-3", svg);
-        Assert.Equal(2, Regex.Matches(svg, "<circle[^>]*data-team=\"5\"").Count);
-        Assert.Contains("class=\"fp-team-outline fp-team-3\"", svg);
+        Assert.Contains("fp-free zc-3", svg);
+        Assert.Equal(2, Regex.Matches(svg, "<circle[^>]*data-zone=\"5\"").Count);
+        Assert.Contains("class=\"zone-outline zc-3\"", svg);
         Assert.Contains("<title>Free desk · Fox &amp; &lt;b&gt;Co&lt;/b&gt; · Fox room</title>", svg);
         Assert.Contains("Fox &amp; &lt;b&gt;Co&lt;/b&gt;", svg);
         Assert.DoesNotContain("<b>", svg);
     }
 
     [Fact]
-    public void A_table_split_between_two_teams_gets_an_outline_and_a_name_for_each()
+    public void A_table_split_between_two_zones_gets_an_outline_and_a_name_for_each()
     {
         var (floor, spots) = Build();
-        var a = new FloorTeam { Id = 5, FloorId = 1, Name = "Alpha", ColorIndex = 0 };
-        var b = new FloorTeam { Id = 6, FloorId = 1, Name = "Beta", ColorIndex = 1 };
-        spots[0].TeamId = 5;
-        spots[1].TeamId = 6;
-        spots[2].TeamId = 6;
+        var a = new FloorZone { Id = 5, FloorId = 1, Name = "Alpha", ColorIndex = 0 };
+        var b = new FloorZone { Id = 6, FloorId = 1, Name = "Beta", ColorIndex = 1 };
+        spots[0].ZoneId = 5;
+        spots[1].ZoneId = 6;
+        spots[2].ZoneId = 6;
         var svg = FloorplanRenderer.Render(floor, spots, [a, b]);
 
-        Assert.Single(Regex.Matches(svg, "class=\"fp-team-outline fp-team-0\""));
-        Assert.Single(Regex.Matches(svg, "class=\"fp-team-outline fp-team-1\""));
-        Assert.Single(Regex.Matches(svg, "class=\"fp-team-label fp-team-0\"[^>]*>Alpha<"));
-        Assert.Single(Regex.Matches(svg, "class=\"fp-team-label fp-team-1\"[^>]*>Beta<"));
+        Assert.Single(Regex.Matches(svg, "class=\"zone-outline zc-0\""));
+        Assert.Single(Regex.Matches(svg, "class=\"zone-outline zc-1\""));
+        Assert.Single(Regex.Matches(svg, "class=\"zone-label zc-0\"[^>]*>Alpha<"));
+        Assert.Single(Regex.Matches(svg, "class=\"zone-label zc-1\"[^>]*>Beta<"));
         // Alpha's outline is around its one seat only (x 70 +- 4 or so), not across the table
-        var alpha = Regex.Match(svg, "<rect class=\"fp-team-outline fp-team-0\" x=\"([0-9.]+)\"[^>]*width=\"([0-9.]+)\"");
+        var alpha = Regex.Match(svg, "<rect class=\"zone-outline zc-0\" x=\"([0-9.]+)\"[^>]*width=\"([0-9.]+)\"");
         Assert.True(double.Parse(alpha.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture) < 15);
     }
 
     [Fact]
-    public void A_switched_off_seat_is_marked_and_is_not_coloured_by_its_team()
+    public void A_switched_off_seat_is_marked_and_is_not_coloured_by_its_zone()
     {
         var (floor, spots) = Build();
-        var team = new FloorTeam { Id = 5, FloorId = 1, Name = "T", ColorIndex = 1 };
-        spots[0].TeamId = 5;
+        var zone = new FloorZone { Id = 5, FloorId = 1, Name = "T", ColorIndex = 1 };
+        spots[0].ZoneId = 5;
         spots[0].IsActive = false;
-        var svg = FloorplanRenderer.Render(floor, spots, [team]);
+        var svg = FloorplanRenderer.Render(floor, spots, [zone]);
 
         Assert.Contains("fp-ws-off", svg);
-        Assert.DoesNotContain("fp-team-1", svg);
+        Assert.DoesNotContain("zc-1", svg);
     }
 
     [Fact]

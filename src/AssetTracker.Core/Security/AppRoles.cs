@@ -42,6 +42,6 @@ public static class Policies
     /// <summary>IT, facility or manager: look at the Workplace floor plans (managers only for their granted sites).</summary>
     public const string WorkplaceRead = "WorkplaceRead";
 
-    /// <summary>IT or facility: import floor plans and change workspots and teams.</summary>
+    /// <summary>IT or facility: import floor plans and change workspots and zones.</summary>
     public const string WorkplaceEdit = "WorkplaceEdit";
 }

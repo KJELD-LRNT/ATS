@@ -13,10 +13,10 @@
     };
     var flaggedSeats = s.Flags.Select(f => f.WorkspotId).Distinct().Count();
     var spots = Model.View.Spots.ToDictionary(w => w.Id);
-    var teamNames = Model.View.Teams.ToDictionary(t => t.Id, t => t.Name);
-    // Free desks per team and room ("Finance", "Sales · Open space"); a desk has no name of its own.
+    var zoneNames = Model.View.Zones.ToDictionary(t => t.Id, t => t.Name);
+    // Free desks per zone and room ("Finance", "Sales · Open space"); a desk has no name of its own.
     var freeGroups = s.FreeDesks.Where(spots.ContainsKey).Select(id => spots[id])
-        .GroupBy(w => w.Place(w.TeamId is { } t && teamNames.TryGetValue(t, out var n) ? n : null))
+        .GroupBy(w => w.Place(w.ZoneId is { } t && zoneNames.TryGetValue(t, out var n) ? n : null))
         .OrderBy(g => g.Key.Length == 0).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase).ToList();
 }
 <section class="card wp-box wp-status" aria-labelledby="wp-status-h" data-status>

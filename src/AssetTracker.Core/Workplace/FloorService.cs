@@ -9,10 +9,10 @@ using Microsoft.EntityFrameworkCore;
 namespace AssetTracker.Core.Workplace;
 
 public sealed record FloorSummary(int Id, int SiteId, string SiteKey, string SiteName, string Name, bool IsActive,
-    int Spots, int Teams, DateTimeOffset ImportedAt);
+    int Spots, int Zones, DateTimeOffset ImportedAt);
 
 public sealed record FloorView(Floor Floor, string SiteKey, string SiteName, IReadOnlyList<Workspot> Spots,
-    IReadOnlyList<FloorTeam> Teams)
+    IReadOnlyList<FloorZone> Zones)
 {
     public IEnumerable<Workspot> ActiveSpots => Spots.Where(s => s.IsActive);
 }
@@ -47,11 +47,11 @@ public class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit,
         return await floors
             .OrderBy(f => f.Site!.Key).ThenBy(f => f.SortOrder).ThenBy(f => f.Name)
             .Select(f => new FloorSummary(f.Id, f.SiteId, f.Site!.Key, f.Site.Name, f.Name, f.IsActive,
-                f.Workspots.Count(w => w.IsActive), f.Teams.Count, f.ImportedAt))
+                f.Workspots.Count(w => w.IsActive), f.Zones.Count, f.ImportedAt))
             .ToListAsync(ct);
     }
 
-    /// <summary>The floor with its workspots and teams, or null when it does not exist or is out of the principal's scope.</summary>
+    /// <summary>The floor with its workspots and zones, or null when it does not exist or is out of the principal's scope.</summary>
     public async Task<FloorView?> GetAsync(int id, CancellationToken ct = default)
     {
         var floor = await db.Floors.AsNoTracking().Include(f => f.Site).SingleOrDefaultAsync(f => f.Id == id, ct);
@@ -59,8 +59,8 @@ public class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit,
         if (!(await scope.GetWorkplaceAsync(ct)).CanRead(floor.SiteId)) return null;
         if (!floor.IsActive && !scope.CanEditWorkplace) return null;
         var spots = await db.Workspots.AsNoTracking().Where(w => w.FloorId == id).OrderBy(w => w.Label).ToListAsync(ct);
-        var teams = await db.FloorTeams.AsNoTracking().Where(t => t.FloorId == id).OrderBy(t => t.Name).ToListAsync(ct);
-        return new FloorView(floor, floor.Site!.Key, floor.Site.Name, spots, teams);
+        var zones = await db.FloorZones.AsNoTracking().Where(t => t.FloorId == id).OrderBy(t => t.Name).ToListAsync(ct);
+        return new FloorView(floor, floor.Site!.Key, floor.Site.Name, spots, zones);
     }
 
     /// <summary>Sites a floor can be imported for (editors only; all active sites).</summary>
@@ -103,7 +103,7 @@ public class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit,
 
     /// <summary>
     /// Replaces the drawing with a revised one. Seats are found again by element id, the drawing's seat id or position
-    /// (<see cref="SeatMatcher"/>), so a re-made drawing keeps teams, placements and desk settings; new seats are added,
+    /// (<see cref="SeatMatcher"/>), so a re-made drawing keeps zones, placements and desk settings; new seats are added,
     /// seats that are back are switched on, seats that are gone are switched off (never deleted; whoever was placed there
     /// is flagged). Rooms and tables are read again; a seat whose room changed type is a desk or not by its new type, unless
     /// something is placed at it.
@@ -143,7 +143,7 @@ public class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit,
         var orphaned = 0;
         foreach (var spot in floor.Workspots.Where(w => w.Id != 0 && !found.Contains(w.Id) && w.IsActive))
         {
-            spot.IsActive = false; // its team stays, for when a later drawing brings the seat back
+            spot.IsActive = false; // its zone stays, for when a later drawing brings the seat back
             deactivated++;
             if (placed.Contains(spot.Id)) orphaned++;
         }

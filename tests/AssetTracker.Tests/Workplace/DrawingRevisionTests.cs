@@ -9,28 +9,28 @@ namespace AssetTracker.Tests.Workplace;
 
 /// <summary>
 /// The drawings are not final: a revised drawing (other element ids, renumbered seats, a different scale, regrouped
-/// elements) must keep the floor's seats, with their teams and placements, and the map must follow it.
+/// elements) must keep the floor's seats, with their zones and placements, and the map must follow it.
 /// </summary>
 public class DrawingRevisionTests : IClassFixture<AppFactory>
 {
     private readonly AppFactory _f;
     public DrawingRevisionTests(AppFactory f) => _f = f;
 
-    private sealed record Setup(Floor Floor, List<Workspot> Spots, Person Anna, FloorTeam Team);
+    private sealed record Setup(Floor Floor, List<Workspot> Spots, Person Anna, FloorZone Zone);
 
-    /// <summary>A floor of four seats; Anna sits at seat 2, seats 1-2 are team "Window".</summary>
+    /// <summary>A floor of four seats; Anna sits at seat 2, seats 1-2 are zone "Window".</summary>
     private async Task<Setup> NewFloorAsync(string key, string? svg = null)
     {
         var site = await _f.WithDbAsync(db => Seed.SiteAsync(db, key));
         var floor = (await WorkplaceSeed.ImportAsync(_f, site, "Floor", svg ?? WorkplaceSeed.Annotated(4))).Floor;
         var spots = await SpotsAsync(floor.Id);
         var anna = await _f.WithDbAsync(db => Seed.PersonAsync(db, key.ToLowerInvariant() + ".anna"));
-        var team = await _f.RunAsAsync(TestUser.It, async sp =>
+        var zone = await _f.RunAsAsync(TestUser.It, async sp =>
         {
             await sp.GetRequiredService<AssignmentService>().AssignPersonAsync(spots[1].Id, anna.Id);
-            return await sp.GetRequiredService<TeamService>().CreateAsync("Window", [spots[0].Id, spots[1].Id]);
+            return await sp.GetRequiredService<ZoneService>().CreateAsync("Window", [spots[0].Id, spots[1].Id]);
         });
-        return new Setup(floor, spots, anna, team);
+        return new Setup(floor, spots, anna, zone);
     }
 
     private Task<List<Workspot>> SpotsAsync(int floorId) =>
@@ -43,12 +43,12 @@ public class DrawingRevisionTests : IClassFixture<AppFactory>
     {
         var after = await SpotsAsync(s.Floor.Id);
         Assert.Equal(s.Spots.Select(w => w.Id), after.Where(w => w.IsActive).Select(w => w.Id));
-        Assert.Equal([s.Team.Id, s.Team.Id, null, null], after.Select(w => w.TeamId).ToArray());
+        Assert.Equal([s.Zone.Id, s.Zone.Id, null, null], after.Select(w => w.ZoneId).ToArray());
         Assert.True(await _f.WithDbAsync(db => db.WorkspotAssignments.AnyAsync(a => a.WorkspotId == s.Spots[1].Id && a.PersonId == s.Anna.Id && a.ReleasedAt == null)));
     }
 
     [Fact]
-    public async Task A_re_made_drawing_with_other_element_ids_keeps_seats_teams_and_placements_by_seat_id()
+    public async Task A_re_made_drawing_with_other_element_ids_keeps_seats_zones_and_placements_by_seat_id()
     {
         var s = await NewFloorAsync("DR01");
         var r = await ReplaceAsync(s.Floor.Id, WorkplaceSeed.Annotated(4).Replace("id=\"f1-", "id=\"floor6-"));
@@ -95,7 +95,7 @@ public class DrawingRevisionTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task A_removed_seat_with_someone_on_it_is_switched_off_and_flagged_and_comes_back_with_its_team()
+    public async Task A_removed_seat_with_someone_on_it_is_switched_off_and_flagged_and_comes_back_with_its_zone()
     {
         var s = await NewFloorAsync("DR04");
         // seat 2 (Anna's) is gone, the others stay

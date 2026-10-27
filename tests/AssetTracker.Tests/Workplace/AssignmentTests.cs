@@ -50,7 +50,7 @@ public class AssignmentTests : IClassFixture<AppFactory>
         var s = await NewFloorAsync("AS01");
         var (anna, bob) = await _f.WithDbAsync(async db => (await Seed.PersonAsync(db, "as01.anna"), await Seed.PersonAsync(db, "as01.bob")));
 
-        // messages name the desk by its room (and team), never by the drawing's seat id
+        // messages name the desk by its room (and zone), never by the drawing's seat id
         Assert.Equal("as01.anna placed at a desk in Annex.", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
         Assert.Equal("as01.anna already sits at this desk.", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
         var taken = await Assert.ThrowsAsync<ConflictException>(() => AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, bob.Id)));
@@ -66,7 +66,7 @@ public class AssignmentTests : IClassFixture<AppFactory>
         var s = await NewFloorAsync("AS02");
         var anna = await _f.WithDbAsync(db => Seed.PersonAsync(db, "as02.anna"));
         await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id));
-        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<TeamService>().CreateAsync("Window", [s.Spots[1].Id]));
+        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<ZoneService>().CreateAsync("Window", [s.Spots[1].Id]));
         Assert.Equal("as02.anna moved from Floor · Annex to a desk in Window · Annex.", await AsIt(a => a.AssignPersonAsync(s.Spots[1].Id, anna.Id)));
 
         var rows = await RowsAsync(r => r.PersonId == anna.Id);

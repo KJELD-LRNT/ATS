@@ -8,7 +8,7 @@ namespace AssetTracker.Web.Pages.Workplace;
 
 /// <summary>
 /// Workplace: the floor plans of the sites the principal may see, and one search box that finds a seat, a room or a
-/// team on any of them. IT and facility can import floor plans; managers see their granted sites read-only.
+/// zone on any of them. IT and facility can import floor plans; managers see their granted sites read-only.
 /// </summary>
 [Authorize(Policy = Policies.WorkplaceRead)]
 public class IndexModel(FloorService floors, WorkspotService spots, AccessScope access) : PageModel
@@ -21,7 +21,7 @@ public class IndexModel(FloorService floors, WorkspotService spots, AccessScope 
 
     public async Task OnGetAsync(CancellationToken ct) => Floors = await floors.ListAsync(ct);
 
-    /// <summary>Suggestions for the search box (seats, rooms and teams on every floor the principal can see).</summary>
+    /// <summary>Suggestions for the search box (seats, rooms and zones on every floor the principal can see).</summary>
     public async Task<IActionResult> OnGetFindAsync(string? q, CancellationToken ct)
     {
         var hits = await spots.FindAsync(q, ct);

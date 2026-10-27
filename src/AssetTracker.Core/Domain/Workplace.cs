@@ -30,7 +30,7 @@ public class Floor
     public bool IsActive { get; set; } = true;
 
     public List<Workspot> Workspots { get; set; } = [];
-    public List<FloorTeam> Teams { get; set; } = [];
+    public List<FloorZone> Zones { get; set; } = [];
 }
 
 /// <summary>
@@ -50,7 +50,7 @@ public class Workspot
 
     /// <summary>
     /// The drawing's seat id (or the element id of a marked shape), unique per floor. Internal only: people know a desk by
-    /// who sits there, its desktop, its team and its room (<see cref="Place"/>), never by this id.
+    /// who sits there, its desktop, its zone and its room (<see cref="Place"/>), never by this id.
     /// </summary>
     public string Label { get; set; } = "";
 
@@ -59,8 +59,8 @@ public class Workspot
     public string? RoomType { get; set; }
     public string? TableId { get; set; }
 
-    public int? TeamId { get; set; }
-    public FloorTeam? Team { get; set; }
+    public int? ZoneId { get; set; }
+    public FloorZone? Zone { get; set; }
 
     public bool IsActive { get; set; } = true;
 
@@ -78,18 +78,18 @@ public class Workspot
     /// <summary>Whether a seat in a room of this type is a desk by default: offices, unknown types and seats outside a room.</summary>
     public static bool IsDeskRoomType(string? roomType) => string.IsNullOrEmpty(roomType) || !NonDeskRoomTypes.Contains(roomType);
 
-    /// <summary>Where a seat is, the way people say it: its team and its room ("Finance", "Sales · Open space"); empty when neither is known.</summary>
-    public string Place(string? teamName) => Place(teamName, RoomName ?? RoomId);
+    /// <summary>Where a seat is, the way people say it: its zone and its room ("Finance", "Sales · Open space"); empty when neither is known.</summary>
+    public string Place(string? zoneName) => Place(zoneName, RoomName ?? RoomId);
 
-    public static string Place(string? teamName, string? room) =>
-        string.Join(" · ", new[] { teamName, room }.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase));
+    public static string Place(string? zoneName, string? room) =>
+        string.Join(" · ", new[] { zoneName, room }.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase));
 }
 
 /// <summary>
 /// A cluster of workspots on one floor, drawn in a colour with its name. Display only: it has no meaning outside the
 /// map (no link to the directory or to loans) and can be renamed at any time.
 /// </summary>
-public class FloorTeam
+public class FloorZone
 {
     public int Id { get; set; }
 
@@ -98,7 +98,7 @@ public class FloorTeam
 
     public string Name { get; set; } = "";
 
-    /// <summary>Index into the map's team palette (<c>Workplace.TeamService.Colors</c>).</summary>
+    /// <summary>Index into the map's zone palette (<c>Workplace.ZoneService.Colors</c>).</summary>
     public int ColorIndex { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
