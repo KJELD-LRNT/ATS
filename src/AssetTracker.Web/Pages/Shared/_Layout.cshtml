@@ -18,6 +18,7 @@
     <link rel="preload" href="~/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="~/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @await RenderSectionAsync("Head", required: false)
     <script src="~/js/site.js" asp-append-version="true" defer></script>
 </head>
 <body>
@@ -30,6 +31,9 @@
             <span class="brand-mark">@Ui.Icon("tag", 18, 2)</span>
             <span class="brand-text"><span class="brand-name">Asset Tracker</span><span class="brand-sub">Internal IT</span></span>
         </a>
+        @* Narrow screens only (and only with JavaScript): the menu folds away behind this button so the page content is not pushed down. *@
+        <button type="button" class="menu-toggle" aria-controls="sidebar-menu" aria-expanded="true" data-menu-toggle hidden>Menu</button>
+        <div class="sidebar-menu" id="sidebar-menu">
 
         <ul class="nav-group">
             @{ NavLink("/Index", "Overview", "overview"); }
@@ -41,6 +45,14 @@
                 NavLink("/Reports/Index", "Reports", "reports", "/Reports/");
             }
         </ul>
+
+        @if (CurrentUser.IsIt || CurrentUser.IsFacility || CurrentUser.IsManager)
+        {
+            <ul class="nav-group" aria-labelledby="nav-workplace">
+                <li class="nav-heading" id="nav-workplace">Workplace</li>
+                @{ NavLink("/Workplace/Index", "Floor plans", "map", "/Workplace/"); }
+            </ul>
+        }
 
         @if (CurrentUser.IsIt)
         {
@@ -68,6 +80,8 @@
                     NavLink("/Admin/Vendors", "Vendors", "vendors");
                     NavLink("/Admin/Models", "Models", "models");
                     NavLink("/Admin/Grants", "Grants", "grants");
+                    NavLink("/Admin/SystemRoles", "System roles", "roles");
+                    NavLink("/Admin/OverviewTiles", "Overview tiles", "overview");
                     NavLink("/Admin/Settings", "Settings", "settings");
                     NavLink("/Admin/Sync", "Directory sync", "sync");
                     NavLink("/Admin/Privacy", "Privacy", "privacy");
@@ -92,6 +106,7 @@
                 <span class="user-name">@CurrentUser.Name</span>
                 <span class="user-roles">@Ui.RolesLabel(CurrentUser.Roles)</span>
             </span>
+        </div>
         </div>
     </nav>
 

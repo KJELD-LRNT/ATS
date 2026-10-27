@@ -37,9 +37,11 @@ public sealed record InventoryAssetRow(
 
 /// <summary>A quantity pool balance. OnHand = Available + Outstanding.</summary>
 public sealed record PoolBalanceRow(
-    int Id, string Sku, string Type, int SiteId, string SiteKey, string Description, int Available, int Outstanding)
+    int Id, string Sku, string Type, int SiteId, string SiteKey, string Description, int Available, int Outstanding,
+    int? MinimumStock = null)
 {
     public int OnHand => Available + Outstanding;
+    public bool IsBelowMinimum => MinimumStock is { } m && Available < m;
 }
 
 public sealed record AssetCount(string SiteKey, string Type, AssetState State, int Count);
@@ -107,6 +109,9 @@ public sealed record LoanRow
     /// (see <c>OverduePolicy.DaysOverdue</c>).
     /// </summary>
     public int? DaysOverdue { get; init; }
+
+    /// <summary>Set by the due-soon list: whole days until the due date at the loan's site (1 = tomorrow).</summary>
+    public int? DaysUntilDue { get; init; }
 
     public string ItemLabel => AssetTag ?? PoolSku ?? "";
 }

@@ -93,7 +93,7 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
         {
             kind = i.Kind, id = i.Id, key = i.Key, type = i.Type, typeId = i.TypeId, title = i.Title, description = i.Description,
             siteId = i.SiteId, siteKey = i.SiteKey, siteName = i.SiteName, canCheckOut = i.CanCheckOut, status = i.Status,
-            holder = i.Holder, available = i.Available,
+            holder = i.Holder, available = i.Available, loanId = i.LoanId,
         }));
     }
 

@@ -1,0 +1,54 @@
+@page
+@model AssetTracker.Web.Pages.Admin.OverviewTilesModel
+@using AssetTracker.Core.Overview
+@{
+    ViewData["Title"] = "Overview tiles";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Overview tiles</h1>
+        <div class="prose">
+            <p>Choose which tiles of the <a asp-page="/Index">overview</a> each role sees. A person with both roles sees a tile when either role has it. Tiles that show mail or sync status are for IT only and cannot be given to managers.</p>
+            <p>The admin role by itself has no inventory access and therefore no overview tiles. Changes apply from the next page view and are audited.</p>
+        </div>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+<div asp-validation-summary="All" class="alert alert--error"></div>
+
+<form method="post" class="card card--flush" aria-labelledby="tiles-h">
+    <div class="card-header"><h2 id="tiles-h">Tiles per role</h2></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Tile</th><th scope="col">Shows</th><th scope="col" class="num">IT</th><th scope="col" class="num">Manager</th></tr></thead>
+            <tbody>
+            @foreach (var t in OverviewTiles.All)
+            {
+                var roles = Model.Current.TryGetValue(t.Key, out var r) ? r : t.DefaultRoles;
+                var itAllowed = (t.AllowedRoles & AppRoles.It) != 0;
+                var mgrAllowed = (t.AllowedRoles & AppRoles.Manager) != 0;
+                <tr>
+                    <th scope="row">@t.Title</th>
+                    <td class="secondary">@t.Description@(mgrAllowed ? "" : " (IT only)")</td>
+                    <td class="num">
+                        <label class="check check--cell"><input type="checkbox" name="It" value="@t.Key" checked="@((roles & AppRoles.It) != 0)" disabled="@(!itAllowed)" aria-label="@t.Title for IT" /></label>
+                    </td>
+                    <td class="num">
+                        <label class="check check--cell"><input type="checkbox" name="Manager" value="@t.Key" checked="@((roles & AppRoles.Manager) != 0)" disabled="@(!mgrAllowed)" aria-label="@t.Title for managers" /></label>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer form-actions">
+        <button type="submit" class="btn--primary">Save</button>
+    </div>
+</form>
+<form method="post" asp-page-handler="Reset" data-confirm="Reset every tile to its default?">
+    <button type="submit" class="btn">Reset to defaults</button>
+</form>

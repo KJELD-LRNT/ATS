@@ -130,6 +130,8 @@ All names are made up, for example `Alex Demoson` or `Jules Sampleton`. All addr
 
 **Closed history:** `AMS-LT-007` has two closed loans. `NYC-LT-007` was loaned to Billie Demoson at New York, returned, and then **moved to Amsterdam**. `NYC-LT-008` was returned damaged. A Singapore mouse loan was returned.
 
+**Floor plans (Workplace):** AMS *Floor 1* (four offices, boardroom, canteen, print room; teams *Finance*, *Engineering*, *Service desk*), AMS *Floor 2* and NYC *Floor 1*, drawn from the fictional SVGs in `DemoFloorplans`. `max.demoson` has the **Facility** role, given inside the app (Admin → System roles), not by an AD group.
+
 ## 7. Scenario checklist
 
 Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6, "Stage n") or the sponsor decision (`docs/decisions.md`, D1–D11) that it demonstrates. Unless a scenario says otherwise, use the default identity (IT + Admin as `DEMO\you`). Switch identities on `/Demo`.
@@ -142,6 +144,11 @@ Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6,
 - [ ] **Pool via the finder.** Pick the `HS-STEREO` pool, then a person, then *Find*: the confirm step shows the pool with a quantity stepper; check out 2 units.
 - [ ] **Without the dropdown.** Type `PH-001` with a site filter and press *Find* without picking: a list of the matching items is shown with links (checked-out ones greyed). Typing text that matches exactly one item selects it directly; text that matches nothing says so.
 - [ ] **Person typeahead shows the site.** On *Loans → Check out* type `an` in *Person*. **Expected:** suggestions appear while typing, each with the person's name, username, email, job title and a site badge (`AMS`, `NYC`, `SIN` or *No site*). Arrow keys and Enter, or a click, pick one; *Find* then offers just that person, already selected, with a note when their site differs from the item's.
+- [ ] **Overview tiles.** Log in as IT and open *Overview*. **Expected:** a find box, four clickable tiles (open loans, overdue, assets available, pool units; each opens the matching list), "Needs attention" (a loan held by someone who left, an unavailable asset, a pool below minimum), the overdue table with a *Return* button per row, due soon, inventory by type, and pool stock with the minimum next to each pool. Pick a site in the *Site* dropdown: every figure and list narrows to that site and the tiles' links keep the site.
+- [ ] **Find box.** Type `AMS-LT-001` in the overview find box and press Enter. **Expected:** the return page of that loan (it is checked out). Type `AMS-LT-010`: the asset page, with *Check out* offered in the suggestion list. Type a person's name: the person appears as a suggestion. Type `stereo`: the headset pool with its available count.
+- [ ] **Minimum stock.** Open the `HS-STEREO` pool: *Minimum stock* shows 10; set it above the available count and save. **Expected:** a *Below* badge appears on the pool list, *Pools → Below minimum* lists it, and it moves to the top of the overview's pool stock and counts in "Needs attention". Clear the field to remove the minimum.
+- [ ] **Loans held by people who left.** *Loans* → tick *Held by people who left* (or follow the link in "Needs attention"). **Expected:** only open loans whose holder is inactive, such as `AMS-LT-004`.
+- [ ] **Phone layout.** Make the browser window narrow (about 400 px wide, or use the phone view of the developer tools). **Expected:** the menu is collapsed behind a *Menu* button; tables turn into cards with the column names; nothing scrolls sideways.
 - [ ] **Missing email blocks checkout** (Stage 2). Try to check out to `lou.fixturo`. **Expected:** this person is not offered as a recipient, or the checkout is refused with "has no valid email address".
 - [ ] **Inactive people cannot receive new loans** (Stage 1/2). Search `kai.demoson`. **Expected:** not offered for checkout.
 - [ ] **Unmapped site can still borrow** (D8). `jules.fixturo` has no site and already holds `NYC-LT-003`. Check out another item to them. **Expected:** it works.
@@ -174,6 +181,7 @@ Switch to **Admin** only.
 - [ ] **Admin alone sees no inventory** (Stage 1). There are no Assets, Loans or Reports links, and their URLs return *Forbidden*.
 - [ ] **Tag generator and type-specific forms.** *Assets → New asset*, choose *Laptop* and a site. **Expected:** the form previews the next tag (for example `AMS-LT-011`); leaving the tag empty creates the asset with it. Choose *Phone*: vendor and model dropdowns and two IMEI fields. Choose *Phone number*: only the phone number, provider, SIM type, SIM status, SIM number and PUC (marked IT only).
 - [ ] **Asset types, fields, vendors and models** (admin). *Asset types → Phone number*: switch standard fields, change the tag pattern (the example updates), add a custom field (for example a *Choice*), move it up or down and open a new asset form to see it. *Vendors* and *Models*: add a vendor and a model for *Laptop*, then pick it on a new laptop (choosing a vendor narrows the models). Deactivating a model removes it from new forms but not from existing assets. *Sites → Tag code* sets the `{SITE}` part of generated tags.
+- [ ] **Overview tiles per role** (admin). *Overview tiles* is a table of tiles with a column for IT and one for managers. Untick *Inventory by type* for IT and *Pool stock* for managers, save, then switch role (*Demo*) and reload *Overview*: the tile is gone for that role only. "Needs attention" cannot be given to managers (greyed out). *Reset to defaults* brings everything back; both actions are audited.
 - [ ] **Sites and grants**. *Sites*: edit a site's timezone or directory value. *Grants*: grant `Demo Manager (AMS)` access to NYC, then switch to the manager and see NYC appear. Remove the grant again.
 - [ ] **Settings: test directory query** (WP4.1). *Settings → Test directory query*. **Expected:** "Fetched 151 entries: 149 valid, 2 would be quarantined … 2 have an unmapped site value … 3 are disabled", plus a sample. Nothing is synced.
 - [ ] **Settings: test email**. Enter an address (for example `you@demo.example`) and click *Send test email*. **Expected:** success, and the message is in the demo mailbox.
@@ -184,6 +192,20 @@ Switch to **Admin** only.
 ### No role
 
 - [ ] Untick all roles. **Expected:** the home page says you have no access, and every inventory, admin and audit URL returns *Forbidden* or *Not found*. `/Demo` stays reachable so you can switch back.
+
+### Workplace (floor plans)
+
+Delete the old demo database first (`%LOCALAPPDATA%\AssetTrackerDemo`): this module adds tables.
+
+- [ ] **Floor plans.** *Workplace → Floor plans* lists *Floor 1* and *Floor 2* of Amsterdam and *Floor 1* of New York. Open *AMS Floor 1*. **Expected:** a map of four offices, a boardroom, a canteen and a print room; the *Finance*, *Engineering* and *Service desk* seats are coloured with a dashed outline and the team name; the side panel lists the three teams and a summary (workspots per room type).
+- [ ] **Select seats.** Click a seat: the panel shows its label, room, table and team. Shift-click adds seats; click a table or a room to select all its seats; drag with **Shift** (or press *Select area* and drag) to select an area. Scroll or use + / − / *Fit* to zoom, drag to move.
+- [ ] **Find on the map.** Type `sales` in the search box above the map: the *Sales* room (and, on other floors, matches there) is listed with its floor; pick it. **Expected:** its seats are highlighted and the map zooms to them. Type `Open space` on the *Floor plans* page and pick a result: it opens that floor with the seats highlighted. Typing a seat label such as `1.04-T01-S02` finds the seat.
+- [ ] **Teams.** Select the seats of the *Sales* room, type a name and press *Group as team*. **Expected:** the seats take the next colour with an outline and the name. Under *Teams* open *Edit* on it: rename it, change its colour, delete it (seats stay on the floor). Select seats of two teams and press *Take out of team* or *Add to an existing team*.
+- [ ] **Rename a seat.** Select one seat, change its label and save: the new label is what the search finds. A label already used on the floor is refused.
+- [ ] **Import a floor plan.** *Workplace → Import floor plan*: choose a site, a name and an SVG. A drawing in the facility team's format (rooms, tables and seats with `data-kind`) gives one workspot per seat at once. Try a plain SVG without seats: the page asks you to click the shapes that are seats, press *Mark as workspots* (optionally with a prefix such as `D-`) and the seats get labels D-1, D-2, … Scripts, links and images in an uploaded file are removed.
+- [ ] **Replace a drawing.** *Replace drawing* with a revised SVG of the same floor: the message says how many workspots were added and switched off; labels and teams stay, seats that disappeared are switched off (greyed), not deleted. Replace it again with the original and they come back.
+- [ ] **Facility role, given in the app.** As the demo admin open *Admin → System roles*: *Max Demoson* has the Facility role. On `/Demo` choose *Max Demoson (… Facility role)*, untick every role and apply. **Expected:** the menu shows only *Overview* and *Floor plans*; floors can be imported and edited; Assets, Loans, Reports and Admin return *Forbidden*. Back as admin remove the role: Max loses access at once. Give it again to someone else by searching their name.
+- [ ] **Manager (read only).** As *Demo Manager (AMS)* with only the Manager role: the floors of Amsterdam are listed and can be searched, but there is no *Import*, *Replace* or team editing, and the New York floor is *Not found*.
 
 ### Time, overdue and reminders (D4)
 

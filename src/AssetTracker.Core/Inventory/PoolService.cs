@@ -9,11 +9,13 @@ using Microsoft.EntityFrameworkCore;
 namespace AssetTracker.Core.Inventory;
 
 public sealed record CreatePoolInput(
-    int TypeId, string Sku, int SiteId, string Description, int InitialQuantity = 0, string? Reason = null);
+    int TypeId, string Sku, int SiteId, string Description, int InitialQuantity = 0, string? Reason = null,
+    int? MinimumStock = null);
 
+/// <param name="BelowMinimum">Only pools that have a minimum stock level and are under it.</param>
 public sealed record PoolSearch(
     string? Query = null, int? SiteId = null, int? TypeId = null,
-    int Page = 1, int PageSize = Paging.DefaultPageSize);
+    int Page = 1, int PageSize = Paging.DefaultPageSize, bool BelowMinimum = false);
 
 /// <summary>
 /// Site quantity pools and their stock ledger. Every balance change is a conditional atomic update plus a
@@ -30,6 +32,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
         var q = (await access.VisiblePoolsAsync(ct)).AsNoTracking().Include(p => p.Site).Include(p => p.Type).AsQueryable();
         if (s.SiteId is { } siteId) q = q.Where(p => p.SiteId == siteId);
         if (s.TypeId is { } typeId) q = q.Where(p => p.TypeId == typeId);
+        if (s.BelowMinimum) q = q.Where(p => p.MinimumStock != null && p.Available < p.MinimumStock);
 
         var term = s.Query?.Trim();
         if (!string.IsNullOrEmpty(term))
@@ -88,6 +91,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
             throw new DomainException("pool.description", "Description is required (at most 500 characters).");
         if (input.InitialQuantity < 0)
             throw new DomainException("pool.quantity_negative", "Initial quantity cannot be negative.");
+        var minimum = ValidMinimum(input.MinimumStock);
         if (!await db.Sites.AnyAsync(s => s.Id == input.SiteId && s.IsActive, ct))
             throw new DomainException("pool.site_invalid", "Choose an active site.");
         if (await db.Pools.AnyAsync(p => p.Sku == sku && p.SiteId == input.SiteId, ct))
@@ -97,7 +101,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
         var pool = new Pool
         {
             TypeId = type.Id, Sku = sku, SiteId = input.SiteId, Description = description,
-            Available = input.InitialQuantity, CreatedAt = now,
+            Available = input.InitialQuantity, CreatedAt = now, MinimumStock = minimum,
         };
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -118,9 +122,33 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
                 Normalization.OptionalText(input.Reason) ?? "Initial stock", now));
         }
         audit.Record("pool.create", nameof(Pool), pool.Id, pool.SiteId, Normalization.OptionalText(input.Reason),
-            new { pool.Sku, Type = type.Name, pool.Description, input.InitialQuantity });
+            new { pool.Sku, Type = type.Name, pool.Description, input.InitialQuantity, pool.MinimumStock });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        return pool;
+    }
+
+    public const int MinimumStockMax = 100_000;
+
+    private static int? ValidMinimum(int? minimum) =>
+        minimum is < 0 or > MinimumStockMax
+            ? throw new DomainException("pool.minimum", $"The minimum stock must be between 0 and {MinimumStockMax} (or empty for none).")
+            : minimum;
+
+    /// <summary>
+    /// Sets (or clears, with null) the pool's minimum stock level. It is a setting, not a stock movement: no stock event,
+    /// only an audit row with the old and new value.
+    /// </summary>
+    public async Task<Pool> SetMinimumAsync(int poolId, int? minimum, CancellationToken ct = default)
+    {
+        access.EnsureIt();
+        var value = ValidMinimum(minimum);
+        var pool = await db.Pools.FirstOrDefaultAsync(p => p.Id == poolId, ct) ?? throw new AccessDeniedException();
+        var before = pool.MinimumStock;
+        if (before == value) return pool;
+        pool.MinimumStock = value;
+        audit.Record("pool.minimum", nameof(Pool), pool.Id, pool.SiteId, details: new { before, after = value });
+        await db.SaveChangesAsync(ct);
         return pool;
     }
 

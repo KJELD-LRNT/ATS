@@ -13,4 +13,5 @@ public interface ICurrentUser
     bool IsIt => Roles.HasFlag(AppRoles.It);
     bool IsManager => Roles.HasFlag(AppRoles.Manager);
     bool IsAdmin => Roles.HasFlag(AppRoles.Admin);
+    bool IsFacility => Roles.HasFlag(AppRoles.Facility);
 }

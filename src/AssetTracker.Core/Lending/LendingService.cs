@@ -34,7 +34,8 @@ public sealed record PersonOption(int Id, string DisplayName, string Username, s
 /// </summary>
 public sealed record ItemOption(
     string Kind, int Id, string Key, string Type, int TypeId, string? Title, string? Description,
-    int SiteId, string SiteKey, string SiteName, bool CanCheckOut, string Status, string? Holder = null, int? Available = null);
+    int SiteId, string SiteKey, string SiteName, bool CanCheckOut, string Status, string? Holder = null, int? Available = null,
+    int? LoanId = null);
 
 /// <summary>
 /// Checkout and return of tagged assets and pool quantities (WP2.1). IT only. Each operation runs in one explicit
@@ -129,6 +130,7 @@ public class LendingService(
                 SiteKey = a.Site!.Key, SiteName = a.Site.Name,
                 Title = a.Model != null ? a.Model.Vendor!.Name + " " + a.Model.Name : (a.Vendor != null ? a.Vendor.Name : null),
                 Holder = db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => l.HolderNameSnapshot).FirstOrDefault(),
+                LoanId = db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => (int?)l.Id).FirstOrDefault(),
             }).ToListAsync(ct);
         var poolRows = await pools
             .OrderBy(p => p.Sku == code ? 0 : 1).ThenBy(p => p.Available > 0 ? 0 : 1).ThenBy(p => p.Sku)
@@ -142,7 +144,7 @@ public class LendingService(
         var items = assetRows.Select(a => new ItemOption("asset", a.Id, a.Tag, a.Type, a.TypeId, a.Title,
                 string.IsNullOrWhiteSpace(a.Description) ? null : a.Description, a.SiteId, a.SiteKey, a.SiteName,
                 a.State == AssetState.Available, a.State == AssetState.CheckedOut ? "Checked out" : a.State.ToString(),
-                a.State == AssetState.CheckedOut ? a.Holder : null))
+                a.State == AssetState.CheckedOut ? a.Holder : null, LoanId: a.State == AssetState.CheckedOut ? a.LoanId : null))
             .Concat(poolRows.Select(p => new ItemOption("pool", p.Id, p.Sku, p.Type, p.TypeId, null,
                 string.IsNullOrWhiteSpace(p.Description) ? null : p.Description, p.SiteId, p.SiteKey, p.SiteName,
                 p.Available > 0, p.Available > 0 ? $"{p.Available} available" : "None available", Available: p.Available)));

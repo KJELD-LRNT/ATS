@@ -93,6 +93,29 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         var assets = await RunAsync(Ago(118), sp => CreateAssetsAsync(sp.GetRequiredService<AssetService>(), sites, models, ct));
         var pools = await RunAsync(Ago(118), sp => CreatePoolsAsync(sp.GetRequiredService<PoolService>(), sites, ct));
 
+        // 4b. Floor plans (imported like a real drawing), a few teams, and the Facility role for one person (it lives in
+        // the application, not in an AD group: use "Act as person" on /Demo to sign in as them).
+        await RunAsync(Ago(117), async sp =>
+        {
+            var floors = sp.GetRequiredService<Core.Workplace.FloorService>();
+            var ams1 = await floors.ImportAsync(sites.Ams, "Floor 1", DemoFloorplans.Amsterdam1(), ct);
+            await floors.ImportAsync(sites.Ams, "Floor 2", DemoFloorplans.Amsterdam2(), ct);
+            await floors.ImportAsync(sites.Nyc, "Floor 1", DemoFloorplans.NewYork1(), ct);
+
+            var db = sp.GetRequiredService<AppDbContext>();
+            var teams = sp.GetRequiredService<Core.Workplace.TeamService>();
+            async Task<List<int>> SeatsOf(string room, int? upTo = null) =>
+                (await db.Workspots.Where(w => w.FloorId == ams1.Floor.Id && w.RoomId == room).OrderBy(w => w.ElementId)
+                    .Select(w => w.Id).ToListAsync(ct)).Take(upTo ?? int.MaxValue).ToList();
+            await teams.CreateAsync("Finance", await SeatsOf("1.01"), ct);
+            await teams.CreateAsync("Engineering", await SeatsOf("1.02"), ct);
+            await teams.CreateAsync("Service desk", await SeatsOf("1.03", 8), ct);
+
+            await sp.GetRequiredService<RoleAssignmentService>()
+                .AssignAsync(people[DemoDefaults.FacilityUsername], AppRoles.Facility, ct);
+            return 0;
+        });
+
         // Site-local "today" now, for due dates relative to today.
         var (tA, tN, tS) = await RunAsync(now, async sp =>
         {
@@ -324,17 +347,18 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     private static async Task<Dictionary<(string, string), int>> CreatePoolsAsync(PoolService svc, SiteIds sites, CancellationToken ct)
     {
         var result = new Dictionary<(string, string), int>();
-        var defs = new (int TypeId, string Sku, string Description, int Quantity)[]
+        // The minimum stock level makes the overview flag a pool: CAM-HD at New York ends up below its minimum of 8.
+        var defs = new (int TypeId, string Sku, string Description, int Quantity, int Minimum)[]
         {
-            (BuiltIn.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20),
-            (BuiltIn.Webcam, "CAM-HD", "HD webcam (demo)", 8),
-            (BuiltIn.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15),
-            (BuiltIn.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25),
+            (BuiltIn.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20, 10),
+            (BuiltIn.Webcam, "CAM-HD", "HD webcam (demo)", 8, 8),
+            (BuiltIn.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15, 5),
+            (BuiltIn.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25, 10),
         };
         foreach (var key in SiteKeys)
             foreach (var d in defs)
                 result[(key, d.Sku)] = (await svc.CreateAsync(
-                    new CreatePoolInput(d.TypeId, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)"), ct)).Id;
+                    new CreatePoolInput(d.TypeId, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)", d.Minimum), ct)).Id;
         return result;
     }
 

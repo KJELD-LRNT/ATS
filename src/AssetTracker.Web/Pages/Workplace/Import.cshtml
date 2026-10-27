@@ -1,0 +1,34 @@
+@page
+@model AssetTracker.Web.Pages.Workplace.ImportModel
+@{
+    ViewData["Title"] = "Import floor plan";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Import floor plan</h1>
+        <p class="page-subtitle">Upload an SVG drawing of one floor. Seats the drawing declares (<code>data-kind="seat"</code>) become workspots; for a plain drawing you mark the seats on the map afterwards.</p>
+    </div>
+</header>
+<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
+<section class="card" aria-labelledby="import-h">
+    <h2 id="import-h" class="visually-hidden">Floor plan</h2>
+    <form method="post" enctype="multipart/form-data" class="stack form-narrow">
+        <div class="field">
+            <label for="SiteId">Site</label>
+            <select asp-for="SiteId" asp-items="Model.Sites"><option value="">Choose a site</option></select>
+        </div>
+        <div class="field">
+            <label for="Name">Floor name</label>
+            <input asp-for="Name" maxlength="@FloorService.NameMax" placeholder="6th floor" />
+        </div>
+        <div class="field">
+            <label for="Drawing">SVG drawing</label>
+            <input asp-for="Drawing" type="file" accept=".svg,image/svg+xml" />
+            <span class="hint">At most @ImportModel.MaxMegabytes MB. Scripts, links, images and styles that could change the page are removed on import.</span>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn--primary">Import</button>
+            <a class="btn" asp-page="Index">Cancel</a>
+        </div>
+    </form>
+</section>

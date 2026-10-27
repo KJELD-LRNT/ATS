@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace AssetTracker.Web.Pages.Pools;
 
+/// <summary>Pool balances, open loans and stock ledger. IT may also set the pool's minimum stock level.</summary>
 [Authorize(Policy = Policies.InventoryRead)]
 public class DetailsModel(PoolService pools, LoanHistoryService loans, ICurrentUser user) : PageModel
 {
@@ -23,7 +24,26 @@ public class DetailsModel(PoolService pools, LoanHistoryService loans, ICurrentU
 
     [TempData] public string? Message { get; set; }
 
-    public async Task OnGetAsync(int id, CancellationToken ct)
+    public Task OnGetAsync(int id, CancellationToken ct) => LoadAsync(id, ct);
+
+    /// <summary>Sets the pool's minimum stock level; empty clears it.</summary>
+    public async Task<IActionResult> OnPostMinimumAsync(int id, int? minimum, CancellationToken ct)
+    {
+        try
+        {
+            await pools.SetMinimumAsync(id, minimum, ct);
+            Message = minimum is null ? "Minimum stock cleared." : $"Minimum stock set to {minimum}.";
+            return RedirectToPage(new { id });
+        }
+        catch (DomainException ex)
+        {
+            ModelState.AddModelError("", ex.Message);
+        }
+        await LoadAsync(id, ct);
+        return Page();
+    }
+
+    private async Task LoadAsync(int id, CancellationToken ct)
     {
         Pool = await pools.GetAsync(id, ct);
         Events = await pools.GetStockEventsAsync(id, PageNumber, ct: ct);

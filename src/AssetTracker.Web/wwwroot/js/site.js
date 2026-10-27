@@ -323,3 +323,466 @@ function createCombo(o) {
         if (known) siteSelect.value = value;
     });
 })();
+
+// Overview "Find, check out and return" (IT). /?handler=Find returns assets, pools and people; each result links to its
+// page and offers the action that fits its state (check out an available item, return a checked-out one). Enter on an
+// exact tag goes straight to the return (checked out) or the asset page, so a scanner can be used without the mouse.
+(function () {
+    var root = document.querySelector("[data-find-lookup]");
+    if (!root) return;
+    var input = root.querySelector("input[role=combobox]");
+    var url = root.getAttribute("data-url");
+    var site = root.getAttribute("data-site");
+    var ID = "123456789";
+
+    function target(attr, id) { return root.getAttribute(attr).replace(ID, String(id)); }
+
+    function findUrl(q) { return url + "&q=" + encodeURIComponent(q) + (site ? "&site=" + encodeURIComponent(site) : ""); }
+
+    function pageOf(row, fast) {
+        if (row.kind === "person") return root.getAttribute("data-person-url").replace("__Q__", encodeURIComponent(row.key));
+        if (row.kind === "pool") return target("data-pool-url", row.id);
+        if (fast && row.loanId) return target("data-return-url", row.loanId);
+        return target("data-asset-url", row.id);
+    }
+
+    function actionsOf(row) {
+        var actions = [];
+        if (row.kind === "asset" && row.canCheckOut) actions.push(["Check out", target("data-checkout-asset-url", row.id)]);
+        if (row.kind === "asset" && row.loanId) actions.push(["Return", target("data-return-url", row.loanId)]);
+        if (row.kind === "pool" && row.canCheckOut) actions.push(["Check out", target("data-checkout-pool-url", row.id)]);
+        return actions;
+    }
+
+    function badge(text, kind) {
+        var b = document.createElement("span");
+        b.className = "badge" + (kind ? " badge--" + kind : "");
+        b.textContent = text;
+        return b;
+    }
+
+    var combo = createCombo({
+        input: input, list: root.querySelector("[role=listbox]"), idPrefix: "find-option-", min: 2,
+        emptyText: "Nothing found.",
+        url: findUrl,
+        render: function (row, option) {
+            var text = combo.make("span", "picker-text");
+            var name = combo.make("span", "combo-name");
+            var meta;
+            if (row.kind === "person") {
+                name.appendChild(document.createTextNode(row.name + " "));
+                name.appendChild(badge(row.siteKey || "No site", row.siteKey ? "info" : "muted"));
+                if (row.active === false) name.appendChild(badge("Left", "error"));
+                meta = [row.key, row.email, row.jobTitle, "person: their loans"];
+            } else {
+                name.appendChild(combo.make("span", "mono", row.key));
+                name.appendChild(document.createTextNode(" "));
+                name.appendChild(badge(row.siteKey, "info"));
+                name.appendChild(document.createTextNode(" "));
+                var status = row.kind === "pool" ? row.status : (row.canCheckOut ? "Available" : row.status + (row.holder ? " to " + row.holder : ""));
+                name.appendChild(badge(status, row.canCheckOut ? null : "muted"));
+                meta = [row.title, row.type, row.description, row.kind === "pool" ? "quantity item" : null, row.siteName];
+            }
+            text.appendChild(name);
+            text.appendChild(combo.make("span", "combo-meta", meta.filter(Boolean).join(" · ")));
+            option.appendChild(text);
+
+            var actions = actionsOf(row);
+            if (actions.length) {
+                var box = combo.make("span", "combo-actions");
+                actions.forEach(function (a) {
+                    var link = document.createElement("a");
+                    link.href = a[1];
+                    link.textContent = a[0];
+                    // Keep focus in the input (the list would close on blur) but let the click go through.
+                    link.addEventListener("mousedown", function (e) { e.preventDefault(); e.stopPropagation(); });
+                    box.appendChild(link);
+                });
+                option.appendChild(box);
+            }
+        },
+        choose: function (row) { window.location.href = pageOf(row, false); }
+    });
+
+    input.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || input.getAttribute("aria-activedescendant")) return;
+        var text = input.value.trim();
+        if (text.length < 2) return; // plain form submit
+        e.preventDefault();
+        fetch(findUrl(text), { headers: { Accept: "application/json" }, credentials: "same-origin" })
+            .then(function (res) { if (!res.ok) throw new Error("find failed"); return res.json(); })
+            .then(function (found) {
+                var things = found.filter(function (r) { return r.kind !== "person"; });
+                var exact = things.filter(function (r) { return r.key.toUpperCase() === text.toUpperCase(); })[0];
+                var only = found.length === 1 && things.length === 1 ? things[0] : null;
+                var row = exact || only;
+                if (row) window.location.href = pageOf(row, true);
+                else input.form.submit();
+            })
+            .catch(function () { input.form.submit(); });
+    });
+})();
+
+// Narrow screens: the menu folds away behind a "Menu" button (open on desktop; without JavaScript it simply stays open).
+(function () {
+    var toggle = document.querySelector("[data-menu-toggle]");
+    var menu = document.getElementById("sidebar-menu");
+    if (!toggle || !menu || !window.matchMedia) return;
+    var narrow = window.matchMedia("(max-width: 820px)");
+    function set(open) {
+        menu.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    toggle.hidden = false;
+    set(!narrow.matches);
+    toggle.addEventListener("click", function () { set(menu.hidden); });
+    var onChange = function () { set(!narrow.matches); };
+    if (narrow.addEventListener) narrow.addEventListener("change", onChange); else narrow.addListener(onChange);
+})();
+
+// ---------------------------------------------------------------------------------------------------------------
+// Workplace: find a workspot, room or team (any floor). Picking a result highlights it when it is on the floor that is
+// open, otherwise opens its floor with the seats highlighted (?focus=ws:ID | room:ID | team:ID).
+(function () {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-workplace-find]"), function (root) {
+        var input = root.querySelector("input[role=combobox]");
+        var url = root.getAttribute("data-url");
+        var floorUrl = root.getAttribute("data-floor-url");
+        var KINDS = { workspot: "Seat", room: "Room", team: "Team" };
+
+        var combo = createCombo({
+            input: input, list: root.querySelector("[role=listbox]"), idPrefix: input.id + "-option-", min: 2,
+            emptyText: "Nothing found.",
+            url: function (q) { return url + "&q=" + encodeURIComponent(q); },
+            render: function (row, option) {
+                var text = combo.make("span", "picker-text");
+                var name = combo.make("span", "combo-name");
+                name.appendChild(document.createTextNode(row.title + " "));
+                var kind = combo.make("span", "badge badge--info", KINDS[row.kind] || row.kind);
+                name.appendChild(kind);
+                text.appendChild(name);
+                text.appendChild(combo.make("span", "combo-meta", [row.siteKey, row.floorName, row.subtitle].filter(Boolean).join(" · ")));
+                option.appendChild(text);
+            },
+            choose: function (row) {
+                var map = document.querySelector("[data-floor-map]");
+                if (map && Number(map.getAttribute("data-floor-id")) === row.floorId) {
+                    input.value = row.title;
+                    map.dispatchEvent(new CustomEvent("workplace:focus", { detail: row.focus }));
+                } else {
+                    window.location.href = floorUrl.replace("123456789", String(row.floorId)) + "?focus=" + encodeURIComponent(row.focus);
+                }
+            }
+        });
+    });
+})();
+
+// Workplace floor map: pan (drag), zoom (wheel, pinch, buttons), select seats (click, Shift-click, table or room click,
+// Shift-drag or "Select area"), highlight search results and teams. The selection fills the hidden fields of the forms
+// in the side panel; the server does everything else. Without JavaScript the map is a static picture.
+(function () {
+    var root = document.querySelector("[data-floor-map]");
+    if (!root) return;
+    var canvas = root.querySelector("[data-canvas]");
+    var svg = canvas && canvas.querySelector("svg");
+    if (!svg) return;
+
+    var editable = root.getAttribute("data-editable") === "true";
+    var vb = svg.viewBox.baseVal;
+    var home = { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+    var view = { x: home.x, y: home.y, w: home.w, h: home.h };
+    var SHAPES = { rect: 1, circle: 1, ellipse: 1, path: 1, polygon: 1, polyline: 1, g: 1 };
+    var declared = !!svg.querySelector("[data-kind=seat]");
+    var areaMode = false;
+    var selected = []; // elements, in the order they were selected
+
+    function setView(x, y, w) {
+        w = Math.max(home.w / 60, Math.min(home.w * 1.5, w));
+        view = { x: x, y: y, w: w, h: w * home.h / home.w };
+        svg.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
+    }
+
+    function zoomAt(factor, cx, cy) {
+        var w = view.w / factor;
+        var k = Math.max(home.w / 60, Math.min(home.w * 1.5, w)) / view.w;
+        setView(cx - (cx - view.x) * k, cy - (cy - view.y) * k, view.w * k);
+    }
+
+    function userPoint(clientX, clientY) {
+        var p = svg.createSVGPoint();
+        p.x = clientX;
+        p.y = clientY;
+        return p.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    function centre() { return { x: view.x + view.w / 2, y: view.y + view.h / 2 }; }
+
+    // ---- selection -------------------------------------------------------------------------------------------
+
+    function flag(el, on) { el.classList.toggle("is-selected", on); }
+
+    function setSelection(list) {
+        selected.forEach(function (el) { flag(el, false); });
+        selected = [];
+        list.forEach(function (el) { if (selected.indexOf(el) < 0) { selected.push(el); flag(el, true); } });
+        updatePanel();
+    }
+
+    function toggle(list) {
+        var allIn = list.every(function (el) { return selected.indexOf(el) >= 0; });
+        list.forEach(function (el) {
+            var at = selected.indexOf(el);
+            if (allIn) { if (at >= 0) { selected.splice(at, 1); flag(el, false); } }
+            else if (at < 0) { selected.push(el); flag(el, true); }
+        });
+        updatePanel();
+    }
+
+    function esc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/"/g, '\\"'); }
+
+    // What a click on `target` selects: a seat, the seats of a table or room, or (plain drawings) a shape to mark.
+    function resolve(target) {
+        if (!target || !svg.contains(target)) return [];
+        var seat = target.closest("[data-ws]");
+        if (seat && svg.contains(seat)) return [seat];
+        var table = target.closest("[data-kind=table]");
+        if (table) { var inTable = table.querySelectorAll("[data-ws]"); if (inTable.length) return Array.prototype.slice.call(inTable); }
+        var room = target.closest("[data-kind=room]");
+        if (room && room.getAttribute("data-id")) {
+            var inRoom = svg.querySelectorAll('[data-ws][data-room="' + esc(room.getAttribute("data-id")) + '"]');
+            if (inRoom.length) return Array.prototype.slice.call(inRoom);
+        }
+        if (editable && !declared && target.id && SHAPES[target.tagName.toLowerCase()] && target !== svg) return [target];
+        return [];
+    }
+
+    function seats() { return selected.filter(function (el) { return el.hasAttribute("data-ws"); }); }
+    function shapes() { return selected.filter(function (el) { return !el.hasAttribute("data-ws"); }); }
+
+    function show(selector, on) {
+        Array.prototype.forEach.call(root.querySelectorAll(selector), function (el) { el.hidden = !on; });
+    }
+
+    function teamName(id) {
+        var el = root.querySelector('[data-team-id="' + esc(id) + '"] .wp-team-name');
+        return el ? el.textContent : "";
+    }
+
+    function updatePanel() {
+        var s = seats(), e = shapes();
+        show('[data-when="none"]', s.length === 0 && e.length === 0);
+        show('[data-when="ws"]', s.length > 0);
+        show('[data-when="one"]', s.length === 1);
+        show('[data-when="teamed"]', s.some(function (x) { return x.hasAttribute("data-team"); }));
+        show('[data-when="on"]', s.some(function (x) { return !x.classList.contains("fp-ws-off"); }));
+        show('[data-when="off"]', s.some(function (x) { return x.classList.contains("fp-ws-off"); }));
+        show('[data-when="el"]', e.length > 0);
+
+        Array.prototype.forEach.call(root.querySelectorAll('[data-ids="ws"]'), function (f) {
+            f.value = s.map(function (x) { return x.getAttribute("data-ws"); }).join(",");
+        });
+        Array.prototype.forEach.call(root.querySelectorAll('[data-ids="el"]'), function (f) {
+            f.value = e.map(function (x) { return x.id; }).join(",");
+        });
+
+        var summary = root.querySelector("[data-sel-summary]");
+        if (summary) summary.textContent = s.length === 1 ? "1 workspot selected." : s.length + " workspots selected.";
+        var list = root.querySelector("[data-sel-list]");
+        if (list) {
+            list.textContent = "";
+            if (s.length > 1) s.slice(0, 12).forEach(function (x) {
+                var li = document.createElement("li");
+                li.textContent = x.getAttribute("data-label") || x.id;
+                list.appendChild(li);
+            });
+            if (s.length > 12) { var more = document.createElement("li"); more.textContent = "… and " + (s.length - 12) + " more"; list.appendChild(more); }
+        }
+        var elSummary = root.querySelector("[data-el-summary]");
+        if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
+
+        if (s.length === 1) {
+            var one = s[0];
+            var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
+            fact("label", one.getAttribute("data-label"));
+            var room = one.getAttribute("data-room");
+            fact("room", one.getAttribute("data-room-name") ? one.getAttribute("data-room-name") + " (" + room + ")" : room);
+            fact("table", one.getAttribute("data-table"));
+            fact("team", one.hasAttribute("data-team") ? teamName(one.getAttribute("data-team")) : "");
+            var idField = root.querySelector("[data-ws-id]");
+            if (idField) idField.value = one.getAttribute("data-ws");
+            var labelField = root.querySelector("[data-ws-label]");
+            if (labelField) labelField.value = one.getAttribute("data-label") || "";
+        }
+    }
+
+    // ---- highlight and zoom ----------------------------------------------------------------------------------
+
+    function clearHits() {
+        Array.prototype.forEach.call(svg.querySelectorAll(".is-hit"), function (el) { el.classList.remove("is-hit"); });
+    }
+
+    function focusElements(list) {
+        clearHits();
+        if (list.length === 0) return;
+        list.forEach(function (el) { el.classList.add("is-hit"); });
+        setSelection(list);
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        list.forEach(function (el) {
+            var b = el.getBBox();
+            minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+        });
+        var w = Math.max((maxX - minX) * 2.2, home.w / 8);
+        var h = Math.max((maxY - minY) * 2.2, home.h / 8);
+        w = Math.max(w, h * home.w / home.h);
+        setView((minX + maxX) / 2 - w / 2, (minY + maxY) / 2 - w * home.h / home.w / 2, w);
+    }
+
+    function focusSpec(spec) {
+        var i = spec.indexOf(":");
+        if (i < 0) return;
+        var kind = spec.slice(0, i), value = spec.slice(i + 1), q = null;
+        if (kind === "ws") q = '[data-ws="' + esc(value) + '"]';
+        else if (kind === "room") q = '[data-ws][data-room="' + esc(value) + '"]';
+        else if (kind === "team") q = '[data-ws][data-team="' + esc(value) + '"]';
+        if (q) focusElements(Array.prototype.slice.call(svg.querySelectorAll(q)));
+    }
+
+    root.addEventListener("workplace:focus", function (e) { focusSpec(String(e.detail)); });
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-show-team]"), function (b) {
+        b.addEventListener("click", function () { focusSpec("team:" + b.getAttribute("data-show-team")); });
+    });
+
+    // ---- pointer handling: pan, pinch, click, area -----------------------------------------------------------
+
+    var band = document.createElement("div");
+    band.className = "wp-band";
+    band.hidden = true;
+    canvas.appendChild(band);
+
+    var pointers = {};
+    var gesture = null;
+
+    function count() { return Object.keys(pointers).length; }
+
+    canvas.addEventListener("pointerdown", function (e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+        if (count() === 2) {
+            var ids = Object.keys(pointers), a = pointers[ids[0]], b = pointers[ids[1]];
+            var mid = userPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+            gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), view: { x: view.x, y: view.y, w: view.w }, mid: mid };
+            band.hidden = true;
+            return;
+        }
+        gesture = {
+            type: (areaMode || e.shiftKey) ? "box" : "pan", target: e.target, startX: e.clientX, startY: e.clientY,
+            start: userPoint(e.clientX, e.clientY), moved: false, shift: e.shiftKey || e.ctrlKey || e.metaKey
+        };
+    });
+
+    canvas.addEventListener("pointermove", function (e) {
+        if (!pointers[e.pointerId]) return;
+        pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+        if (!gesture) return;
+        if (gesture.type === "pinch" && count() >= 2) {
+            var ids = Object.keys(pointers), a = pointers[ids[0]], b = pointers[ids[1]];
+            var factor = Math.hypot(a.x - b.x, a.y - b.y) / gesture.dist;
+            var w = Math.max(home.w / 60, Math.min(home.w * 1.5, gesture.view.w / factor));
+            var k = w / gesture.view.w;
+            setView(gesture.mid.x - (gesture.mid.x - gesture.view.x) * k, gesture.mid.y - (gesture.mid.y - gesture.view.y) * k, w);
+            return;
+        }
+        if (!gesture.start) return;
+        if (!gesture.moved && Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY) < 4) return;
+        gesture.moved = true;
+        if (gesture.type === "pan") {
+            var now = userPoint(e.clientX, e.clientY);
+            setView(view.x + gesture.start.x - now.x, view.y + gesture.start.y - now.y, view.w);
+        } else if (gesture.type === "box") {
+            var r = canvas.getBoundingClientRect();
+            var x1 = Math.min(gesture.startX, e.clientX) - r.left + canvas.scrollLeft, y1 = Math.min(gesture.startY, e.clientY) - r.top + canvas.scrollTop;
+            band.hidden = false;
+            band.style.left = x1 + "px";
+            band.style.top = y1 + "px";
+            band.style.width = Math.abs(e.clientX - gesture.startX) + "px";
+            band.style.height = Math.abs(e.clientY - gesture.startY) + "px";
+        }
+    });
+
+    function inside(box, el, whole) {
+        var r = el.getBoundingClientRect();
+        if (whole) return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom;
+        var cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+        return cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom;
+    }
+
+    function finish(e) {
+        if (!pointers[e.pointerId]) return;
+        delete pointers[e.pointerId];
+        var g = gesture;
+        if (count() > 0 || !g) { if (count() === 0) gesture = null; return; }
+        gesture = null;
+        band.hidden = true;
+        if (g.type === "pinch") return;
+        if (g.type === "box" && g.moved) {
+            var box = {
+                left: Math.min(g.startX, e.clientX), right: Math.max(g.startX, e.clientX),
+                top: Math.min(g.startY, e.clientY), bottom: Math.max(g.startY, e.clientY)
+            };
+            var found = Array.prototype.slice.call(svg.querySelectorAll("[data-ws]")).filter(function (el) { return inside(box, el, false); });
+            if (!declared && editable && found.length === 0) {
+                found = Array.prototype.slice.call(svg.querySelectorAll("rect[id],circle[id],ellipse[id],path[id],polygon[id]"))
+                    .filter(function (el) { return inside(box, el, true); });
+            }
+            if (g.shift) toggle(found); else setSelection(found);
+            return;
+        }
+        if (g.moved) return;
+        var hit = resolve(g.target);
+        if (hit.length === 0) { if (!g.shift) setSelection([]); }
+        else if (g.shift) toggle(hit);
+        else setSelection(hit);
+    }
+
+    canvas.addEventListener("pointerup", finish);
+    canvas.addEventListener("pointercancel", function (e) { delete pointers[e.pointerId]; gesture = null; band.hidden = true; });
+
+    canvas.addEventListener("wheel", function (e) {
+        e.preventDefault();
+        var p = userPoint(e.clientX, e.clientY);
+        zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, p.x, p.y);
+    }, { passive: false });
+
+    canvas.addEventListener("keydown", function (e) {
+        var c = centre();
+        if (e.key === "+" || e.key === "=") zoomAt(1.3, c.x, c.y);
+        else if (e.key === "-") zoomAt(1 / 1.3, c.x, c.y);
+        else if (e.key === "0") setView(home.x, home.y, home.w);
+        else if (e.key === "Escape") { setSelection([]); clearHits(); }
+    });
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-zoom]"), function (b) {
+        b.addEventListener("click", function () {
+            var c = centre(), what = b.getAttribute("data-zoom");
+            if (what === "in") zoomAt(1.4, c.x, c.y);
+            else if (what === "out") zoomAt(1 / 1.4, c.x, c.y);
+            else setView(home.x, home.y, home.w);
+        });
+    });
+
+    var area = root.querySelector("[data-area]");
+    if (area) area.addEventListener("click", function () {
+        areaMode = !areaMode;
+        area.setAttribute("aria-pressed", areaMode ? "true" : "false");
+        canvas.classList.toggle("is-area", areaMode);
+    });
+
+    root.classList.add("is-live");
+    updatePanel();
+    var initial = (root.getAttribute("data-focus") || "").split(",").filter(Boolean)
+        .map(function (id) { return svg.getElementById(id); }).filter(Boolean);
+    if (initial.length) focusElements(initial);
+})();

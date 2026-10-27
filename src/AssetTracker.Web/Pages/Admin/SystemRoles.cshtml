@@ -1,0 +1,99 @@
+@page
+@model AssetTracker.Web.Pages.Admin.SystemRolesModel
+@{
+    ViewData["Title"] = "System roles";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>System roles</h1>
+        <p class="page-subtitle">IT, manager and admin come from AD groups. The <strong>Facility</strong> role is given here, inside the application: facility and operations staff can work with the Workplace floor plans (import maps, workspots, teams). It gives no access to assets, loans or reports. It only counts while the person is active in the directory.</p>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
+
+<section class="card card--flush" aria-labelledby="roles-h">
+    <div class="card-header"><h2 id="roles-h">Facility role</h2></div>
+    @if (Model.Assignments.Count == 0)
+    {
+        <div class="empty-state"><strong>Nobody has the Facility role.</strong><span>Search a person below to give it.</span></div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Person</th><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Given</th><th scope="col">By</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                @foreach (var r in Model.Assignments)
+                {
+                    <tr>
+                        <td><span class="cell-row">@(r.PersonDisplayName ?? "(not in directory snapshot)")@if (r.PersonActive == false) { <span class="badge badge--muted">Inactive</span> }</span></td>
+                        <td>@(r.PersonUsername ?? r.PrincipalName)</td>
+                        <td>@r.Role</td>
+                        <td class="nowrap">@r.GrantedAt.ToString("yyyy-MM-dd HH:mm") UTC</td>
+                        <td>@r.GrantedBy</td>
+                        <td class="actions-cell">
+                            <form method="post" asp-page-handler="Remove" asp-route-id="@r.Id">
+                                <button type="submit" class="btn--danger btn--sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+<section class="card card--flush" aria-labelledby="add-h">
+    <div class="card-header"><h2 id="add-h">Give the Facility role</h2></div>
+    <div class="card-body">
+        <form method="get" class="search-row" role="search">
+            <div class="field field--grow">
+                <label for="q">Find person (name or username)</label>
+                <input id="q" name="q" value="@Model.Q" minlength="2" type="search" />
+            </div>
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Q))
+    {
+        @if (Model.People.Count == 0)
+        {
+            <div class="empty-state"><strong>No matching people.</strong></div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Job title</th><th scope="col">AD site</th><th scope="col"><span class="visually-hidden">Action</span></th></tr></thead>
+                    <tbody>
+                    @foreach (var p in Model.People)
+                    {
+                        <tr>
+                            <td><span class="cell-row">@p.DisplayName@if (!p.IsActive) { <span class="badge badge--muted">Inactive</span> }</span></td>
+                            <td>@p.Username</td>
+                            <td>@p.JobTitle</td>
+                            <td>@p.SiteKey</td>
+                            <td>
+                                @if (p.IsActive)
+                                {
+                                    <form method="post" asp-page-handler="Add" asp-route-q="@Model.Q" class="inline-form">
+                                        <input type="hidden" name="personId" value="@p.Id" />
+                                        <button type="submit" class="btn--primary">Give Facility role</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</section>

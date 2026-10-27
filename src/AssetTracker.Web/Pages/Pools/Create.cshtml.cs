@@ -21,6 +21,7 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
         public int SiteId { get; set; }
         public string? Description { get; set; }
         public int InitialQuantity { get; set; }
+        public int? MinimumStock { get; set; }
         public string? Reason { get; set; }
     }
 
@@ -45,7 +46,7 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
             try
             {
                 var pool = await pools.CreateAsync(new CreatePoolInput(Input.TypeId, Input.Sku ?? "", Input.SiteId,
-                    Input.Description ?? "", Input.InitialQuantity, Input.Reason), ct);
+                    Input.Description ?? "", Input.InitialQuantity, Input.Reason, Input.MinimumStock), ct);
                 Message = $"Pool {pool.Sku} created.";
                 return RedirectToPage("Details", new { id = pool.Id });
             }

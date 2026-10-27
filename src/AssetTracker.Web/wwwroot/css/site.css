@@ -122,6 +122,11 @@ a:focus-visible { outline-color: var(--accent); outline-width: 2px; }
 .nav-link:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 0; }
 .nav-label { flex: 1; }
 
+.sidebar-menu { display: flex; flex-direction: column; gap: 22px; flex: 1 1 auto; }
+.menu-toggle { display: none; background: var(--navy-800); color: #FFFFFF; border: 1px solid var(--navy-line); min-height: var(--target);
+    padding: 0 16px; border-radius: var(--radius); font-weight: 500; }
+.menu-toggle:hover { background: var(--navy-700); color: #FFFFFF; border-color: var(--navy-line); }
+.menu-toggle:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 0; }
 .user-card { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 10px 0;
     border-top: 1px solid var(--navy-line); }
 .user-card .avatar { background: var(--navy-line); color: #FFFFFF; }
@@ -136,7 +141,13 @@ a:focus-visible { outline-color: var(--accent); outline-width: 2px; }
 /* Narrow screens: the sidebar stacks above the content; nav groups become compact wrapping rows. */
 @media (max-width: 820px) {
     :root { --gutter: 16px; }
-    .sidebar { padding: 14px 16px; gap: 14px; }
+    .sidebar { padding: 14px 16px; gap: 14px; flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .brand { flex: 1 1 auto; }
+    /* With JavaScript the menu folds away behind the button; without it the whole menu stays visible. */
+    .menu-toggle { display: inline-flex; align-items: center; }
+    .menu-toggle[hidden] { display: none; }
+    .sidebar-menu { flex: 1 1 100%; gap: 14px; }
+    .sidebar-menu[hidden] { display: none; }
     .nav-group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
     .nav-heading { flex-basis: 100%; padding: 4px 4px 2px; }
     .nav-link { padding: 8px 12px; background: var(--navy-800); }
@@ -204,6 +215,10 @@ a:focus-visible { outline-color: var(--accent); outline-width: 2px; }
 .kpi--accent .kpi-value { color: var(--accent); }
 .kpi a { color: inherit; text-decoration: none; }
 .kpi a:hover { text-decoration: underline; }
+/* Tiles that link to the list behind their number. */
+a.kpi { color: inherit; text-decoration: none; }
+a.kpi:hover { border-color: var(--accent); color: inherit; }
+a.kpi:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 2px; }
 
 /* ------------------------------------------------------------------ tables */
 .table-wrap { position: relative; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); }
@@ -591,9 +606,131 @@ code.details { font-size: 12px; word-break: break-all; color: var(--ink-2); disp
 .demo-mail-body { white-space: pre-wrap; word-break: break-word; background: var(--ground); border: 1px solid var(--line);
     border-radius: 8px; padding: 12px 14px; margin: 0; font-family: var(--font-mono); font-size: 13px; line-height: 1.55; }
 
+/* ------------------------------------------------------------------ overview */
+.site-picker { display: flex; align-items: center; gap: 8px; }
+.site-picker label { font-size: 13px; color: var(--ink-2); }
+.site-picker select { width: auto; min-width: 170px; }
+.find { display: flex; flex-direction: column; gap: 8px; }
+.find-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.find-form .field { flex: 1 1 360px; }
+.searchbox--wide { width: 100%; min-width: 0; }
+.combo-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.combo-actions a { font-size: 13px; font-weight: 500; text-decoration: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink); min-height: 32px; display: inline-flex; align-items: center; }
+.combo-actions a:hover { background: var(--ground); border-color: var(--field); }
+.attention-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.attention-list a { display: flex; align-items: center; gap: 12px; padding: 8px 10px; min-height: var(--target); border-radius: var(--radius);
+    color: var(--ink); text-decoration: none; }
+.attention-list a:hover { background: var(--ground); }
+.attention-count { min-width: 34px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; border-radius: 999px; padding: 2px 10px;
+    background: var(--neutral); color: var(--ink); }
+.attention-count--bad { background: var(--bad-bg); color: var(--bad-fg); }
+.attention-count--due { background: var(--due-bg); color: var(--due-text); }
+/* One line per loan: the description is cut off (its full text is the tooltip). */
+.table--cards .cell-sub { display: block; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table--cards td { vertical-align: middle; }
+.table--cards td[data-label="Holder"] { white-space: nowrap; }
+.table--cards td.num .due-line { max-width: none; margin-top: 2px; }
+tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
+.check--cell { justify-content: center; }
+.minimum-form { flex-wrap: nowrap; }
+.minimum-form input { min-width: 0; width: 6em; flex: 0 1 6em; }
+
+/* Phones: the loan tables become one card per row (labels come from data-label), so nothing is cut off. */
+@media (max-width: 640px) {
+    .table-wrap > table.table--cards { min-width: 0; }
+    .table--cards thead { display: none; }
+    .table--cards, .table--cards tbody, .table--cards tr, .table--cards td { display: block; }
+    .table--cards tr { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+    .table--cards td { padding: 0; border: 0; text-align: left; }
+    .table--cards td:first-child { grid-column: 1 / -1; }
+    .table--cards td[data-label]:not(:first-child)::before { content: attr(data-label) ": "; font-size: 12px; color: var(--ink-3); }
+    .table--cards td.num { text-align: left; }
+    .table--cards .cell-sub { max-width: none; }
+}
+
 /* ------------------------------------------------------------------ print */
 @media print {
     .sidebar, .demo-banner, .skip-link, .page-actions, .filters { display: none !important; }
     body { background: #FFFFFF; }
     .main { padding: 0; }
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+   Workplace: floor plans. The drawing's own rules are scoped to ".floorplan" with "fp-" class names (see FloorplanCss);
+   these are the application's rules for the map, the seats and the side panel. */
+.wp { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.wp-stage { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wp-toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.wp-find { flex: 1 1 260px; min-width: 0; }
+.wp-tools { display: flex; gap: 6px; }
+.wp-tools button { min-width: 40px; }
+.wp-tools button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.wp-canvas { position: relative; height: min(72vh, 760px); min-height: 360px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: #F7F6F2; overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
+.wp-canvas:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 1px; }
+.wp-canvas.is-area { cursor: crosshair; }
+.wp-canvas svg { display: block; width: 100%; height: 100%; }
+.wp-band { position: absolute; z-index: 5; border: 1.5px dashed var(--accent); background: rgba(11, 107, 102, 0.12); pointer-events: none; }
+.wp-hint { margin: 0; }
+.wp-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wp-box { padding: 14px 16px; }
+.wp-box h2 { font-size: 15px; margin: 0 0 8px; }
+.wp-box p { margin: 0 0 8px; }
+.wp-form { margin-top: 10px; }
+.wp-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 8px; }
+.wp-facts dt { color: var(--ink-3); }
+.wp-facts dd { margin: 0; overflow-wrap: anywhere; }
+.wp-selected { margin: 0 0 8px; padding-left: 18px; color: var(--ink-2); font-size: 14px; }
+.wp-teams { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wp-team-show { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: 0; padding: 6px 4px;
+    border-radius: var(--radius); cursor: pointer; font: inherit; color: inherit; }
+.wp-team-show:hover { background: var(--ground); }
+.wp-team-name { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
+.wp-swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid rgba(0, 0, 0, 0.15); }
+.wp-team-edit { margin: 0 0 6px 26px; }
+.wp-team-edit summary { cursor: pointer; color: var(--accent-hover); font-size: 14px; }
+.wp-summary { width: 100%; }
+.wp-summary th, .wp-summary td { padding: 3px 0; text-align: left; font-weight: 400; }
+.wp-summary th { font-weight: 600; }
+.wp-summary td.num { text-align: right; }
+
+/* Seats, states and teams inside the drawing (specificity beats the drawing's scoped rules on purpose). */
+.floorplan .fp-ws { cursor: pointer; }
+.floorplan .fp-ws-manual { stroke: var(--accent); stroke-width: 0.6; }
+.floorplan .fp-ws-off { opacity: 0.3; }
+.floorplan .fp-ws.is-hit { stroke: #D6336C; stroke-width: 1.4; }
+.floorplan .fp-ws.is-selected, .floorplan .fp-ws-manual.is-selected { stroke: #D6336C; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.floorplan [id]:not(.fp-ws).is-selected { stroke: #D6336C; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-team-outline { stroke-width: 1.2px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.floorplan .fp-team-label { font-weight: 600; }
+.floorplan .fp-team-halo { fill: #FFFFFF; stroke: #FFFFFF; stroke-width: 2px; stroke-linejoin: round; opacity: 0.85; font-weight: 600; }
+.floorplan .fp-ws.fp-team-0, .wp-swatch.fp-team-0 { fill: #DD7A1F; background: #DD7A1F; }
+.floorplan .fp-ws.fp-team-1, .wp-swatch.fp-team-1 { fill: #2F9E5A; background: #2F9E5A; }
+.floorplan .fp-ws.fp-team-2, .wp-swatch.fp-team-2 { fill: #8A5CC7; background: #8A5CC7; }
+.floorplan .fp-ws.fp-team-3, .wp-swatch.fp-team-3 { fill: #D6403A; background: #D6403A; }
+.floorplan .fp-ws.fp-team-4, .wp-swatch.fp-team-4 { fill: #14948F; background: #14948F; }
+.floorplan .fp-ws.fp-team-5, .wp-swatch.fp-team-5 { fill: #C9A100; background: #C9A100; }
+.floorplan .fp-ws.fp-team-6, .wp-swatch.fp-team-6 { fill: #D6609B; background: #D6609B; }
+.floorplan .fp-ws.fp-team-7, .wp-swatch.fp-team-7 { fill: #1A365D; background: #1A365D; }
+.floorplan .fp-team-outline.fp-team-0 { stroke: #DD7A1F; fill: none; }
+.floorplan .fp-team-label.fp-team-0 { fill: #DD7A1F; stroke: none; }
+.floorplan .fp-team-outline.fp-team-1 { stroke: #2F9E5A; fill: none; }
+.floorplan .fp-team-label.fp-team-1 { fill: #2F9E5A; stroke: none; }
+.floorplan .fp-team-outline.fp-team-2 { stroke: #8A5CC7; fill: none; }
+.floorplan .fp-team-label.fp-team-2 { fill: #8A5CC7; stroke: none; }
+.floorplan .fp-team-outline.fp-team-3 { stroke: #D6403A; fill: none; }
+.floorplan .fp-team-label.fp-team-3 { fill: #D6403A; stroke: none; }
+.floorplan .fp-team-outline.fp-team-4 { stroke: #14948F; fill: none; }
+.floorplan .fp-team-label.fp-team-4 { fill: #14948F; stroke: none; }
+.floorplan .fp-team-outline.fp-team-5 { stroke: #C9A100; fill: none; }
+.floorplan .fp-team-label.fp-team-5 { fill: #C9A100; stroke: none; }
+.floorplan .fp-team-outline.fp-team-6 { stroke: #D6609B; fill: none; }
+.floorplan .fp-team-label.fp-team-6 { fill: #D6609B; stroke: none; }
+.floorplan .fp-team-outline.fp-team-7 { stroke: #1A365D; fill: none; }
+.floorplan .fp-team-label.fp-team-7 { fill: #1A365D; stroke: none; }
+
+@media (max-width: 960px) {
+    .wp { grid-template-columns: minmax(0, 1fr); }
+    .wp-canvas { height: 62vh; }
 }

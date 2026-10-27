@@ -15,4 +15,7 @@ public sealed record TestUser(string Name, string Sid, params string[] GroupSids
     public static readonly TestUser Manager = new(@"CORP\manager.user", "S-1-5-21-1000-1000-1000-2002", TestGroups.Manager);
     public static readonly TestUser Admin = new(@"CORP\admin.user", "S-1-5-21-1000-1000-1000-2003", TestGroups.Admin);
     public static readonly TestUser Nobody = new(@"CORP\plain.user", "S-1-5-21-1000-1000-1000-2004");
+
+    /// <summary>No AD group: the Facility role is given in the application (see <c>WorkplaceSeed.FacilityAsync</c>).</summary>
+    public static readonly TestUser Facility = new(@"CORP\facility.user", "S-1-5-21-1000-1000-1000-2005");
 }

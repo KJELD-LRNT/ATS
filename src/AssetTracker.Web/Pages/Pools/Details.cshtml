@@ -3,7 +3,7 @@
 @{
     var p = Model.Pool;
     ViewData["Title"] = $"{p.Sku} at {p.Site?.Key}";
-    var m = Ui.Stock(p.Available, p.OnHand);
+    var m = Ui.Stock(p.Available, p.OnHand, p.MinimumStock);
 }
 <nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Pools</a><span aria-hidden="true">/</span><span aria-current="page" class="mono">@p.Sku</span></nav>
 @if (Model.Message is not null)
@@ -15,6 +15,7 @@
         <div class="title-row">
             <h1 class="title-mono">@p.Sku</h1>
             @if (p.Available == 0) { @Ui.Pill("unavailable", "None available") }
+            @if (p.IsBelowMinimum) { @Ui.Pill("due-today", $"Below minimum {p.MinimumStock}") }
         </div>
         <p class="title-meta">@p.Type pool at <strong>@p.Site?.Key – @p.Site?.Name</strong> · @p.Description</p>
     </div>
@@ -47,7 +48,25 @@
         <span class="kpi-value">@p.OnHand</span>
         <span class="kpi-sub">available + outstanding</span>
     </div>
+    <div class="kpi @(p.IsBelowMinimum ? "kpi--due" : "")">
+        <span class="kpi-label">Minimum stock</span>
+        <span class="kpi-value">@(p.MinimumStock?.ToString() ?? "–")</span>
+        @if (Model.CanEdit)
+        {
+            <form method="post" asp-page-handler="Minimum" asp-route-id="@p.Id" class="inline-form minimum-form">
+                <label for="minimum" class="visually-hidden">Minimum stock level</label>
+                <input id="minimum" name="minimum" type="number" min="0" max="@PoolService.MinimumStockMax" value="@p.MinimumStock" placeholder="none" class="qty" />
+                <button type="submit" class="btn btn--sm">Set</button>
+            </form>
+            <span class="kpi-sub">Flagged on the overview below this; empty = none.</span>
+        }
+        else
+        {
+            <span class="kpi-sub">@(p.MinimumStock is null ? "no minimum set" : "flagged when available drops below this")</span>
+        }
+    </div>
 </section>
+<div asp-validation-summary="All" class="alert alert--error"></div>
 
 <section class="card card--flush" aria-labelledby="open-h">
     <div class="card-header"><h2 id="open-h">Open loans</h2></div>

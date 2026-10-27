@@ -28,9 +28,10 @@ public sealed record LoanHistory(Loan Loan, IReadOnlyList<LoanHistoryEntry> Even
     public string PersonName(int id) => People.TryGetValue(id, out var p) ? p.DisplayName : $"#{id}";
 }
 
+/// <param name="InactiveHolder">Only open loans held by someone who is no longer active in the directory (they left).</param>
 public sealed record LoanSearch(
     int? SiteId = null, bool OverdueOnly = false, string? Query = null, bool IncludeClosed = false,
-    int Page = 1, int PageSize = Paging.DefaultPageSize);
+    int Page = 1, int PageSize = Paging.DefaultPageSize, bool InactiveHolder = false);
 
 /// <summary>
 /// Read model for loans. Every query goes through <see cref="AccessScope.VisibleLoansAsync"/>: IT sees all loans;
@@ -92,6 +93,7 @@ public class LoanHistoryService(AppDbContext db, AccessScope access, SiteCalenda
             q = q.Where(l => (l.AssetId != null && l.Asset!.SiteId == siteId) || (l.PoolId != null && l.Pool!.SiteId == siteId));
         if (s.OverdueOnly)
             q = q.Where(l => l.ClosedAt == null).Where(await calendar.OverduePredicateAsync(ct)); // per-site day (D4)
+        if (s.InactiveHolder) q = q.Where(l => l.ClosedAt == null && l.Holder != null && !l.Holder.IsActive);
         var term = s.Query?.Trim();
         if (!string.IsNullOrEmpty(term))
         {
