@@ -90,7 +90,7 @@ public class FloorServiceTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task Replacing_the_drawing_adds_new_seats_switches_missing_ones_off_and_back_on_and_keeps_labels_and_teams()
+    public async Task Replacing_the_drawing_adds_new_seats_switches_missing_ones_off_and_back_on_and_keeps_teams()
     {
         var site = await SiteAsync("FS07");
         var floor = (await WorkplaceSeed.ImportAsync(_f, site, "Replace me", WorkplaceSeed.Annotated(seats: 4))).Floor;
@@ -98,7 +98,6 @@ public class FloorServiceTests : IClassFixture<AppFactory>
         var s2 = spots.Single(s => s.ElementId.EndsWith("S02"));
         await _f.RunAsAsync(TestUser.It, async sp =>
         {
-            await sp.GetRequiredService<WorkspotService>().RenameAsync(s2.Id, "Window desk");
             await sp.GetRequiredService<TeamService>().CreateAsync("Team A", [s2.Id, spots.Single(s => s.ElementId.EndsWith("S04")).Id]);
         });
 
@@ -113,7 +112,6 @@ public class FloorServiceTests : IClassFixture<AppFactory>
         var after = (await As(TestUser.It, s => s.GetAsync(floor.Id)))!;
         Assert.Equal(2, after.Floor.Version);
         Assert.Equal(6, after.Spots.Count); // nothing deleted
-        Assert.Equal("Window desk", after.Spots.Single(s => s.Id == s2.Id).Label);
         Assert.Equal(s2.Id, after.Spots.Single(s => s.TeamId != null && s.IsActive).Id);
         Assert.False(after.Spots.Single(s => s.ElementId.EndsWith("T01-S04") && s.RoomId == "R1").IsActive);
 

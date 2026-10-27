@@ -19,19 +19,20 @@ public class FloorplanRendererTests
     }
 
     [Fact]
-    public void Seats_get_their_workspot_id_label_room_and_state()
+    public void Seats_get_their_workspot_id_room_and_state_but_never_their_drawing_id_as_text()
     {
         var (floor, spots) = Build();
         spots[2].IsDesk = false;
         var svg = FloorplanRenderer.Render(floor, spots, []);
 
         Assert.Contains("data-ws=\"10\"", svg);
-        Assert.Contains("data-label=\"R7-T01-S01\"", svg);
         Assert.Contains("data-room=\"R7\"", svg);
         Assert.Contains("data-room-name=\"Fox room\"", svg);
         Assert.Contains("class=\"fp-seat fp-ws fp-free\"", svg);   // an empty desk is free
         Assert.Contains("class=\"fp-seat fp-ws fp-nodesk\"", svg); // not a desk: never free
-        Assert.Contains("<title>R7-T01-S01 · free desk</title>", svg);
+        Assert.Contains("<title>Free desk · Fox room</title>", svg);
+        Assert.Contains("<title>Seat, not a desk · Fox room</title>", svg);
+        Assert.DoesNotContain(">R7-T01-S0", svg); // no seat id in any text
         Assert.DoesNotContain("fp-teamlayer", svg);
         // the icon shapes for the markers are in the drawing, and nothing is drawn for empty seats
         Assert.Contains("<symbol id=\"fp-i-person\"", svg);
@@ -55,7 +56,7 @@ public class FloorplanRendererTests
         Assert.Contains("class=\"fp-seat fp-ws fp-free fp-has-screen\"", svg); // a screen without a person: still free
         Assert.Contains("data-person=\"Fox &lt;Jr&gt;\"", svg);
         Assert.Contains("data-desktop=\"DT-001\"", svg);
-        Assert.Contains("<title>R7-T01-S01 · Fox &lt;Jr&gt; · desktop DT-001 · 2 screens</title>", svg);
+        Assert.Contains("<title>Fox &lt;Jr&gt; · desktop DT-001 · 2 screens · Fox room</title>", svg);
         Assert.Contains("(no longer works here)", svg);
 
         var mark10 = Regex.Match(svg, "<g class=\"fp-mark\" data-mark=\"10\">.*?</g>").Value;
@@ -80,7 +81,7 @@ public class FloorplanRendererTests
         var (floor, spots) = Build();
         var name = "Bartholomew Cornelius Ravenswood-Smythe";
         var svg = FloorplanRenderer.Render(floor, spots, [], new Dictionary<int, SpotState> { [10] = new(name, false, null, 0, false) });
-        Assert.Contains($"<title>R7-T01-S01 · {name}</title>", svg);
+        Assert.Contains($"<title>{name} · Fox room</title>", svg);
         Assert.Contains(">" + name[..(FloorplanRenderer.NameMax - 1)].TrimEnd() + "…</text>", svg);
     }
 
@@ -96,8 +97,29 @@ public class FloorplanRendererTests
         Assert.Contains("fp-free fp-team-3", svg);
         Assert.Equal(2, Regex.Matches(svg, "<circle[^>]*data-team=\"5\"").Count);
         Assert.Contains("class=\"fp-team-outline fp-team-3\"", svg);
+        Assert.Contains("<title>Free desk · Fox &amp; &lt;b&gt;Co&lt;/b&gt; · Fox room</title>", svg);
         Assert.Contains("Fox &amp; &lt;b&gt;Co&lt;/b&gt;", svg);
         Assert.DoesNotContain("<b>", svg);
+    }
+
+    [Fact]
+    public void A_table_split_between_two_teams_gets_an_outline_and_a_name_for_each()
+    {
+        var (floor, spots) = Build();
+        var a = new FloorTeam { Id = 5, FloorId = 1, Name = "Alpha", ColorIndex = 0 };
+        var b = new FloorTeam { Id = 6, FloorId = 1, Name = "Beta", ColorIndex = 1 };
+        spots[0].TeamId = 5;
+        spots[1].TeamId = 6;
+        spots[2].TeamId = 6;
+        var svg = FloorplanRenderer.Render(floor, spots, [a, b]);
+
+        Assert.Single(Regex.Matches(svg, "class=\"fp-team-outline fp-team-0\""));
+        Assert.Single(Regex.Matches(svg, "class=\"fp-team-outline fp-team-1\""));
+        Assert.Single(Regex.Matches(svg, "class=\"fp-team-label fp-team-0\"[^>]*>Alpha<"));
+        Assert.Single(Regex.Matches(svg, "class=\"fp-team-label fp-team-1\"[^>]*>Beta<"));
+        // Alpha's outline is around its one seat only (x 70 +- 4 or so), not across the table
+        var alpha = Regex.Match(svg, "<rect class=\"fp-team-outline fp-team-0\" x=\"([0-9.]+)\"[^>]*width=\"([0-9.]+)\"");
+        Assert.True(double.Parse(alpha.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture) < 15);
     }
 
     [Fact]

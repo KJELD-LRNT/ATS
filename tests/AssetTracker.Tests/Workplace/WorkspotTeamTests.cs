@@ -31,42 +31,21 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     // ---- workspots -------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Rename_changes_the_label_audits_and_rejects_empty_long_and_taken_labels()
-    {
-        var (floor, spots) = await NewFloorAsync("WS01");
-        await AsIt(async (w, t, f) => { await w.RenameAsync(spots[0].Id, "  Window desk "); return 0; });
-        Assert.Equal("Window desk", (await ReloadAsync(floor.Id))[0].Label);
-        Assert.True(await _f.WithDbAsync(db => db.AuditEvents.AnyAsync(e => e.Action == "workspot.rename" && e.EntityId == spots[0].Id.ToString())));
-
-        await Assert.ThrowsAsync<DomainException>(() => AsIt(async (w, t, f) => { await w.RenameAsync(spots[0].Id, " "); return 0; }));
-        await Assert.ThrowsAsync<DomainException>(() => AsIt(async (w, t, f) => { await w.RenameAsync(spots[0].Id, new string('x', 101)); return 0; }));
-        await Assert.ThrowsAsync<ConflictException>(() => AsIt(async (w, t, f) => { await w.RenameAsync(spots[1].Id, "Window desk"); return 0; }));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => As(TestUser.Manager, async (w, t, f) => { await w.RenameAsync(spots[1].Id, "Nope"); return 0; }));
-    }
-
-    [Fact]
-    public async Task Marking_shapes_of_a_plain_drawing_makes_workspots_numbered_with_a_prefix()
+    public async Task Marking_shapes_of_a_plain_drawing_makes_workspots_once_with_the_element_id_as_internal_label()
     {
         var site = await _f.WithDbAsync(db => Seed.SiteAsync(db, "WS02"));
         var floor = (await WorkplaceSeed.ImportAsync(_f, site, "Plain", WorkplaceSeed.Plain())).Floor;
         Assert.Empty(await ReloadAsync(floor.Id));
 
-        var n = await AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e3", "fp-e2", "fp-e3"], "D-"));
+        var n = await AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e3", "fp-e2", "fp-e3"]));
         Assert.Equal(2, n);
         var spots = await ReloadAsync(floor.Id);
-        Assert.Equal(["D-1", "D-2"], spots.OrderBy(s => s.Id).Select(s => s.Label).ToArray());
+        Assert.Equal(["fp-e3", "fp-e2"], spots.OrderBy(s => s.Id).Select(s => s.Label).ToArray());
         Assert.Equal(["fp-e3", "fp-e2"], spots.OrderBy(s => s.Id).Select(s => s.ElementId).ToArray());
 
-        // marking again continues the numbering and does not duplicate
-        await AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e4", "fp-e2"], "D-"));
+        // marking again adds only the new shape
+        Assert.Equal(1, await AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e4", "fp-e2"])));
         Assert.Equal(3, (await ReloadAsync(floor.Id)).Count);
-        Assert.Contains(await ReloadAsync(floor.Id), s => s.Label == "D-3");
-
-        // without a prefix the label is the element id
-        var s2 = await _f.WithDbAsync(db => Seed.SiteAsync(db, "WS03"));
-        var f2 = (await WorkplaceSeed.ImportAsync(_f, s2, "Plain", WorkplaceSeed.Plain())).Floor;
-        await AsIt((w, t, f) => w.MarkAsync(f2.Id, ["fp-e2"], null));
-        Assert.Equal("fp-e2", (await ReloadAsync(f2.Id)).Single().Label);
     }
 
     [Fact]
@@ -74,8 +53,8 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     {
         var site = await _f.WithDbAsync(db => Seed.SiteAsync(db, "WS04"));
         var floor = (await WorkplaceSeed.ImportAsync(_f, site, "Plain", WorkplaceSeed.Plain())).Floor;
-        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e99"], null)));
-        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => w.MarkAsync(floor.Id, [], null)));
+        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => w.MarkAsync(floor.Id, ["fp-e99"])));
+        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => w.MarkAsync(floor.Id, [])));
         Assert.Empty(await ReloadAsync(floor.Id));
     }
 
@@ -172,7 +151,7 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     // ---- find and focus --------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Find_returns_seats_rooms_and_teams_across_floors_within_the_principals_scope()
+    public async Task Find_returns_rooms_and_teams_across_floors_within_the_principals_scope_but_not_seat_ids()
     {
         var manager = new TestUser(@"CORP\mgr.ws12", "S-1-5-21-1000-1000-1000-3512", TestGroups.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
@@ -196,10 +175,8 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
         Assert.DoesNotContain(mgr, h => h.FloorId == f2.Id);
         Assert.Contains(mgr, h => h.FloorId == f1.Id);
 
-        // seats by label, with the room as subtitle; at least two characters; nobody else finds anything
-        var seat = await AsIt((w, t, f) => w.FindAsync("Q9-T01-S02"));
-        var hit = Assert.Single(seat, h => h.Kind == "workspot");
-        Assert.Equal("Zebra room", hit.Subtitle);
+        // a seat is not found by the id it has in the drawing; at least two characters; nobody else finds anything
+        Assert.Empty(await AsIt((w, t, f) => w.FindAsync("Q9-T01-S02")));
         Assert.Empty(await AsIt((w, t, f) => w.FindAsync("z")));
         Assert.Empty(await As(TestUser.Nobody, (w, t, f) => w.FindAsync("zebra")));
         // LIKE wildcards in the text are literal
@@ -212,6 +189,7 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
         var (floor, spots) = await NewFloorAsync("WS14", seats: 4);
         var team = await AsIt((w, t, f) => t.CreateAsync("Focus team", [spots[0].Id, spots[2].Id]));
         Assert.Equal([spots[1].ElementId], await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"ws:{spots[1].Id}")));
+        Assert.Equal(2, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"ws:{spots[1].Id},{spots[3].Id},x"))).Count);
         Assert.Equal(4, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, "room:R1"))).Count);
         Assert.Equal(2, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"team:{team.Id}"))).Count);
         Assert.Empty(await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, "nonsense")));

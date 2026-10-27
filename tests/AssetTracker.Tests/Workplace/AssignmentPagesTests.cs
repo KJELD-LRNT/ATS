@@ -45,7 +45,8 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
             Assert.Equal("ap01.anna", doc.RootElement.GetProperty("person").GetProperty("username").GetString());
             Assert.Equal("AP01-DT-1", doc.RootElement.GetProperty("desktop").GetProperty("tag").GetString());
-            Assert.Equal(s.Spots[0].Label, doc.RootElement.GetProperty("label").GetString());
+            Assert.Equal("Bay", doc.RootElement.GetProperty("place").GetString());
+            Assert.False(doc.RootElement.TryGetProperty("label", out _));
         }
         // a seat of another floor is not served under this floor's url, nor to a manager of another site
         Assert.Equal(HttpStatusCode.NotFound, (await _f.CreateClientAs(TestUser.It).GetAsync($"/Workplace/Floor/{s.Floor.Id}?handler=Spot&workspotId={other.Spots[0].Id}")).StatusCode);
@@ -150,6 +151,10 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         var status = await client.GetStringAsync(url + "?handler=Status");
         Assert.Contains("At a glance", status);
         Assert.Contains("ap08.anna has no desktop and no screen.", System.Net.WebUtility.HtmlDecode(status));
+        // flags and free desks say where (the room), never the drawing's seat id
+        Assert.Contains("wp-flag-place\">Bay<", status);
+        Assert.Matches($"data-show-seats=\"{s.Spots[0].Id},{s.Spots[2].Id},{s.Spots[3].Id}\"[^>]*>Bay <span class=\"wp-chip-n\">3<", status);
+        Assert.DoesNotContain(">B1-T01-S0", status);
         Assert.Equal(HttpStatusCode.NotFound, (await _f.CreateClientAs(TestUser.It).GetAsync($"/Workplace/Floor/987654?handler=Map")).StatusCode);
     }
 
@@ -216,7 +221,7 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
 
         var assetHtml = await client.GetStringAsync($"/Assets/Details/{asset.Id}");
         Assert.Contains("On the floor plan", assetHtml);
-        Assert.Matches($"""href="/Workplace/Floor/{s.Floor.Id}\?focus=ws%3A{s.Spots[1].Id}"[^>]*>Floor · {System.Text.RegularExpressions.Regex.Escape(s.Spots[1].Label)}""", assetHtml);
+        Assert.Matches($"""href="/Workplace/Floor/{s.Floor.Id}\?focus=ws%3A{s.Spots[1].Id}"[^>]*>Floor · Bay<""", assetHtml);
         Assert.Contains("Not placed", await client.GetStringAsync($"/Assets/Details/{lonely.Id}"));
     }
 
@@ -232,7 +237,8 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         Assert.Contains("Whole floor", whole);
         Assert.Contains("data-print-map", whole);
         Assert.Contains("ap11.anna", whole);
-        Assert.Equal(4, System.Text.RegularExpressions.Regex.Matches(whole, "<td class=\"nowrap\">B1-T01-S0").Count);
+        Assert.Equal(4, System.Text.RegularExpressions.Regex.Matches(whole, "<td>Bay</td>").Count);
+        Assert.DoesNotContain(">B1-T01-S0", whole); // the drawing's seat ids are never shown as text
         Assert.DoesNotContain("class=\"sidebar\"", whole); // the print layout has no menu
         Assert.DoesNotMatch("""\sstyle\s*=""", whole);
 
@@ -240,7 +246,7 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         var part = await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=60,70,40,30&what=Window+side");
         Assert.Contains("Window side", part);
         Assert.Contains("viewBox=\"60 70 40 30\"", part);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(part, "<td class=\"nowrap\">B1-T01-S0").Count);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(part, "<td>Bay</td>").Count);
         // a bad area prints the whole floor
         Assert.Contains("Whole floor", await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=nonsense"));
 

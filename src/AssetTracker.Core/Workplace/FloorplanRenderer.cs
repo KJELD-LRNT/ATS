@@ -28,7 +28,7 @@ public readonly record struct Area(double X, double Y, double Width, double Heig
 /// map is styled and scripted with (free desk, taken, not a desk, switched off, flagged, team colour); a seat with
 /// someone or something placed gets a marker: a person icon in the seat, small desktop and screen icons just outside
 /// it (away from its table) and a label with the person's name and the desktop's tag, which the page scales to a fixed
-/// size on screen. Every team gets a dashed outline and its name. Only data of this application goes in; the drawing
+/// size on screen. Teams get a dashed outline per table and their name per room (a table can be split between teams). Only data of this application goes in; the drawing
 /// itself was sanitised on import.
 /// </summary>
 public static class FloorplanRenderer
@@ -54,7 +54,10 @@ public static class FloorplanRenderer
             if ((string?)e.Attribute("id") is { } id) byId.TryAdd(id, e);
 
         var teamById = teams.ToDictionary(t => t.Id);
-        var teamBounds = new Dictionary<int, Box>();
+        // Team outlines are drawn per table (or per room for seats without a table), so a table split between two teams
+        // shows both halves, and a team spread over several tables does not get one box over everything in between.
+        // Below: all its seats sit below their table (the lower half of a split table), so the name goes under it.
+        var teamBounds = new Dictionary<(int Team, string Group, string Room), (Box Box, bool Below)>();
         var markers = new XElement(Svg + "g", new XAttribute("class", "fp-marks"), new XAttribute("pointer-events", "none"));
         var labels = new XElement(Svg + "g", new XAttribute("class", "fp-labels"), new XAttribute("pointer-events", "none"));
 
@@ -73,7 +76,6 @@ public static class FloorplanRenderer
             if (state?.Screens > 0) classes.Add("fp-has-screen");
 
             el.SetAttributeValue("data-ws", spot.Id.ToString(CultureInfo.InvariantCulture));
-            el.SetAttributeValue("data-label", spot.Label);
             if (spot.RoomId is not null) el.SetAttributeValue("data-room", spot.RoomId);
             if (spot.RoomName is not null) el.SetAttributeValue("data-room-name", spot.RoomName);
             if (spot.TableId is not null) el.SetAttributeValue("data-table", spot.TableId);
@@ -82,19 +84,25 @@ public static class FloorplanRenderer
             if (spot.IsDesk) el.SetAttributeValue("data-desk", "1");
 
             var box = Bounds(el);
-            if (spot.IsActive && spot.TeamId is { } teamId && teamById.TryGetValue(teamId, out var team))
+            FloorTeam? team = null;
+            if (spot.IsActive && spot.TeamId is { } teamId && teamById.TryGetValue(teamId, out team))
             {
                 classes.Add($"fp-team-{team.ColorIndex}");
                 el.SetAttributeValue("data-team", teamId.ToString(CultureInfo.InvariantCulture));
-                if (box is { } b) teamBounds[teamId] = teamBounds.TryGetValue(teamId, out var cur) ? cur.Union(b) : b;
+                if (box is { } b)
+                {
+                    var key = (teamId, spot.TableId ?? spot.RoomId ?? "", spot.RoomId ?? "");
+                    var below = Direction(el, b) == Side.Down;
+                    teamBounds[key] = teamBounds.TryGetValue(key, out var cur) ? (cur.Box.Union(b), cur.Below && below) : (b, below);
+                }
             }
 
-            // Tooltip: label, who sits there and what is placed.
-            var tip = spot.Label;
-            if (state?.Person is not null) tip += " · " + state.Person + (state.PersonLeft ? " (no longer works here)" : "");
+            // Tooltip: who sits there (or what kind of seat it is), what is placed, and the team and room.
+            var tip = state?.Person is { } who ? who + (state.PersonLeft ? " (no longer works here)" : "")
+                : !spot.IsActive ? "Switched off" : !spot.IsDesk ? "Seat, not a desk" : "Free desk";
             if (state?.Desktop is not null) tip += " · desktop " + state.Desktop;
             if (state?.Screens > 0) tip += $" · {state.Screens} screen{(state.Screens == 1 ? "" : "s")}";
-            if (spot.IsActive && spot.IsDesk && state?.Person is null) tip += " · free desk";
+            if (spot.Place(team?.Name) is { Length: > 0 } place) tip += " · " + place;
             if (el.Element(Svg + "title") is { } title) title.Value = tip;
             else el.AddFirst(new XElement(Svg + "title", tip));
 
@@ -212,26 +220,36 @@ public static class FloorplanRenderer
         new(Svg + "use", new XAttribute("href", "#" + icon), new XAttribute("class", cls),
             new XAttribute("x", Num(x)), new XAttribute("y", Num(y)), new XAttribute("width", Num(size)), new XAttribute("height", Num(size)));
 
-    private static void AddTeamLayer(XElement root, Floor floor, Dictionary<int, FloorTeam> teams, Dictionary<int, Box> bounds)
+    /// <summary>
+    /// A dashed outline in the team's colour around each of its tables (or groups of seats in a room), and the team's name
+    /// once per room, above its top table there (below it when those seats are on the far side of their table).
+    /// </summary>
+    private static void AddTeamLayer(XElement root, Floor floor, Dictionary<int, FloorTeam> teams,
+        Dictionary<(int Team, string Group, string Room), (Box Box, bool Below)> bounds)
     {
         if (bounds.Count == 0) return;
         var parts = floor.ViewBox.Split(' ');
         var width = double.Parse(parts[2], CultureInfo.InvariantCulture);
-        var pad = width / 330;
+        var pad = width / 400;
         var font = width / 170;
         var layer = new XElement(Svg + "g", new XAttribute("class", "fp-teamlayer"), new XAttribute("pointer-events", "none"));
-        foreach (var (teamId, b) in bounds.OrderBy(kv => kv.Key))
+        foreach (var (key, (b, _)) in bounds.OrderBy(kv => kv.Key.Team).ThenBy(kv => kv.Value.Box.MinY).ThenBy(kv => kv.Value.Box.MinX))
         {
-            var team = teams[teamId];
-            var x = b.MinX - pad; var y = b.MinY - pad;
+            var team = teams[key.Team];
             layer.Add(new XElement(Svg + "rect",
                 new XAttribute("class", $"fp-team-outline fp-team-{team.ColorIndex}"),
-                new XAttribute("x", Num(x)), new XAttribute("y", Num(y)),
+                new XAttribute("x", Num(b.MinX - pad)), new XAttribute("y", Num(b.MinY - pad)),
                 new XAttribute("width", Num(b.Width + 2 * pad)), new XAttribute("height", Num(b.Height + 2 * pad)),
-                new XAttribute("rx", Num(pad)), new XAttribute("fill", "none"), new XAttribute("data-team", teamId.ToString(CultureInfo.InvariantCulture))));
+                new XAttribute("rx", Num(pad)), new XAttribute("fill", "none"), new XAttribute("data-team", key.Team.ToString(CultureInfo.InvariantCulture))));
+        }
+        foreach (var room in bounds.GroupBy(kv => (kv.Key.Team, kv.Key.Room)).OrderBy(g => g.Key.Team))
+        {
+            var team = teams[room.Key.Team];
+            var (top, below) = room.Select(kv => kv.Value).OrderBy(v => v.Box.MinY).ThenBy(v => v.Box.MinX).First();
+            var y = below ? top.MaxY + pad + font : top.MinY - pad - font * 0.35;
             foreach (var cls in new[] { "fp-team-halo", $"fp-team-label fp-team-{team.ColorIndex}" })
                 layer.Add(new XElement(Svg + "text", new XAttribute("class", cls),
-                    new XAttribute("x", Num(x + pad)), new XAttribute("y", Num(y - font * 0.35)),
+                    new XAttribute("x", Num(top.MinX)), new XAttribute("y", Num(y)),
                     new XAttribute("font-size", Num(font)), team.Name));
         }
         root.Add(layer);

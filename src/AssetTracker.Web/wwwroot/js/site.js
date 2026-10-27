@@ -448,7 +448,7 @@ function createCombo(o) {
         var input = root.querySelector("input[role=combobox]");
         var url = root.getAttribute("data-url");
         var floorUrl = root.getAttribute("data-floor-url");
-        var KINDS = { workspot: "Seat", room: "Room", team: "Team", person: "Person", asset: "Desktop / screen" };
+        var KINDS = { room: "Room", team: "Team", person: "Person", asset: "Desktop / screen" };
 
         var combo = createCombo({
             input: input, list: root.querySelector("[role=listbox]"), idPrefix: input.id + "-option-", min: 2,
@@ -645,34 +645,77 @@ function seatSpacing(svg) {
         all('[data-ids="el"]').forEach(function (f) { f.value = e.map(function (x) { return x.id; }).join(","); });
 
         var summary = root.querySelector("[data-sel-summary]");
-        if (summary) summary.textContent = s.length === 1 ? "" : s.length + " seats selected.";
+        if (summary) summary.textContent = s.length === 1 ? "" : describe(s);
         var list = root.querySelector("[data-sel-list]");
         if (list) {
             list.textContent = "";
             if (s.length > 1) s.slice(0, 12).forEach(function (x) {
                 var li = document.createElement("li");
-                li.textContent = (x.getAttribute("data-label") || x.id) + (x.getAttribute("data-person") ? " · " + x.getAttribute("data-person") : "");
+                li.textContent = seatText(x);
                 list.appendChild(li);
             });
             if (s.length > 12) { var more = document.createElement("li"); more.textContent = "… and " + (s.length - 12) + " more"; list.appendChild(more); }
         }
         var elSummary = root.querySelector("[data-el-summary]");
         if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
+        syncTeamForm(s);
 
         if (s.length === 1) {
             var one = s[0];
             var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
-            fact("label", one.getAttribute("data-label"));
-            var room = one.getAttribute("data-room");
-            fact("room", one.getAttribute("data-room-name") ? one.getAttribute("data-room-name") + (room ? " (" + room + ")" : "") : room);
+            fact("room", roomOf(one));
             fact("team", one.hasAttribute("data-team") ? teamName(one.getAttribute("data-team")) : "");
-            var idField = root.querySelector("[data-ws-id]");
-            if (idField) idField.value = one.getAttribute("data-ws");
-            var labelField = root.querySelector("[data-ws-label]");
-            if (labelField) labelField.value = one.getAttribute("data-label") || "";
             loadSpot(one);
         }
     }
+
+    function roomOf(seat) { return seat.getAttribute("data-room-name") || seat.getAttribute("data-room") || ""; }
+
+    // A seat has no name of its own: it is who sits there, its desktop, or what kind of seat it is.
+    function seatText(seat) {
+        return seat.getAttribute("data-person") || seat.getAttribute("data-desktop") ||
+            (seat.classList.contains("fp-ws-off") ? "Switched-off seat" : seat.hasAttribute("data-desk") ? "Free desk" : "Seat, not a desk");
+    }
+
+    function distinct(list) { return list.filter(function (v, i) { return v && list.indexOf(v) === i; }); }
+
+    // "A whole table in Finance · 6 seats, 2 free desks", "3 of the 8 seats of a table in Sales", "14 seats in 2 rooms".
+    function describe(s) {
+        var tables = distinct(s.map(function (x) { return x.getAttribute("data-table"); }));
+        var rooms = distinct(s.map(roomOf));
+        var text = s.length + " seats";
+        if (tables.length === 1 && s.every(function (x) { return x.getAttribute("data-table") === tables[0]; })) {
+            var total = svg.querySelectorAll('[data-ws][data-table="' + esc(tables[0]) + '"]').length;
+            text = total === s.length ? "A whole table, " + s.length + " seats," : s.length + " of the " + total + " seats of a table";
+        }
+        if (rooms.length === 1) text += " in " + rooms[0];
+        else if (rooms.length > 1) text += " in " + rooms.length + " rooms";
+        var free = s.filter(function (x) { return x.classList.contains("fp-free"); }).length;
+        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team"); }));
+        var parts = [];
+        if (free) parts.push(free + " free desk" + (free === 1 ? "" : "s"));
+        if (teams.length === 1) parts.push(s.every(function (x) { return x.getAttribute("data-team") === teams[0]; }) ? "team " + teamName(teams[0]) : "partly team " + teamName(teams[0]));
+        else if (teams.length > 1) parts.push(teams.length + " teams");
+        return text.replace(/,$/, "") + (parts.length ? " · " + parts.join(", ") : "") + ".";
+    }
+
+    // The team box starts at the team the selected seats share; "New team…" when they have none or several.
+    var teamForm = root.querySelector("[data-team-form]");
+    function syncTeamNew() {
+        if (!teamForm) return;
+        var isNew = teamForm.querySelector("[data-team-select]").value === "new";
+        teamForm.querySelector("[data-team-new]").hidden = !isNew;
+        teamForm.querySelector("[data-team-new] input").required = isNew;
+    }
+    function syncTeamForm(s) {
+        if (!teamForm || s.length === 0) return;
+        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team") || "-"; }));
+        var select = teamForm.querySelector("[data-team-select]");
+        select.value = teams.length === 1 && teams[0] !== "-" ? teams[0] : "new";
+        teamForm.querySelector("[data-team-submit]").textContent = s.length === 1 ? "Set team" : "Set team for " + s.length + " seats";
+        syncTeamNew();
+    }
+    if (teamForm) teamForm.querySelector("[data-team-select]").addEventListener("change", syncTeamNew);
 
     // ---- what sits at the selected seat -------------------------------------------------------------------------
 
@@ -720,7 +763,8 @@ function seatSpacing(svg) {
     function renderSpot(d) {
         root.querySelector("[data-spot-status]").hidden = true;
         root.querySelector("[data-spot-body]").hidden = false;
-        root.querySelector("[data-spot-kind]").textContent = !d.isActive ? "This seat is switched off." : d.isDesk ? "Desk" : "Not a desk: nobody is placed here.";
+        var kind = !d.isActive ? "Switched-off seat" : d.isDesk ? "Desk" : "Seat, not a desk: nobody is placed here";
+        root.querySelector("[data-spot-kind]").textContent = kind + (d.place ? " · " + d.place : "") + ".";
         var items = root.querySelector("[data-spot-items]");
         items.textContent = "";
         if (d.person) {
@@ -962,7 +1006,7 @@ function seatSpacing(svg) {
         var i = spec.indexOf(":");
         if (i < 0) return;
         var kind = spec.slice(0, i), value = spec.slice(i + 1), q = null;
-        if (kind === "ws") q = '[data-ws="' + esc(value) + '"]';
+        if (kind === "ws") q = value.split(",").map(function (v) { return '[data-ws="' + esc(v) + '"]'; }).join(",");
         else if (kind === "room") q = '[data-ws][data-room="' + esc(value) + '"]';
         else if (kind === "team") q = '[data-ws][data-team="' + esc(value) + '"]';
         if (q) focusElements(all(q, svg));
@@ -980,6 +1024,8 @@ function seatSpacing(svg) {
     root.addEventListener("click", function (e) {
         var spot = e.target.closest("[data-show-spot]");
         if (spot) { focusSpec("ws:" + spot.getAttribute("data-show-spot")); return; }
+        var group = e.target.closest("[data-show-seats]");
+        if (group) { focusSpec("ws:" + group.getAttribute("data-show-seats")); return; }
         var team = e.target.closest("[data-show-team]");
         if (team) { focusSpec("team:" + team.getAttribute("data-show-team")); return; }
         var hl = e.target.closest("[data-highlight]");

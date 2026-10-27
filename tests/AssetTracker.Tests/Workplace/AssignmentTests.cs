@@ -50,10 +50,11 @@ public class AssignmentTests : IClassFixture<AppFactory>
         var s = await NewFloorAsync("AS01");
         var (anna, bob) = await _f.WithDbAsync(async db => (await Seed.PersonAsync(db, "as01.anna"), await Seed.PersonAsync(db, "as01.bob")));
 
-        Assert.Contains("placed at", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
-        Assert.Contains("already sits", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
+        // messages name the desk by its room (and team), never by the drawing's seat id
+        Assert.Equal("as01.anna placed at a desk in Annex.", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
+        Assert.Equal("as01.anna already sits at this desk.", await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id)));
         var taken = await Assert.ThrowsAsync<ConflictException>(() => AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, bob.Id)));
-        Assert.Contains("as01.anna", taken.Message);
+        Assert.Equal("This desk is taken by as01.anna. Release them first.", taken.Message);
         var row = Assert.Single(await RowsAsync(r => r.WorkspotId == s.Spots[0].Id && r.ReleasedAt == null));
         Assert.Equal(PlacementKind.Person, row.Kind);
         Assert.True(await _f.WithDbAsync(db => db.AuditEvents.AnyAsync(e => e.Action == "assignment.assign" && e.DetailsJson!.Contains("as01.anna"))));
@@ -65,7 +66,8 @@ public class AssignmentTests : IClassFixture<AppFactory>
         var s = await NewFloorAsync("AS02");
         var anna = await _f.WithDbAsync(db => Seed.PersonAsync(db, "as02.anna"));
         await AsIt(a => a.AssignPersonAsync(s.Spots[0].Id, anna.Id));
-        Assert.Contains("moved from", await AsIt(a => a.AssignPersonAsync(s.Spots[1].Id, anna.Id)));
+        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<TeamService>().CreateAsync("Window", [s.Spots[1].Id]));
+        Assert.Equal("as02.anna moved from Floor · Annex to a desk in Window · Annex.", await AsIt(a => a.AssignPersonAsync(s.Spots[1].Id, anna.Id)));
 
         var rows = await RowsAsync(r => r.PersonId == anna.Id);
         Assert.Equal(2, rows.Count);
@@ -207,7 +209,7 @@ public class AssignmentTests : IClassFixture<AppFactory>
         Assert.All(office.Spots, w => Assert.True(w.IsDesk));
         var plain = await _f.WithDbAsync(db => Seed.SiteAsync(db, "AS14"));
         var f = (await WorkplaceSeed.ImportAsync(_f, plain, "Plain", WorkplaceSeed.Plain())).Floor;
-        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<WorkspotService>().MarkAsync(f.Id, ["fp-e2"], null));
+        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<WorkspotService>().MarkAsync(f.Id, ["fp-e2"]));
         Assert.True(Assert.Single(await SpotsAsync(f.Id)).IsDesk);
     }
 
@@ -286,9 +288,9 @@ public class AssignmentTests : IClassFixture<AppFactory>
         await AsIt(a => a.AssignAssetAsync(s.Spots[1].Id, mine.Id));
 
         var found = await AsIt(a => a.SearchAsync(s.Floor.Id, "zq19"));
-        Assert.EndsWith(s.Spots[0].Label, Assert.Single(found, c => c.Kind == "person" && c.Id == anna.Id).Place);
+        Assert.Equal("Floor · Annex", Assert.Single(found, c => c.Kind == "person" && c.Id == anna.Id).Place);
         Assert.Equal("No longer in the directory", Assert.Single(found, c => c.Id == left.Id && c.Kind == "person").Reason);
-        Assert.EndsWith(s.Spots[1].Label, Assert.Single(found, c => c.Kind == "desktop").Place);
+        Assert.Equal("Floor · Annex", Assert.Single(found, c => c.Kind == "desktop").Place);
         Assert.Contains("AS20", Assert.Single(found, c => c.Kind == "screen" && c.Id == foreign.Id).Reason);
         Assert.DoesNotContain(found, c => c.Title == "ZQ19-LT-3"); // laptops are not placed at desks
         Assert.Empty(await AsIt(a => a.SearchAsync(s.Floor.Id, "z")));

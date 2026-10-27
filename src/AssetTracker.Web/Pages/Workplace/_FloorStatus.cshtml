@@ -13,6 +13,11 @@
     };
     var flaggedSeats = s.Flags.Select(f => f.WorkspotId).Distinct().Count();
     var spots = Model.View.Spots.ToDictionary(w => w.Id);
+    var teamNames = Model.View.Teams.ToDictionary(t => t.Id, t => t.Name);
+    // Free desks per team and room ("Finance", "Sales · Open space"); a desk has no name of its own.
+    var freeGroups = s.FreeDesks.Where(spots.ContainsKey).Select(id => spots[id])
+        .GroupBy(w => w.Place(w.TeamId is { } t && teamNames.TryGetValue(t, out var n) ? n : null))
+        .OrderBy(g => g.Key.Length == 0).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase).ToList();
 }
 <section class="card wp-box wp-status" aria-labelledby="wp-status-h" data-status>
     <h2 id="wp-status-h">At a glance</h2>
@@ -38,7 +43,7 @@
             <ul class="wp-flags">
                 @foreach (var f in items)
                 {
-                    <li><button type="button" class="wp-flag-show" data-show-spot="@f.WorkspotId"><strong>@f.Label</strong> <span>@f.Text</span></button></li>
+                    <li><button type="button" class="wp-flag-show" data-show-spot="@f.WorkspotId"><span>@f.Text</span>@if (f.Place.Length > 0) { <span class="muted wp-flag-place">@f.Place</span> }</button></li>
                 }
             </ul>
         </details>
@@ -46,14 +51,13 @@
 
     @if (s.Free > 0)
     {
-        <details class="wp-group" open="@(s.Free <= 12)">
+        <details class="wp-group" open="@(freeGroups.Count <= 8)">
             <summary class="wp-flag-h">Free desks <span class="badge badge--ok">@s.Free</span></summary>
             <ul class="wp-chips">
-                @foreach (var id in s.FreeDesks.Take(80))
+                @foreach (var g in freeGroups)
                 {
-                    <li><button type="button" class="wp-chip" data-show-spot="@id">@(spots.TryGetValue(id, out var w) ? w.Label : id.ToString())</button></li>
+                    <li><button type="button" class="wp-chip" data-show-seats="@string.Join(',', g.Select(w => w.Id))" title="Show these free desks on the map">@(g.Key.Length > 0 ? g.Key : "Other desks") <span class="wp-chip-n">@g.Count()</span></button></li>
                 }
-                @if (s.Free > 80) { <li class="muted">… and @(s.Free - 80) more</li> }
             </ul>
         </details>
     }

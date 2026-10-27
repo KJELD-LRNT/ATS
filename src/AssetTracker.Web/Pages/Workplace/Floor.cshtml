@@ -66,7 +66,7 @@
             @await Html.PartialAsync("_FloorMap", Model.Svg)
         </div>
         @await Html.PartialAsync("_Legend")
-        <p class="hint wp-hint">Scroll to zoom, drag to move; names and desktop tags appear once you zoom in. Click a seat to select it; Shift-click adds more, a table or room selects its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
+        <p class="hint wp-hint">Scroll to zoom, drag to move; names and desktop tags appear once you zoom in. Click a seat to select it; Shift-click adds more, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
     </section>
 
     <aside class="wp-panel" aria-label="Status, placing and selection">
@@ -109,9 +109,8 @@
 
         <section class="card wp-box" data-when="ws" hidden aria-labelledby="wp-sel2-h">
             <h2 id="wp-sel2-h">Selection</h2>
-            <p data-sel-summary></p>
+            <p class="wp-sel-summary" data-sel-summary></p>
             <dl class="wp-facts" data-when="one" hidden>
-                <dt>Seat</dt><dd data-fact="label"></dd>
                 <dt>Room</dt><dd data-fact="room"></dd>
                 <dt>Team</dt><dd data-fact="team"></dd>
             </dl>
@@ -128,16 +127,26 @@
 
             @if (Model.CanEdit)
             {
+                <form method="post" asp-page-handler="SetTeam" asp-route-id="@floor.Id" class="stack wp-form wp-team-set" data-team-form>
+                    <input type="hidden" name="ids" data-ids="ws" />
+                    <div class="field">
+                        <label for="wp-team">Team</label>
+                        <select id="wp-team" name="team" data-team-select>
+                            @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
+                            <option value="new">New team…</option>
+                            <option value="none">No team</option>
+                        </select>
+                    </div>
+                    <div class="field" data-team-new>
+                        <label for="wp-team-name">Name of the new team</label>
+                        <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="e.g. Finance" />
+                    </div>
+                    <button type="submit" class="btn--primary btn--sm" data-team-submit>Set team</button>
+                    <p class="hint">Click a table to give the whole table a team. To split a table, click one seat and Shift-click the others (or Shift-drag over them), then give those seats their team.</p>
+                </form>
+
                 <details class="wp-more">
                     <summary>Seat settings</summary>
-                    <form method="post" asp-page-handler="Label" asp-route-id="@floor.Id" class="stack wp-form" data-when="one" hidden>
-                        <input type="hidden" name="workspotId" data-ws-id />
-                        <div class="field">
-                            <label for="wp-label">Label</label>
-                            <input id="wp-label" name="label" maxlength="@WorkspotService.LabelMax" data-ws-label required />
-                        </div>
-                        <button type="submit" class="btn--sm">Save label</button>
-                    </form>
                     <div class="wp-form-row">
                         <form method="post" asp-page-handler="Desk" asp-route-id="@floor.Id" class="wp-form">
                             <input type="hidden" name="ids" data-ids="ws" />
@@ -159,35 +168,6 @@
                         </form>
                     </div>
                 </details>
-
-                <details class="wp-more">
-                    <summary>Team</summary>
-                    <form method="post" asp-page-handler="Team" asp-route-id="@floor.Id" class="stack wp-form">
-                        <input type="hidden" name="ids" data-ids="ws" />
-                        <div class="field">
-                            <label for="wp-team-name">New team from the selection</label>
-                            <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="Team name" required />
-                        </div>
-                        <button type="submit" class="btn--primary btn--sm">Group as team</button>
-                    </form>
-                    @if (Model.View.Teams.Count > 0)
-                    {
-                        <form method="post" asp-page-handler="TeamAdd" asp-route-id="@floor.Id" class="stack wp-form">
-                            <input type="hidden" name="ids" data-ids="ws" />
-                            <div class="field">
-                                <label for="wp-team-add">Add to an existing team</label>
-                                <select id="wp-team-add" name="teamId">
-                                    @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
-                                </select>
-                            </div>
-                            <button type="submit" class="btn--sm">Add to team</button>
-                        </form>
-                    }
-                    <form method="post" asp-page-handler="TeamRemove" asp-route-id="@floor.Id" class="wp-form" data-when="teamed" hidden>
-                        <input type="hidden" name="ids" data-ids="ws" />
-                        <button type="submit" class="btn--sm">Take out of team</button>
-                    </form>
-                </details>
             }
         </section>
 
@@ -198,11 +178,6 @@
                 <p data-el-summary></p>
                 <form method="post" asp-page-handler="Mark" asp-route-id="@floor.Id" class="stack wp-form">
                     <input type="hidden" name="ids" data-ids="el" />
-                    <div class="field">
-                        <label for="wp-prefix">Label prefix (optional)</label>
-                        <input id="wp-prefix" name="prefix" maxlength="40" placeholder="D-" />
-                        <span class="hint">With a prefix the seats are numbered D-1, D-2, … in the order you clicked them.</span>
-                    </div>
                     <button type="submit" class="btn--primary btn--sm">Mark as workspots</button>
                 </form>
             </section>
@@ -212,7 +187,7 @@
             <h2 id="wp-teams-h">Teams</h2>
             @if (Model.View.Teams.Count == 0)
             {
-                <p class="muted">No teams on this floor. Select seats and group them as a team; teams are only a drawing on the map and can be renamed at any time.</p>
+                <p class="muted">No teams on this floor. Click a table (or select seats) and choose a team; teams are only a drawing on the map and can be renamed at any time.</p>
             }
             else
             {

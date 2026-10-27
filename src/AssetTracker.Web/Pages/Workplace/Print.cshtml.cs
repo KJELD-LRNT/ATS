@@ -1,3 +1,4 @@
+using AssetTracker.Core.Domain;
 using AssetTracker.Core.Security;
 using AssetTracker.Core.Workplace;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,7 @@ namespace AssetTracker.Web.Pages.Workplace;
 [Authorize(Policy = Policies.WorkplaceRead)]
 public class PrintModel(FloorService floors, AssignmentService assignments, ICurrentUser user) : PageModel
 {
-    public sealed record DeskRow(string Label, string? Room, string? Person, bool PersonLeft, string? Desktop, int Screens, string? Note);
+    public sealed record DeskRow(string? Team, string? Room, string? Person, bool PersonLeft, string? Desktop, int Screens, string? Note);
 
     public FloorView View { get; private set; } = null!;
     public string Svg { get; private set; } = "";
@@ -46,16 +47,20 @@ public class PrintModel(FloorService floors, AssignmentService assignments, ICur
         var status = await assignments.StatusAsync(view.Spots, ct);
         var flags = status.Flags.ToLookup(f => f.WorkspotId);
         var centers = FloorplanRenderer.Centers(view.Floor, view.Spots);
+        var teamNames = view.Teams.ToDictionary(t => t.Id, t => t.Name);
+        string? TeamOf(Workspot s) => s.TeamId is { } t && teamNames.TryGetValue(t, out var n) ? n : null;
         Rows = view.Spots
             .Where(s => (s.IsActive && s.IsDesk) || states.ContainsKey(s.Id))
             .Where(s => PrintArea is not { } a || (centers.TryGetValue(s.Id, out var c) && a.Contains(c.X, c.Y)))
-            .OrderBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
+            // By team and room; within a room the drawing's order (its seat ids), which is never printed.
+            .OrderBy(s => TeamOf(s) is null).ThenBy(s => TeamOf(s), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.RoomName ?? s.RoomId, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
             .Select(s =>
             {
                 states.TryGetValue(s.Id, out var st);
                 var note = flags[s.Id].Any() ? string.Join(" ", flags[s.Id].Select(f => f.Text))
                     : st?.Person is null && s.IsActive && s.IsDesk ? "Free" : null;
-                return new DeskRow(s.Label, s.RoomName ?? s.RoomId, st?.Person, st?.PersonLeft == true, st?.Desktop, st?.Screens ?? 0, note);
+                return new DeskRow(TeamOf(s), s.RoomName ?? s.RoomId, st?.Person, st?.PersonLeft == true, st?.Desktop, st?.Screens ?? 0, note);
             })
             .ToList();
         return Page();

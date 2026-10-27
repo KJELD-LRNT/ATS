@@ -14,16 +14,17 @@ public sealed record PersonOnSpot(int AssignmentId, int PersonId, string Name, s
 public sealed record AssetOnSpot(int AssignmentId, int AssetId, string Tag, PlacementKind Kind, string Type, string? Model, string Description);
 
 /// <param name="Flags">What is wrong at this seat (see <see cref="SeatFlag"/>).</param>
-public sealed record SpotDetail(int WorkspotId, int FloorId, string Label, string? RoomName, string FloorName, string SiteKey,
+/// <param name="Place">The seat's team and room (see <see cref="Workspot.Place(string?)"/>).</param>
+public sealed record SpotDetail(int WorkspotId, int FloorId, string Place, string? RoomName, string? TeamName, string FloorName, string SiteKey,
     bool IsActive, bool IsDesk, PersonOnSpot? Person, AssetOnSpot? Desktop, IReadOnlyList<AssetOnSpot> Screens, IReadOnlyList<string> Flags);
 
 /// <summary>What the map draws at a seat: who sits there, the desktop's tag, how many screens, and whether it is flagged.</summary>
 public sealed record SpotState(string? Person, bool PersonLeft, string? Desktop, int Screens, bool Flagged);
 
-/// <summary>A seat that needs a look.</summary>
+/// <summary>A seat that needs a look. <paramref name="Place"/> is its team and room.</summary>
 /// <param name="Kind"><c>person-left</c> (no longer in the directory), <c>seat-disabled</c> (the seat is switched off,
 /// gone from the drawing or not a desk) or <c>missing</c> (a person without a desktop and/or a screen).</param>
-public sealed record SeatFlag(string Kind, int WorkspotId, string Label, string? Person, string Text);
+public sealed record SeatFlag(string Kind, int WorkspotId, string Place, string? Person, string Text);
 
 /// <summary>The floor at a glance: desks, who sits where, free desks and flags.</summary>
 public sealed record FloorStatus(int Desks, int Seated, IReadOnlyList<int> FreeDesks, int Desktops, int Screens, IReadOnlyList<SeatFlag> Flags)
@@ -32,11 +33,11 @@ public sealed record FloorStatus(int Desks, int Seated, IReadOnlyList<int> FreeD
 }
 
 /// <param name="Kind"><c>person</c>, <c>desktop</c> or <c>screen</c>.</param>
-/// <param name="Place">Where it is now ("6th floor · D-12"), if it is placed.</param>
+/// <param name="Place">Where it is now ("6th floor · Finance"), if it is placed.</param>
 /// <param name="Reason">Why it cannot be placed here (shown instead of making the row selectable).</param>
 public sealed record PlaceCandidate(string Kind, int Id, string Title, string? Subtitle, string? SiteKey, string? Place, string? Reason);
 
-public sealed record PlaceInfo(int FloorId, string FloorName, string SiteKey, int WorkspotId, string Label, string? RoomName);
+public sealed record PlaceInfo(int FloorId, string FloorName, string SiteKey, int WorkspotId, string Place);
 
 /// <summary>
 /// Places people, desktops and screens at desks. This is <b>location only</b>: it is separate from loans (who is
@@ -56,7 +57,7 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
     /// <summary>What sits at a workspot, or null when it does not exist or is out of the principal's scope.</summary>
     public async Task<SpotDetail?> GetSpotAsync(int workspotId, CancellationToken ct = default)
     {
-        var spot = await db.Workspots.AsNoTracking().Include(w => w.Floor!).ThenInclude(f => f.Site)
+        var spot = await db.Workspots.AsNoTracking().Include(w => w.Floor!).ThenInclude(f => f.Site).Include(w => w.Team)
             .SingleOrDefaultAsync(w => w.Id == workspotId, ct);
         if (spot is null || !(await scope.GetWorkplaceAsync(ct)).CanRead(spot.Floor!.SiteId)) return null;
         if (!spot.Floor.IsActive && !scope.CanEditWorkplace) return null;
@@ -73,9 +74,9 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         var assets = open.Where(a => a.Asset is not null).Select(a => new AssetOnSpot(a.Id, a.AssetId!.Value, a.Asset!.Tag, a.Kind,
             a.Asset.Type!.Name, a.Asset.Model?.Name, a.Asset.Description)).ToList();
 
-        var flags = Flags(spot, person?.Name, person is { IsActive: false }, assets.Any(a => a.Kind == PlacementKind.Desktop),
+        var flags = Flags(spot, "", person?.Name, person is { IsActive: false }, assets.Any(a => a.Kind == PlacementKind.Desktop),
             assets.Any(a => a.Kind == PlacementKind.Screen)).Select(f => f.Text).ToList();
-        return new SpotDetail(spot.Id, spot.FloorId, spot.Label, spot.RoomName, spot.Floor.Name, spot.Floor.Site!.Key, spot.IsActive,
+        return new SpotDetail(spot.Id, spot.FloorId, spot.Place(spot.Team?.Name), spot.RoomName ?? spot.RoomId, spot.Team?.Name, spot.Floor.Name, spot.Floor.Site!.Key, spot.IsActive,
             spot.IsDesk, person, assets.FirstOrDefault(a => a.Kind == PlacementKind.Desktop),
             assets.Where(a => a.Kind == PlacementKind.Screen).ToList(), flags);
     }
@@ -101,7 +102,7 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             var person = g.FirstOrDefault(r => r.Kind == PlacementKind.Person);
             var desktop = g.FirstOrDefault(r => r.Kind == PlacementKind.Desktop)?.Tag;
             var screens = g.Count(r => r.Kind == PlacementKind.Screen);
-            var flagged = Flags(byId[g.Key], person?.Person, person is { PersonActive: false }, desktop is not null, screens > 0).Count > 0;
+            var flagged = Flags(byId[g.Key], "", person?.Person, person is { PersonActive: false }, desktop is not null, screens > 0).Count > 0;
             return new SpotState(person?.Person, person is { PersonActive: false }, desktop, screens, flagged);
         });
     }
@@ -112,13 +113,15 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         var rows = spots.Count == 0 ? new List<Row>() : await OpenRowsAsync(spots.First().FloorId, ct);
         var bySeat = rows.ToLookup(r => r.WorkspotId);
         var desks = spots.Where(s => s.IsActive && s.IsDesk).ToList();
+        var floorId = spots.FirstOrDefault()?.FloorId ?? 0;
+        var teams = await db.FloorTeams.AsNoTracking().Where(t => t.FloorId == floorId).ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         var flags = new List<SeatFlag>();
         foreach (var spot in spots.OrderBy(s => s.Label, StringComparer.OrdinalIgnoreCase))
         {
             var here = bySeat[spot.Id].ToList();
             if (here.Count == 0) continue;
             var person = here.FirstOrDefault(r => r.Kind == PlacementKind.Person);
-            flags.AddRange(Flags(spot, person?.Person, person is { PersonActive: false },
+            flags.AddRange(Flags(spot, spot.Place(spot.TeamId is { } t && teams.TryGetValue(t, out var team) ? team : null), person?.Person, person is { PersonActive: false },
                 here.Any(r => r.Kind == PlacementKind.Desktop), here.Any(r => r.Kind == PlacementKind.Screen)));
         }
         return new FloorStatus(
@@ -134,20 +137,20 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
     /// The flags of one seat: a person who is no longer in the directory, a person at a seat that is switched off, gone
     /// from the drawing or not a desk, and a person without a desktop or a screen.
     /// </summary>
-    private static List<SeatFlag> Flags(Workspot spot, string? person, bool personLeft, bool hasDesktop, bool hasScreen)
+    private static List<SeatFlag> Flags(Workspot spot, string place, string? person, bool personLeft, bool hasDesktop, bool hasScreen)
     {
         var flags = new List<SeatFlag>();
         if (person is null) return flags;
         if (personLeft)
-            flags.Add(new SeatFlag("person-left", spot.Id, spot.Label, person, $"{person} no longer works here: free the seat."));
+            flags.Add(new SeatFlag("person-left", spot.Id, place, person, $"{person} no longer works here: free the seat."));
         if (!spot.IsActive)
-            flags.Add(new SeatFlag("seat-disabled", spot.Id, spot.Label, person, $"{person} is at a seat that is switched off or no longer in the drawing."));
+            flags.Add(new SeatFlag("seat-disabled", spot.Id, place, person, $"{person} is at a seat that is switched off or no longer in the drawing."));
         else if (!spot.IsDesk)
-            flags.Add(new SeatFlag("seat-disabled", spot.Id, spot.Label, person, $"{person} is at a seat that is not a desk."));
+            flags.Add(new SeatFlag("seat-disabled", spot.Id, place, person, $"{person} is at a seat that is not a desk."));
         if (!hasDesktop || !hasScreen)
         {
             var missing = !hasDesktop && !hasScreen ? "no desktop and no screen" : !hasDesktop ? "no desktop" : "no screen";
-            flags.Add(new SeatFlag("missing", spot.Id, spot.Label, person, $"{person} has {missing}."));
+            flags.Add(new SeatFlag("missing", spot.Id, place, person, $"{person} has {missing}."));
         }
         return flags;
     }
@@ -161,10 +164,12 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         var editor = scope.CanEditWorkplace;
         var row = await db.WorkspotAssignments.AsNoTracking()
             .Where(a => a.AssetId == assetId && a.ReleasedAt == null && (a.Workspot!.Floor!.IsActive || editor))
-            .Select(a => new { a.Workspot!.Floor!.SiteId, Info = new PlaceInfo(a.Workspot.FloorId, a.Workspot.Floor.Name,
-                a.Workspot.Floor.Site!.Key, a.WorkspotId, a.Workspot.Label, a.Workspot.RoomName) })
+            .Select(a => new { a.Workspot!.Floor!.SiteId, a.Workspot.FloorId, Floor = a.Workspot.Floor.Name, SiteKey = a.Workspot.Floor.Site!.Key,
+                a.WorkspotId, Team = a.Workspot.Team == null ? null : a.Workspot.Team.Name, Room = a.Workspot.RoomName ?? a.Workspot.RoomId })
             .FirstOrDefaultAsync(ct);
-        return row is not null && access.CanRead(row.SiteId) ? row.Info : null;
+        return row is not null && access.CanRead(row.SiteId)
+            ? new PlaceInfo(row.FloorId, row.Floor, row.SiteKey, row.WorkspotId, Workspot.Place(row.Team, row.Room))
+            : null;
     }
 
     // ---- what can be placed ----------------------------------------------------------------------------------
@@ -240,16 +245,19 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         var places = await db.WorkspotAssignments.AsNoTracking()
             .Where(a => a.ReleasedAt == null && ((a.PersonId != null && personIds.Contains(a.PersonId.Value)) ||
                                                  (a.AssetId != null && assetIds.Contains(a.AssetId.Value))))
-            .Select(a => new { a.PersonId, a.AssetId, Floor = a.Workspot!.Floor!.Name, a.Workspot.Label }).ToListAsync(ct);
+            .Select(a => new { a.PersonId, a.AssetId, Floor = a.Workspot!.Floor!.Name, Team = a.Workspot.Team == null ? null : a.Workspot.Team.Name,
+                Room = a.Workspot.RoomName ?? a.Workspot.RoomId }).ToListAsync(ct);
+        string At(string floorName, string? team, string? room) =>
+            Workspot.Place(team, room) is { Length: > 0 } p ? $"{floorName} · {p}" : floorName;
 
         var result = new List<PlaceCandidate>();
         result.AddRange(people.Select(p => new PlaceCandidate("person", p.Id, p.DisplayName,
             string.Join(" · ", new[] { p.Username, p.JobTitle, p.SiteKey }.Where(s => !string.IsNullOrEmpty(s))), p.SiteKey,
-            places.Where(x => x.PersonId == p.Id).Select(x => $"{x.Floor} · {x.Label}").FirstOrDefault(),
+            places.Where(x => x.PersonId == p.Id).Select(x => At(x.Floor, x.Team, x.Room)).FirstOrDefault(),
             p.IsActive ? null : "No longer in the directory")));
         result.AddRange(assets.Select(a => new PlaceCandidate(a.Role == WorkspotRole.Desktop ? "desktop" : "screen", a.Id, a.Tag,
             string.Join(" · ", new[] { a.Type, a.Model, a.Description }.Where(s => !string.IsNullOrEmpty(s)).Distinct()), a.SiteKey,
-            places.Where(x => x.AssetId == a.Id).Select(x => $"{x.Floor} · {x.Label}").FirstOrDefault(),
+            places.Where(x => x.AssetId == a.Id).Select(x => At(x.Floor, x.Team, x.Room)).FirstOrDefault(),
             a.SiteId == floor.SiteId ? null : $"Belongs to site {a.SiteKey}")));
         return result;
     }
@@ -259,11 +267,11 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
     private async Task<Workspot> LoadDeskAsync(int workspotId, CancellationToken ct)
     {
         scope.EnsureWorkplaceEditor();
-        var spot = await db.Workspots.Include(w => w.Floor).SingleOrDefaultAsync(w => w.Id == workspotId, ct)
+        var spot = await db.Workspots.Include(w => w.Floor).Include(w => w.Team).SingleOrDefaultAsync(w => w.Id == workspotId, ct)
                    ?? throw new DomainException("workspot.not-found", "Workspot not found.");
         if (!spot.Floor!.IsActive) throw new DomainException("floor.archived", "This floor is archived.");
-        if (!spot.IsActive) throw new DomainException("workspot.inactive", $"{spot.Label} is switched off. Switch it on first.");
-        if (!spot.IsDesk) throw new DomainException("workspot.not-desk", $"{spot.Label} is not a desk. Make it a desk first.");
+        if (!spot.IsActive) throw new DomainException("workspot.inactive", "This seat is switched off. Switch it on first.");
+        if (!spot.IsDesk) throw new DomainException("workspot.not-desk", "This seat is not a desk. Make it a desk first.");
         return spot;
     }
 
@@ -279,10 +287,11 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.Kind == PlacementKind.Person && a.ReleasedAt == null, ct);
         if (seat is not null)
         {
-            if (seat.PersonId == personId) return $"{person.DisplayName} already sits at {spot.Label}.";
-            throw new ConflictException("assignment.seat-taken", $"{spot.Label} is taken by {seat.Person!.DisplayName}. Release that seat first.");
+            if (seat.PersonId == personId) return $"{person.DisplayName} already sits at this desk.";
+            throw new ConflictException("assignment.seat-taken", $"This desk is taken by {seat.Person!.DisplayName}. Release them first.");
         }
         var current = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
+            .Include(a => a.Workspot).ThenInclude(w => w!.Team)
             .FirstOrDefaultAsync(a => a.PersonId == personId && a.ReleasedAt == null, ct);
         return await PlaceAsync(spot, current, new WorkspotAssignment { PersonId = personId, Kind = PlacementKind.Person },
             person.DisplayName, ct);
@@ -308,14 +317,15 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             throw new DomainException("assignment.asset-site", $"{asset.Tag} belongs to site {asset.Site!.Key}, this floor is at another site. Transfer the asset first.");
 
         var current = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
+            .Include(a => a.Workspot).ThenInclude(w => w!.Team)
             .FirstOrDefaultAsync(a => a.AssetId == assetId && a.ReleasedAt == null, ct);
-        if (current?.WorkspotId == workspotId) return $"{asset.Tag} is already at {spot.Label}.";
+        if (current?.WorkspotId == workspotId) return $"{asset.Tag} is already at this desk.";
         if (kind == PlacementKind.Desktop)
         {
             var other = await db.WorkspotAssignments.Include(a => a.Asset)
                 .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.Kind == PlacementKind.Desktop && a.ReleasedAt == null, ct);
             if (other is not null)
-                throw new ConflictException("assignment.desktop-taken", $"{spot.Label} already has desktop {other.Asset!.Tag}. Release it first.");
+                throw new ConflictException("assignment.desktop-taken", $"This desk already has desktop {other.Asset!.Tag}. Release it first.");
         }
         return await PlaceAsync(spot, current, new WorkspotAssignment { AssetId = assetId, Kind = kind }, asset.Tag, ct);
     }
@@ -325,7 +335,7 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
     {
         scope.EnsureWorkplaceEditor();
         var row = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
-                      .Include(a => a.Person).Include(a => a.Asset)
+                      .Include(a => a.Workspot).ThenInclude(w => w!.Team).Include(a => a.Person).Include(a => a.Asset)
                       .SingleOrDefaultAsync(a => a.Id == assignmentId, ct)
                   ?? throw new DomainException("assignment.not-found", "Assignment not found.");
         if (row.ReleasedAt != null) throw new ConflictException("assignment.released", "This was already released.");
@@ -335,7 +345,7 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         audit.Record("assignment.release", nameof(WorkspotAssignment), row.Id, row.Workspot!.Floor!.SiteId,
             details: new { Kind = row.Kind.ToString(), Name = name, Workspot = row.Workspot.Label, Floor = row.Workspot.Floor.Name });
         await db.SaveChangesAsync(ct);
-        return $"{name} released from {row.Workspot.Label}.";
+        return $"{name} released from {ADesk(row.Workspot)}.";
     }
 
     /// <summary>
@@ -356,6 +366,9 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         }
     }
 
+    /// <summary>"a desk in Finance" (its team and room) for messages; the drawing's seat id is never shown.</summary>
+    private static string ADesk(Workspot w) => w.Place(w.Team?.Name) is { Length: > 0 } p ? $"a desk in {p}" : "a desk";
+
     private async Task<string> PlaceAsync(Workspot spot, WorkspotAssignment? current, WorkspotAssignment fresh, string name, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -365,7 +378,8 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             // Two saves: the filtered unique index must see the old row closed before the new one is inserted.
             current.ReleasedAt = clock.UtcNow;
             current.ReleasedBy = user.Name;
-            movedFrom = $"{current.Workspot!.Floor!.Name} · {current.Workspot.Label}";
+            var old = current.Workspot!;
+            movedFrom = old.Place(old.Team?.Name) is { Length: > 0 } from ? $"{old.Floor!.Name} · {from}" : old.Floor!.Name;
             await db.SaveChangesAsync(ct);
         }
         fresh.WorkspotId = spot.Id;
@@ -377,6 +391,6 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             details: new { Kind = fresh.Kind.ToString(), Name = name, Workspot = spot.Label, Floor = spot.Floor.Name, MovedFrom = movedFrom });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        return movedFrom is null ? $"{name} placed at {spot.Label}." : $"{name} moved from {movedFrom} to {spot.Label}.";
+        return movedFrom is null ? $"{name} placed at {ADesk(spot)}." : $"{name} moved from {movedFrom} to {ADesk(spot)}.";
     }
 }

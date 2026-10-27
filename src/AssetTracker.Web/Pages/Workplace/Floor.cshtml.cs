@@ -11,8 +11,9 @@ namespace AssetTracker.Web.Pages.Workplace;
 
 /// <summary>
 /// One floor plan. Everyone who can read it can pan, zoom, find a seat, room, team, person or desktop, and print (part
-/// of) it. IT and facility drag people, desktops and screens onto desks, release them, rename seats, make seats desks or
-/// not, group them into teams, switch them off or mark shapes of a plain drawing as seats. The selection and dragging
+/// of) it. IT and facility drag people, desktops and screens onto desks, release them, make seats desks or not, give a
+/// table (or part of one) a team, switch seats off or mark shapes of a plain drawing as seats. Seats have no names of
+/// their own: a desk is known by who sits there, its desktop, its team and its room. The selection and dragging
 /// happen in the browser; forms (or fetch, for drops, so the map keeps its view) post the ids.
 /// </summary>
 [Authorize(Policy = Policies.WorkplaceRead)]
@@ -76,30 +77,31 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
             "person" => assignments.AssignPersonAsync(workspotId, targetId, ct),
             "desktop" or "screen" or "asset" => assignments.AssignAssetAsync(workspotId, targetId, ct),
             _ => throw new DomainException("assignment.kind", "Choose a person, a desktop or a screen."),
-        }, ct, workspotId);
+        }, ct, $"ws:{workspotId}");
 
     public Task<IActionResult> OnPostReleaseAsync(int id, int assignmentId, int workspotId, CancellationToken ct) =>
-        RunAsync(id, () => assignments.ReleaseAsync(assignmentId, ct), ct, workspotId);
+        RunAsync(id, () => assignments.ReleaseAsync(assignmentId, ct), ct, $"ws:{workspotId}");
 
     /// <summary>Makes the selected seats desks (<paramref name="desk"/> true) or ordinary seats.</summary>
     public Task<IActionResult> OnPostDeskAsync(int id, string? ids, bool desk, CancellationToken ct) =>
-        RunAsync(id, async () => $"{await spots.SetDeskAsync(Ids(ids), desk, ct)} seat(s) {(desk ? "made desks" : "are no longer desks")}.", ct);
+        RunAsync(id, async () => $"{await spots.SetDeskAsync(Ids(ids), desk, ct)} seat(s) {(desk ? "made desks" : "are no longer desks")}.", ct, FocusOn(ids));
 
-    public Task<IActionResult> OnPostLabelAsync(int id, int workspotId, string? label, CancellationToken ct) =>
-        RunAsync(id, async () => { await spots.RenameAsync(workspotId, label ?? "", ct); return "Label saved."; }, ct);
-
-    public Task<IActionResult> OnPostTeamAsync(int id, string? name, string? ids, CancellationToken ct) =>
-        RunAsync(id, async () =>
+    /// <summary>
+    /// Gives the selected seats (a table, part of a table, a room) a team: an existing one (<paramref name="team"/> is its id),
+    /// a new one (<c>new</c>, named <paramref name="name"/>) or none (<c>none</c>). A table is split between teams by
+    /// giving some of its seats another team.
+    /// </summary>
+    public Task<IActionResult> OnPostSetTeamAsync(int id, string? ids, string? team, string? name, CancellationToken ct)
+    {
+        var seats = Ids(ids);
+        return RunAsync(id, async () => team switch
         {
-            var team = await teams.CreateAsync(name ?? "", Ids(ids), ct);
-            return $"Team '{team.Name}' created.";
-        }, ct);
-
-    public Task<IActionResult> OnPostTeamAddAsync(int id, int teamId, string? ids, CancellationToken ct) =>
-        RunAsync(id, async () => $"{await teams.AddAsync(teamId, Ids(ids), ct)} workspot(s) added to the team.", ct);
-
-    public Task<IActionResult> OnPostTeamRemoveAsync(int id, string? ids, CancellationToken ct) =>
-        RunAsync(id, async () => $"{await teams.RemoveAsync(Ids(ids), ct)} workspot(s) taken out of their team.", ct);
+            "none" => $"{await teams.RemoveAsync(seats, ct)} seat(s) taken out of their team.",
+            "new" => $"Team '{(await teams.CreateAsync(name ?? "", seats, ct)).Name}' created with {seats.Count} seat(s).",
+            _ when int.TryParse(team, out var teamId) => $"{await teams.AddAsync(teamId, seats, ct)} seat(s) added to the team.",
+            _ => throw new DomainException("team.choose", "Choose a team, a new team or no team."),
+        }, ct, FocusOn(ids));
+    }
 
     public Task<IActionResult> OnPostTeamRenameAsync(int id, int teamId, string? name, CancellationToken ct) =>
         RunAsync(id, async () => { await teams.RenameAsync(teamId, name ?? "", ct); return "Team renamed."; }, ct);
@@ -111,16 +113,16 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         RunAsync(id, async () => { await teams.DeleteAsync(teamId, ct); return "Team deleted; its workspots stay on the floor."; }, ct);
 
     public Task<IActionResult> OnPostRetireAsync(int id, string? ids, CancellationToken ct) =>
-        RunAsync(id, async () => $"{await spots.SetActiveAsync(Ids(ids), false, ct)} workspot(s) switched off.", ct);
+        RunAsync(id, async () => $"{await spots.SetActiveAsync(Ids(ids), false, ct)} seat(s) switched off.", ct, FocusOn(ids));
 
     public Task<IActionResult> OnPostRestoreAsync(int id, string? ids, CancellationToken ct) =>
-        RunAsync(id, async () => $"{await spots.SetActiveAsync(Ids(ids), true, ct)} workspot(s) switched on.", ct);
+        RunAsync(id, async () => $"{await spots.SetActiveAsync(Ids(ids), true, ct)} seat(s) switched on.", ct, FocusOn(ids));
 
-    public Task<IActionResult> OnPostMarkAsync(int id, string? ids, string? prefix, CancellationToken ct) =>
+    public Task<IActionResult> OnPostMarkAsync(int id, string? ids, CancellationToken ct) =>
         RunAsync(id, async () =>
         {
             var elements = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(MaxIds).ToList();
-            return $"{await spots.MarkAsync(id, elements, prefix, ct)} workspot(s) marked.";
+            return $"{await spots.MarkAsync(id, elements, ct)} workspot(s) marked.";
         }, ct);
 
     public Task<IActionResult> OnPostRenameFloorAsync(int id, string? name, CancellationToken ct) =>
@@ -133,10 +135,11 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         RunAsync(id, async () => { await floors.SetActiveAsync(id, true, ct); return "Floor is visible again."; }, ct);
 
     /// <summary>
-    /// Runs a change. A form post gets a redirect (with the seat selected again); a fetch that asks for JSON (a drop on the
-    /// map, a release in the panel) gets <c>{ message }</c> or, for a rule that is broken, the message with a 400/409 status.
+    /// Runs a change. A form post gets a redirect (with the changed seats selected again, <paramref name="focus"/>); a
+    /// fetch that asks for JSON (a drop on the map, a release in the panel) gets <c>{ message }</c> or, for a rule that is
+    /// broken, the message with a 400/409 status.
     /// </summary>
-    private async Task<IActionResult> RunAsync(int id, Func<Task<string>> action, CancellationToken ct, int? focusSpot = null)
+    private async Task<IActionResult> RunAsync(int id, Func<Task<string>> action, CancellationToken ct, string? focus = null)
     {
         if (!CanEdit) return NotFound();
         var wantsJson = Request.Headers.Accept.Any(a => a?.Contains("application/json", StringComparison.OrdinalIgnoreCase) == true);
@@ -145,7 +148,7 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
             var message = await action();
             if (wantsJson) return new JsonResult(new { message });
             Message = message;
-            return RedirectToPage(new { id, focus = focusSpot is { } f ? $"ws:{f}" : null });
+            return RedirectToPage(new { id, focus });
         }
         catch (DomainException ex)
         {
@@ -170,6 +173,10 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         TeamSeats = view.ActiveSpots.Where(s => s.TeamId != null).GroupBy(s => s.TeamId!.Value).ToDictionary(g => g.Key, g => g.Count());
         return true;
     }
+
+    /// <summary>The <c>focus</c> that selects these seats again after the redirect (none for a very large selection).</summary>
+    private static string? FocusOn(string? ids) =>
+        Ids(ids) is { Count: > 0 and <= WorkspotService.FocusMax } list ? "ws:" + string.Join(',', list) : null;
 
     private static List<int> Ids(string? ids) =>
         (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
