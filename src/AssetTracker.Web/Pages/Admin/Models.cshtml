@@ -1,0 +1,88 @@
+@page
+@model AssetTracker.Web.Pages.Admin.ModelsModel
+@{
+    ViewData["Title"] = "Models";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Models</h1>
+        <div class="prose">
+            <p>Models for the model dropdown on asset forms. A model belongs to one <a asp-page="Vendors">vendor</a> and one <a asp-page="Types">asset type</a>, and only appears on assets of that type. Deactivate a model to hide it from new assets; existing assets keep it.</p>
+        </div>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+
+<form method="get" class="filters" role="search">
+    <div class="field">
+        <label for="f-type">Type</label>
+        <select id="f-type" name="type" asp-for="TypeFilter" asp-items="Model.Types"><option value="">All</option></select>
+    </div>
+    <div class="field">
+        <label for="f-vendor">Vendor</label>
+        <select id="f-vendor" name="vendor" asp-for="VendorFilter" asp-items="Model.Vendors"><option value="">All</option></select>
+    </div>
+    <div class="filters-actions"><button type="submit">Filter</button></div>
+</form>
+
+<section class="card card--flush" aria-label="Models">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Vendor</th><th scope="col">Model</th><th scope="col">Type</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+            @foreach (var m in Model.Models)
+            {
+                <tr class="@(Model.Editing?.Id == m.Id ? "selected" : "")">
+                    <td>@m.Vendor?.Name</td>
+                    <td>@m.Name</td>
+                    <td>@m.Type?.Name</td>
+                    <td>@(m.IsActive ? Ui.Pill("available", "Yes") : Ui.Pill("unavailable", "No"))</td>
+                    <td class="actions-cell"><a class="btn btn--sm" asp-page="/Admin/Models" asp-route-editId="@m.Id" asp-route-type="@Model.TypeFilter" asp-route-vendor="@Model.VendorFilter">Edit</a></td>
+                </tr>
+            }
+            @if (Model.Models.Count == 0)
+            {
+                <tr><td colspan="5" class="empty">No models match.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (Model.Editing is { } editing)
+{
+    <form method="post" asp-page-handler="Update" asp-route-id="@editing.Id" asp-route-type="@Model.TypeFilter" asp-route-vendor="@Model.VendorFilter" class="card form-card" aria-labelledby="model-form-h">
+        <h2 id="model-form-h">Edit model</h2>
+        <div asp-validation-summary="All" class="alert alert--error"></div>
+        <p class="secondary">@editing.Vendor?.Name · @editing.Type?.Name (vendor and type cannot be changed)</p>
+        <div class="fields">
+            <div class="field"><label asp-for="Input.Name">Name</label> <input asp-for="Input.Name" maxlength="200" required /></div>
+            <div class="field span-all"><label class="check"><input asp-for="Input.IsActive" /> Active</label></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Save</button> <a class="text-link" asp-page="/Admin/Models" asp-route-type="@Model.TypeFilter" asp-route-vendor="@Model.VendorFilter">Cancel</a></div>
+    </form>
+}
+else
+{
+    <form method="post" asp-page-handler="Create" class="card form-card" aria-labelledby="model-form-h">
+        <h2 id="model-form-h">New model</h2>
+        <div asp-validation-summary="All" class="alert alert--error"></div>
+        <div class="fields">
+            <div class="field">
+                <label asp-for="Input.TypeId">Type</label>
+                <select asp-for="Input.TypeId" asp-items="Model.Types"></select>
+            </div>
+            <div class="field">
+                <label asp-for="Input.VendorId">Vendor</label>
+                <select asp-for="Input.VendorId" asp-items="Model.Vendors"></select>
+                <small class="hint">Add vendors on the <a asp-page="Vendors">Vendors</a> page first.</small>
+            </div>
+            <div class="field span-all"><label asp-for="Input.Name">Model name</label> <input asp-for="Input.Name" maxlength="200" required placeholder="e.g. Latitude 5440" /></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Add model</button></div>
+    </form>
+}

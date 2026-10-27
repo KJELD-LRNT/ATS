@@ -1,27 +1,5 @@
 namespace AssetTracker.Core.Domain;
 
-public enum AssetType
-{
-    Desktop = 1,
-    Laptop = 2,
-    Phone = 3,
-    PhoneNumber = 4,
-    Peripheral = 5,
-    Webcam = 6,
-    Headset = 7,
-}
-
-public static class AssetTypes
-{
-    /// <summary>Types that must be individually tagged (never pooled).</summary>
-    public static readonly IReadOnlySet<AssetType> TaggedOnly =
-        new HashSet<AssetType> { AssetType.Desktop, AssetType.Laptop, AssetType.Phone, AssetType.PhoneNumber };
-
-    /// <summary>Types eligible for site quantity pools.</summary>
-    public static readonly IReadOnlySet<AssetType> PoolEligible =
-        new HashSet<AssetType> { AssetType.Peripheral, AssetType.Webcam, AssetType.Headset };
-}
-
 public enum AssetState
 {
     Available = 1,

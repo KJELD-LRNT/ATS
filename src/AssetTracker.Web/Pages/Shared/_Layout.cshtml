@@ -64,6 +64,9 @@
                 <li class="nav-heading" id="nav-admin">Admin</li>
                 @{
                     NavLink("/Admin/Sites", "Sites", "sites");
+                    NavLink("/Admin/Types", "Asset types", "types", "/Admin/Types", "/Admin/TypeEdit");
+                    NavLink("/Admin/Vendors", "Vendors", "vendors");
+                    NavLink("/Admin/Models", "Models", "models");
                     NavLink("/Admin/Grants", "Grants", "grants");
                     NavLink("/Admin/Settings", "Settings", "settings");
                     NavLink("/Admin/Sync", "Directory sync", "sync");

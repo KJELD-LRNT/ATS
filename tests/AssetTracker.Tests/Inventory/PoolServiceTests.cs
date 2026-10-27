@@ -27,7 +27,7 @@ public class PoolServiceTests : IClassFixture<AppFactory>
     public async Task Create_normalizes_sku_records_initial_stock_and_audits()
     {
         var site = await SiteAsync("PS01");
-        var pool = await AsIt(s => s.CreateAsync(new CreatePoolInput(AssetType.Headset, " hs-100 ", site.Id, "Headset", 4)));
+        var pool = await AsIt(s => s.CreateAsync(new CreatePoolInput(BuiltIn.Headset, " hs-100 ", site.Id, "Headset", 4)));
 
         Assert.Equal("HS-100", pool.Sku);
         var stored = await ReloadAsync(pool.Id);
@@ -39,11 +39,11 @@ public class PoolServiceTests : IClassFixture<AppFactory>
     }
 
     [Theory]
-    [InlineData(AssetType.Laptop)]
-    [InlineData(AssetType.Phone)]
-    [InlineData(AssetType.PhoneNumber)]
-    [InlineData(AssetType.Desktop)]
-    public async Task Tagged_only_types_cannot_be_pooled(AssetType type)
+    [InlineData(BuiltIn.Laptop)]
+    [InlineData(BuiltIn.Phone)]
+    [InlineData(BuiltIn.PhoneNumber)]
+    [InlineData(BuiltIn.Desktop)]
+    public async Task Tagged_only_types_cannot_be_pooled(int type)
     {
         var site = await SiteAsync("PS02" + (int)type);
         await Assert.ThrowsAsync<DomainException>(() =>
@@ -55,10 +55,10 @@ public class PoolServiceTests : IClassFixture<AppFactory>
     {
         var a = await SiteAsync("PS03");
         var b = await SiteAsync("PS04");
-        await AsIt(s => s.CreateAsync(new CreatePoolInput(AssetType.Webcam, "CAM-1", a.Id, "Webcam")));
-        await AsIt(s => s.CreateAsync(new CreatePoolInput(AssetType.Webcam, "CAM-1", b.Id, "Webcam")));
+        await AsIt(s => s.CreateAsync(new CreatePoolInput(BuiltIn.Webcam, "CAM-1", a.Id, "Webcam")));
+        await AsIt(s => s.CreateAsync(new CreatePoolInput(BuiltIn.Webcam, "CAM-1", b.Id, "Webcam")));
         await Assert.ThrowsAsync<ConflictException>(() =>
-            AsIt(s => s.CreateAsync(new CreatePoolInput(AssetType.Webcam, "cam-1", a.Id, "Webcam"))));
+            AsIt(s => s.CreateAsync(new CreatePoolInput(BuiltIn.Webcam, "cam-1", a.Id, "Webcam"))));
     }
 
     [Fact]

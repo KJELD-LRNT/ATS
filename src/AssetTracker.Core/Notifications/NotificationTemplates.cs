@@ -26,11 +26,10 @@ public sealed record LoanMailFacts(
         {
             return new LoanMailFacts(
                 ItemSummary: $"{asset.Type} {asset.Tag}",
-                ItemDescription: string.IsNullOrWhiteSpace(asset.Description) ? null : asset.Description,
+                ItemDescription: string.IsNullOrWhiteSpace(asset.Title) ? null : asset.Title,
                 IsPool: false, Quantity: loan.Quantity, Outstanding: loan.OutstandingQuantity,
                 HolderName: holder, SiteName: site?.Name, DueDate: loan.DueDate,
-                PhoneNumber: includePhoneNumber && asset.Type is AssetType.Phone or AssetType.PhoneNumber
-                    ? asset.PhoneNumber : null);
+                PhoneNumber: includePhoneNumber ? PhoneNumberOf(asset) : null);
         }
 
         var sku = pool?.Sku ?? $"pool #{loan.PoolId}";
@@ -40,6 +39,10 @@ public sealed record LoanMailFacts(
             IsPool: true, Quantity: loan.Quantity, Outstanding: loan.OutstandingQuantity,
             HolderName: holder, SiteName: site?.Name, DueDate: loan.DueDate, PhoneNumber: null);
     }
+    // First phone number field the asset has a value for; sensitive fields never go into mail.
+    private static string? PhoneNumberOf(IndividualAsset asset) =>
+        asset.Values.Where(v => v.Field is { Kind: FieldKind.PhoneNumber, IsSensitive: false })
+            .OrderBy(v => v.Field!.SortOrder).ThenBy(v => v.FieldId).ThenBy(v => v.Position).Select(v => v.Value).FirstOrDefault();
 }
 
 /// <summary>Who a single message is addressed to; drives the greeting and IT-only notes.</summary>

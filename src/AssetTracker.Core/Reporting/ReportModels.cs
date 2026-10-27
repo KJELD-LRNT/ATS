@@ -15,30 +15,36 @@ namespace AssetTracker.Core.Reporting;
 /// </list>
 /// </summary>
 public sealed record ReportFilter(
-    string? Query = null, int? SiteId = null, AssetType? Type = null, AssetState? State = null,
+    string? Query = null, int? SiteId = null, int? TypeId = null, AssetState? State = null,
     DateOnly? From = null, DateOnly? To = null,
     int Page = 1, int PageSize = Paging.DefaultPageSize)
 {
     /// <summary>Filters only (no paging), for audit details.</summary>
-    public object ForAudit() => new { Query, SiteId, Type = Type?.ToString(), State = State?.ToString(), From, To };
+    public object ForAudit() => new { Query, SiteId, TypeId, State = State?.ToString(), From, To };
 }
 
 /// <summary>A tagged asset in the inventory report, with its current holder when checked out.</summary>
 public sealed record InventoryAssetRow(
-    int Id, string Tag, AssetType Type, int SiteId, string SiteKey, AssetState State, string Description,
-    string? SerialNumber, string? PhoneNumber, string? Imei, string? HolderName, string? HolderUsername,
-    DateOnly? DueDate);
+    int Id, string Tag, string Type, int SiteId, string SiteKey, AssetState State, string? Vendor, string? Model,
+    string Description, string? SerialNumber, string? HolderName, string? HolderUsername, DateOnly? DueDate)
+{
+    /// <summary>Phone number fields of the asset, "; "-separated (filled in after the query, see <c>ReportService</c>).</summary>
+    public string? PhoneNumbers { get; init; }
+
+    /// <summary>IMEIs of the asset, "; "-separated (a dual-SIM phone has two).</summary>
+    public string? Imeis { get; init; }
+}
 
 /// <summary>A quantity pool balance. OnHand = Available + Outstanding.</summary>
 public sealed record PoolBalanceRow(
-    int Id, string Sku, AssetType Type, int SiteId, string SiteKey, string Description, int Available, int Outstanding)
+    int Id, string Sku, string Type, int SiteId, string SiteKey, string Description, int Available, int Outstanding)
 {
     public int OnHand => Available + Outstanding;
 }
 
-public sealed record AssetCount(string SiteKey, AssetType Type, AssetState State, int Count);
+public sealed record AssetCount(string SiteKey, string Type, AssetState State, int Count);
 
-public sealed record PoolTotal(string SiteKey, AssetType Type, int Pools, int Available, int Outstanding)
+public sealed record PoolTotal(string SiteKey, string Type, int Pools, int Available, int Outstanding)
 {
     public int OnHand => Available + Outstanding;
 }
@@ -62,7 +68,7 @@ public sealed record LoanRow
     public string? AssetTag { get; init; }
     public string? PoolSku { get; init; }
     public string ItemDescription { get; init; } = "";
-    public AssetType Type { get; init; }
+    public string Type { get; init; } = "";
 
     /// <summary>The loan's site: the asset's current site, or the pool's site.</summary>
     public int SiteId { get; init; }

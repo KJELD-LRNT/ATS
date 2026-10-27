@@ -72,6 +72,9 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
         { "manager", "/" }, { "manager", "/Assets" }, { "manager", "/Loans" },
         { "admin", "/" }, { "admin", "/Admin/Sites" }, { "admin", "/Admin/Grants?q=zz" }, { "admin", "/Admin/Settings" },
         { "admin", "/Admin/Sync" }, { "admin", "/Admin/Privacy?q=zz" },
+        { "admin", "/Admin/Types" }, { "admin", "/Admin/TypeEdit/4" }, { "admin", "/Admin/TypeEdit/4?fieldId=5" },
+        { "admin", "/Admin/Vendors" }, { "admin", "/Admin/Models" },
+        { "it", "/Assets/Create?typeId=3" }, { "it", "/Assets/Create?typeId=4" },
     };
 
     [Theory]

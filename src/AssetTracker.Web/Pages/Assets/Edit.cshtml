@@ -2,6 +2,7 @@
 @model AssetTracker.Web.Pages.Assets.EditModel
 @{
     var a = Model.Asset;
+    var type = Model.Type;
     ViewData["Title"] = $"Edit {a.Tag}";
 }
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -25,31 +26,54 @@
     <form method="post" class="card form-card" aria-labelledby="edit-h">
         <h2 id="edit-h">Details</h2>
         <div class="fields">
-            <div class="field span-all">
-                <label asp-for="Input.Description">Description / model</label>
-                <input asp-for="Input.Description" required maxlength="500" />
-            </div>
-            <div class="field">
-                <label asp-for="Input.Condition">Condition</label>
-                <input asp-for="Input.Condition" maxlength="200" />
-            </div>
-            <div class="field">
-                <label asp-for="Input.SerialNumber">Serial number</label>
-                <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
-            </div>
-            @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
+            @if (type.UsesModel)
             {
                 <div class="field">
-                    <label asp-for="Input.PhoneNumber">Phone number</label>
-                    <input asp-for="Input.PhoneNumber" class="mono" />
+                    <label asp-for="Input.VendorId">Vendor <span class="optional">(optional)</span></label>
+                    <select asp-for="Input.VendorId" data-vendor-select>
+                        <option value="">–</option>
+                        @foreach (var v in Model.Vendors.Where(v => v.IsActive || v.Id == Model.Input.VendorId))
+                        {
+                            <option value="@v.Id" selected="@(Model.Input.VendorId == v.Id)">@v.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label asp-for="Input.ModelId">Model <span class="optional">(optional)</span></label>
+                    <select asp-for="Input.ModelId" data-model-select>
+                        <option value="">–</option>
+                        @foreach (var m in Model.Models.Where(m => (m.IsActive && m.Vendor!.IsActive) || m.Id == Model.Input.ModelId))
+                        {
+                            <option value="@m.Id" data-vendor="@m.VendorId" selected="@(Model.Input.ModelId == m.Id)">@m.DisplayName</option>
+                        }
+                    </select>
                 </div>
             }
-            @if (a.Type == AssetType.Phone)
+            @if (type.UsesDescription)
+            {
+                <div class="field span-all">
+                    <label asp-for="Input.Description">Description <span class="optional">(optional)</span></label>
+                    <input asp-for="Input.Description" maxlength="500" />
+                </div>
+            }
+            @if (type.UsesCondition)
             {
                 <div class="field">
-                    <label asp-for="Input.Imei">IMEI</label>
-                    <input asp-for="Input.Imei" class="mono" />
+                    <label asp-for="Input.Condition">Condition</label>
+                    <input asp-for="Input.Condition" maxlength="200" />
                 </div>
+            }
+            @if (type.UsesSerialNumber)
+            {
+                <div class="field">
+                    <label asp-for="Input.SerialNumber">Serial number</label>
+                    <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
+                </div>
+            }
+            @foreach (var f in type.Fields.Where(f => f.IsActive))
+            {
+                var values = Model.Input.Fields.TryGetValue(f.Id, out var current) ? current : [];
+                @await Html.PartialAsync("_FieldInputs", new FieldInputModel(f, values, "Input.Fields[" + f.Id + "]"))
             }
         </div>
         <div class="form-actions"><button type="submit" class="btn--primary">Save</button> <a class="text-link" asp-page="Details" asp-route-id="@a.Id">Cancel</a></div>

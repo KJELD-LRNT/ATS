@@ -160,8 +160,13 @@ public class NotificationService(AppDbContext db, IClock clock, IOptionsMonitor<
     /// <summary>Loads (if needed) the asset/pool, site and holder of a loan and builds the mail facts.</summary>
     public async Task<LoanMailFacts> BuildFactsAsync(Loan loan, CancellationToken ct = default)
     {
-        var asset = loan.Asset ?? (loan.AssetId is { } aid ? await db.Assets.FindAsync([aid], ct) : null);
-        var pool = asset is null ? loan.Pool ?? (loan.PoolId is { } pid ? await db.Pools.FindAsync([pid], ct) : null) : null;
+        var asset = loan.AssetId is { } aid
+            ? await db.Assets.Include(a => a.Site).Include(a => a.Type).Include(a => a.Model).ThenInclude(m => m!.Vendor)
+                .Include(a => a.Values).ThenInclude(v => v.Field).AsSplitQuery().FirstOrDefaultAsync(a => a.Id == aid, ct)
+            : null;
+        var pool = asset is null && loan.PoolId is { } pid
+            ? await db.Pools.Include(p => p.Site).Include(p => p.Type).FirstOrDefaultAsync(p => p.Id == pid, ct)
+            : null;
         var site = asset?.Site ?? pool?.Site;
         var siteId = asset?.SiteId ?? pool?.SiteId;
         if (site is null && siteId is { } sid) site = await db.Sites.FindAsync([sid], ct);

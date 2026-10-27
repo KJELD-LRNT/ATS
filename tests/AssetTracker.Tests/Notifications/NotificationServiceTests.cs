@@ -230,7 +230,7 @@ public class NotificationServiceTests : IClassFixture<AppFactory>
             await NotificationSeed.SetItMailboxAsync(db, It);
             var site = await Seed.SiteAsync(db, "NS8");
             var holder = await Seed.PersonAsync(db, "ns.erin", site);
-            var loan = await NotificationSeed.TaggedLoanAsync(db, site, holder, "NS-PH-008", null, AssetType.Phone, "+31209990008");
+            var loan = await NotificationSeed.TaggedLoanAsync(db, site, holder, "NS-PH-008", null, BuiltIn.Phone, "+31209990008");
             var staged = await svc.QueueLoanNotificationAsync(loan, loan.Events.Single(), NotificationKind.Checkout, [holder]);
             await db.SaveChangesAsync();
             return staged;
@@ -243,7 +243,11 @@ public class NotificationServiceTests : IClassFixture<AppFactory>
     [Fact]
     public void Phone_number_is_included_when_enabled()
     {
-        var asset = new IndividualAsset { Tag = "PH-1", Type = AssetType.Phone, PhoneNumber = "+31200000001" };
+        var asset = new IndividualAsset
+        {
+            Tag = "PH-1", TypeId = BuiltIn.Phone,
+            Values = [new AssetFieldValue { Value = "+31200000001", Field = new AssetFieldDefinition { Kind = FieldKind.PhoneNumber } }],
+        };
         var loan = new Loan { Quantity = 1, HolderNameSnapshot = "x" };
         Assert.Equal("+31200000001", LoanMailFacts.From(loan, asset, null, null, includePhoneNumber: true).PhoneNumber);
         Assert.Null(LoanMailFacts.From(loan, asset, null, null, includePhoneNumber: false).PhoneNumber);

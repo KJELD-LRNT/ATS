@@ -35,6 +35,9 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
     [BindProperty(SupportsGet = true)] public int Quantity { get; set; } = 1;
     [BindProperty(SupportsGet = true)] public string? Who { get; set; }
 
+    /// <summary>Person picked in the typeahead (step 2); the confirm form then offers just them, already selected.</summary>
+    [BindProperty(SupportsGet = true)] public int? HolderId { get; set; }
+
     [BindProperty] public InputModel Input { get; set; } = new();
 
     public IndividualAsset? Asset { get; private set; }
@@ -47,6 +50,20 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
     [TempData] public string? Message { get; set; }
 
     public Task OnGetAsync(CancellationToken ct) => LoadAsync(ct);
+
+    /// <summary>Suggestions for the "Who receives it?" typeahead: people who can receive a loan, with their site.</summary>
+    public async Task<IActionResult> OnGetPeopleAsync(string? q, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < MinSearchLength) return new JsonResult(Array.Empty<object>());
+        var people = await lending.SearchPeopleAsync(q, eligibleOnly: true, take: 8, ct: ct);
+        return new JsonResult(people.Select(p => new
+        {
+            id = p.Id, name = p.DisplayName, username = p.Username, email = p.Email, jobTitle = p.JobTitle,
+            siteKey = p.SiteKey, siteName = p.SiteName,
+        }));
+    }
+
+    public const int MinSearchLength = 2;
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
@@ -65,9 +82,13 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
         AssetId = Input.AssetId;
         PoolId = Input.PoolId;
         Quantity = Input.Quantity;
+        HolderId = Input.HolderId;
         await LoadAsync(ct);
         return Page();
     }
+
+    private IQueryable<IndividualAsset> AssetQuery() => db.Assets.AsNoTracking().Include(a => a.Site).Include(a => a.Type)
+        .Include(a => a.Model).ThenInclude(m => m!.Vendor);
 
     private async Task LoadAsync(CancellationToken ct)
     {
@@ -79,11 +100,12 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
 
         var tag = Normalization.Code(Tag);
         if (AssetId is { } aid)
-            Asset = await db.Assets.AsNoTracking().Include(a => a.Site).FirstOrDefaultAsync(a => a.Id == aid, ct);
+            Asset = await AssetQuery().FirstOrDefaultAsync(a => a.Id == aid, ct);
         else if (tag.Length > 0)
-            Asset = await db.Assets.AsNoTracking().Include(a => a.Site).FirstOrDefaultAsync(a => a.Tag == tag, ct);
+            Asset = await AssetQuery().FirstOrDefaultAsync(a => a.Tag == tag, ct);
         else if (PoolId is { } pid)
-            Pool = await db.Pools.AsNoTracking().Include(p => p.Site).FirstOrDefaultAsync(p => p.Id == pid, ct);
+            Pool = await db.Pools.AsNoTracking().Include(p => p.Site).Include(p => p.Type)
+                .FirstOrDefaultAsync(p => p.Id == pid, ct);
 
         if (tag.Length > 0 && Asset is null) TargetError = $"No asset with tag {tag}.";
         else if (Asset is { State: not AssetState.Available })
@@ -91,6 +113,18 @@ public class CheckoutModel(LendingService lending, AppDbContext db) : PageModel
         else if (Pool is { Available: 0 }) TargetError = $"No units of {Pool.Sku} are available.";
 
         if (Quantity < 1) Quantity = 1;
-        People = await lending.SearchPeopleAsync(Who, eligibleOnly: true, ct: ct);
+
+        // A person picked from the typeahead wins over the typed text; if they cannot receive a loan after all
+        // (deactivated meanwhile), fall back to searching the text.
+        var picked = HolderId is { } hid ? await lending.GetPersonAsync(hid, ct) : null;
+        if (picked is { CanReceiveNewLoan: true })
+        {
+            People = [picked];
+            Input.HolderId = picked.Id;
+        }
+        else
+        {
+            People = await lending.SearchPeopleAsync(Who, eligibleOnly: true, ct: ct);
+        }
     }
 }

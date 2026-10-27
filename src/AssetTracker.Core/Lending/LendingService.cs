@@ -25,7 +25,7 @@ public sealed record ReturnResult(Loan Loan, LoanEvent Event, bool FullyReturned
 
 /// <summary>A person row for the IT-only holder picker.</summary>
 public sealed record PersonOption(int Id, string DisplayName, string Username, string? Email, bool IsActive,
-    string? SiteKey, bool CanReceiveNewLoan);
+    string? SiteKey, bool CanReceiveNewLoan, string? SiteName = null, string? JobTitle = null);
 
 /// <summary>
 /// Checkout and return of tagged assets and pool quantities (WP2.1). IT only. Each operation runs in one explicit
@@ -56,11 +56,15 @@ public class LendingService(
             (p.Email != null && EF.Functions.Like(p.Email, pattern, @"\")));
         if (eligibleOnly) q = q.Where(p => p.IsActive && p.Email != null && p.Email != "");
         var people = await q.OrderBy(p => p.DisplayName).ThenBy(p => p.Id).Take(Math.Clamp(take, 1, 100) * 2)
-            .Select(p => new { p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, SiteKey = p.Site != null ? p.Site.Key : null })
+            .Select(p => new
+            {
+                p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.JobTitle,
+                SiteKey = p.Site != null ? p.Site.Key : null, SiteName = p.Site != null ? p.Site.Name : null,
+            })
             .ToListAsync(ct);
         return people
             .Select(p => new PersonOption(p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.SiteKey,
-                p.IsActive && EmailAddresses.IsValid(p.Email)))
+                p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle))
             .Where(p => !eligibleOnly || p.CanReceiveNewLoan)
             .Take(Math.Clamp(take, 1, 100)).ToList();
     }
@@ -70,10 +74,14 @@ public class LendingService(
     {
         access.EnsureIt();
         var p = await db.People.AsNoTracking().Where(x => x.Id == id)
-            .Select(x => new { x.Id, x.DisplayName, x.Username, x.Email, x.IsActive, SiteKey = x.Site != null ? x.Site.Key : null })
+            .Select(x => new
+            {
+                x.Id, x.DisplayName, x.Username, x.Email, x.IsActive, x.JobTitle,
+                SiteKey = x.Site != null ? x.Site.Key : null, SiteName = x.Site != null ? x.Site.Name : null,
+            })
             .FirstOrDefaultAsync(ct);
         return p is null ? null : new PersonOption(p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.SiteKey,
-            p.IsActive && EmailAddresses.IsValid(p.Email));
+            p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle);
     }
 
     /// <summary>Whether the directory snapshot is currently stale (for the checkout warning banner).</summary>

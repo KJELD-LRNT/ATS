@@ -13,6 +13,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Site> Sites => Set<Site>();
     public DbSet<Person> People => Set<Person>();
     public DbSet<IndividualAsset> Assets => Set<IndividualAsset>();
+    public DbSet<AssetType> AssetTypes => Set<AssetType>();
+    public DbSet<AssetFieldDefinition> FieldDefinitions => Set<AssetFieldDefinition>();
+    public DbSet<AssetFieldValue> FieldValues => Set<AssetFieldValue>();
+    public DbSet<Vendor> Vendors => Set<Vendor>();
+    public DbSet<AssetModel> Models => Set<AssetModel>();
+    public DbSet<TagCounter> TagCounters => Set<TagCounter>();
     public DbSet<Pool> Pools => Set<Pool>();
     public DbSet<Loan> Loans => Set<Loan>();
     public DbSet<LoanEvent> LoanEvents => Set<LoanEvent>();
@@ -86,6 +92,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.DirectoryValue).HasMaxLength(200);
             e.Property(x => x.TimeZoneId).HasMaxLength(100);
+            e.Property(x => x.TagCode).HasMaxLength(16);
             e.HasIndex(x => x.Key).IsUnique();
             e.HasIndex(x => x.DirectoryValue).IsUnique().HasFilter("[DirectoryValue] IS NOT NULL");
         });
@@ -105,6 +112,46 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Site).WithMany().OnDelete(DeleteBehavior.Restrict);
         });
 
+        b.Entity<AssetType>(e =>
+        {
+            e.ToTable("AssetTypes");
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.TagPattern).HasMaxLength(100);
+            e.HasIndex(x => x.Name).IsUnique();
+        });
+
+        b.Entity<AssetFieldDefinition>(e =>
+        {
+            e.ToTable("AssetFields");
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Options).HasMaxLength(2000);
+            e.HasIndex(x => new { x.TypeId, x.Name }).IsUnique();
+            e.HasOne(x => x.Type).WithMany(t => t.Fields).HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Vendor>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => x.Name).IsUnique();
+        });
+
+        b.Entity<AssetModel>(e =>
+        {
+            e.ToTable("AssetModels");
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.HasIndex(x => new { x.VendorId, x.TypeId, x.Name }).IsUnique();
+            e.HasIndex(x => x.TypeId);
+            e.HasOne(x => x.Vendor).WithMany().HasForeignKey(x => x.VendorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<TagCounter>(e =>
+        {
+            e.HasKey(x => new { x.TypeId, x.SiteId });
+            e.HasOne<AssetType>().WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Site>().WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         b.Entity<IndividualAsset>(e =>
         {
             e.ToTable("IndividualAssets");
@@ -112,16 +159,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Description).HasMaxLength(500);
             e.Property(x => x.Condition).HasMaxLength(200);
             e.Property(x => x.SerialNumber).HasMaxLength(128);
-            e.Property(x => x.Imei).HasMaxLength(20);
-            e.Property(x => x.PhoneNumber).HasMaxLength(20);
             e.HasIndex(x => x.Tag).IsUnique();
-            // Active (non-retired) phone numbers and IMEIs must be unique.
-            e.HasIndex(x => x.PhoneNumber).IsUnique()
-                .HasFilter("[PhoneNumber] IS NOT NULL AND [RetiredAt] IS NULL");
-            e.HasIndex(x => x.Imei).IsUnique()
-                .HasFilter("[Imei] IS NOT NULL AND [RetiredAt] IS NULL");
-            e.HasIndex(x => new { x.SiteId, x.Type, x.State });
+            e.HasIndex(x => new { x.SiteId, x.TypeId, x.State });
+            e.HasIndex(x => x.ModelId);
             e.HasOne(x => x.Site).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Vendor).WithMany().HasForeignKey(x => x.VendorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Model).WithMany().HasForeignKey(x => x.ModelId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<AssetFieldValue>(e =>
+        {
+            e.ToTable("AssetFieldValues");
+            e.Property(x => x.Value).HasMaxLength(500);
+            e.Property(x => x.UniqueKey).HasMaxLength(450);
+            e.HasIndex(x => new { x.AssetId, x.FieldId, x.Position }).IsUnique();
+            e.HasIndex(x => x.FieldId);
+            // A unique field value (or phone number / IMEI, which are unique across fields) may be on one active asset only.
+            e.HasIndex(x => x.UniqueKey).IsUnique().HasFilter("[UniqueKey] IS NOT NULL");
+            e.HasOne(x => x.Asset).WithMany(a => a.Values).HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Field).WithMany().HasForeignKey(x => x.FieldId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<Pool>(e =>
@@ -131,6 +188,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.Sku, x.SiteId }).IsUnique();
             e.HasIndex(x => x.SiteId);
             e.HasOne(x => x.Site).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Type).WithMany().HasForeignKey(x => x.TypeId).OnDelete(DeleteBehavior.Restrict);
             e.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Pool_Available_NonNegative", "[Available] >= 0");

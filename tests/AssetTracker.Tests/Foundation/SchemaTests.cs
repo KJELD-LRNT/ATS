@@ -77,13 +77,29 @@ public class SchemaTests : IClassFixture<AppFactory>
         await _f.WithDbAsync(async db =>
         {
             var site = await Seed.SiteAsync(db, "S1D");
-            db.Assets.Add(new IndividualAsset { Tag = "PN-1", Type = AssetType.PhoneNumber, SiteId = site.Id, PhoneNumber = "+31201234567", State = AssetState.Retired, RetiredAt = DateTimeOffset.UtcNow });
-            db.Assets.Add(new IndividualAsset { Tag = "PN-2", Type = AssetType.PhoneNumber, SiteId = site.Id, PhoneNumber = "+31201234567" });
+            var retired = await Seed.AssetAsync(db, "PN-1", site, BuiltIn.PhoneNumber, AssetState.Retired);
+            retired.RetiredAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync();
+            await Seed.ValueAsync(db, retired, BuiltIn.LinePhoneNumberField, "+31201234567");
+            await Seed.ValueAsync(db, await Seed.AssetAsync(db, "PN-2", site, BuiltIn.PhoneNumber), BuiltIn.LinePhoneNumberField, "+31201234567");
             db.ChangeTracker.Clear();
 
-            db.Assets.Add(new IndividualAsset { Tag = "PN-3", Type = AssetType.PhoneNumber, SiteId = site.Id, PhoneNumber = "+31201234567" });
-            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            var third = await Seed.AssetAsync(db, "PN-3", site, BuiltIn.PhoneNumber);
+            await Assert.ThrowsAsync<DbUpdateException>(() => Seed.ValueAsync(db, third, BuiltIn.LinePhoneNumberField, "+31201234567"));
+        });
+    }
+
+    [Fact]
+    public async Task A_phone_number_is_unique_across_phone_fields_of_different_types()
+    {
+        await _f.WithDbAsync(async db =>
+        {
+            var site = await Seed.SiteAsync(db, "S1E");
+            await Seed.ValueAsync(db, await Seed.AssetAsync(db, "PH-S1", site, BuiltIn.Phone), BuiltIn.PhonePhoneNumberField, "+31201230001");
+            db.ChangeTracker.Clear();
+
+            var line = await Seed.AssetAsync(db, "PN-S1", site, BuiltIn.PhoneNumber);
+            await Assert.ThrowsAsync<DbUpdateException>(() => Seed.ValueAsync(db, line, BuiltIn.LinePhoneNumberField, "+31201230001"));
         });
     }
 }

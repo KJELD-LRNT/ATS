@@ -87,7 +87,12 @@ public class AppFactory : WebApplicationFactory<Program>
     {
         var host = base.CreateHost(builder);
         using (var scope = host.Services.CreateScope())
-            scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
+            // The migration inserts the default asset types and fields; a database built from the model gets them here.
+            AssetTracker.Core.Catalog.CatalogDefaults.EnsureAsync(db).GetAwaiter().GetResult();
+        }
         // Program.cs's first settings load ran before the schema existed (tolerated); load again now.
         ReloadSettingsAsync(host.Services).GetAwaiter().GetResult();
         return host;

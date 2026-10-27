@@ -27,7 +27,7 @@
 <section class="card card--flush" aria-label="Sites">
     <div class="table-wrap">
         <table>
-            <thead><tr><th scope="col">Key</th><th scope="col">Name</th><th scope="col">AD site value</th><th scope="col">Timezone</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <thead><tr><th scope="col">Key</th><th scope="col">Name</th><th scope="col">AD site value</th><th scope="col">Timezone</th><th scope="col">Tag code</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
             <tbody>
             @foreach (var s in Model.Sites)
             {
@@ -36,6 +36,7 @@
                     <td>@s.Name</td>
                     <td>@(s.DirectoryValue ?? "(unmapped)")</td>
                     <td>@(s.TimeZoneId ?? "(default)")</td>
+                    <td class="mono">@(s.TagCode ?? "–")</td>
                     <td>@(s.IsActive ? Ui.Pill("available", "Yes") : Ui.Pill("unavailable", "No"))</td>
                     <td class="actions-cell"><a class="btn btn--sm" asp-page="/Admin/Sites" asp-route-editId="@s.Id">Edit</a></td>
                 </tr>
@@ -54,9 +55,13 @@
         <div class="fields">
             <div class="field"><label asp-for="Input.Name"></label> <input asp-for="Input.Name" /></div>
             <div class="field"><label asp-for="Input.DirectoryValue"></label> <input asp-for="Input.DirectoryValue" /></div>
-            <div class="field span-all">
+            <div class="field">
                 <label asp-for="Input.TimeZoneId"></label> <input asp-for="Input.TimeZoneId" list="timezones" placeholder="default" />
                 <small class="hint">IANA (e.g. Europe/Amsterdam) or Windows id; empty = default.</small>
+            </div>
+            <div class="field">
+                <label asp-for="Input.TagCode"></label> <input asp-for="Input.TagCode" class="mono" maxlength="16" />
+                <small class="hint">Used where a type's tag pattern says {SITE}, e.g. R for Rotterdam in RD001OMA. One site per code.</small>
             </div>
             <div class="field span-all"><label class="check"><input asp-for="Input.IsActive" /> Active</label></div>
         </div>
@@ -78,6 +83,10 @@ else
             <div class="field">
                 <label asp-for="Input.TimeZoneId"></label> <input asp-for="Input.TimeZoneId" list="timezones" placeholder="default" />
                 <small class="hint">IANA (e.g. Europe/Amsterdam) or Windows id; empty = default.</small>
+            </div>
+            <div class="field">
+                <label asp-for="Input.TagCode"></label> <input asp-for="Input.TagCode" class="mono" maxlength="16" />
+                <small class="hint">Used where a type's tag pattern says {SITE}, e.g. R for Rotterdam in RD001OMA. One site per code.</small>
             </div>
             <div class="field span-all"><label class="check"><input asp-for="Input.IsActive" /> Active</label></div>
         </div>

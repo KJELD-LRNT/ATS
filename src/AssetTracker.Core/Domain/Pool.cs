@@ -4,7 +4,8 @@ namespace AssetTracker.Core.Domain;
 public class Pool
 {
     public int Id { get; set; }
-    public AssetType Type { get; set; }
+    public int TypeId { get; set; }
+    public AssetType? Type { get; set; }
     public string Sku { get; set; } = "";
     public string Description { get; set; } = "";
 

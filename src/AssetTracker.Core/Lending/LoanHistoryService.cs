@@ -46,7 +46,10 @@ public class LoanHistoryService(AppDbContext db, AccessScope access, SiteCalenda
         var loan = await (await access.VisibleLoansAsync(ct)).AsNoTracking()
             .Include(l => l.Holder)
             .Include(l => l.Asset).ThenInclude(a => a!.Site)
+            .Include(l => l.Asset).ThenInclude(a => a!.Type)
+            .Include(l => l.Asset).ThenInclude(a => a!.Model).ThenInclude(m => m!.Vendor)
             .Include(l => l.Pool).ThenInclude(p => p!.Site)
+            .Include(l => l.Pool).ThenInclude(p => p!.Type)
             .FirstOrDefaultAsync(l => l.Id == loanId, ct) ?? throw new AccessDeniedException();
 
         var events = await db.LoanEvents.AsNoTracking().Where(e => e.LoanId == loanId)
@@ -79,7 +82,10 @@ public class LoanHistoryService(AppDbContext db, AccessScope access, SiteCalenda
         var q = (await access.VisibleLoansAsync(ct)).AsNoTracking()
             .Include(l => l.Holder)
             .Include(l => l.Asset).ThenInclude(a => a!.Site)
+            .Include(l => l.Asset).ThenInclude(a => a!.Type)
+            .Include(l => l.Asset).ThenInclude(a => a!.Model).ThenInclude(m => m!.Vendor)
             .Include(l => l.Pool).ThenInclude(p => p!.Site)
+            .Include(l => l.Pool).ThenInclude(p => p!.Type)
             .AsQueryable();
         if (!s.IncludeClosed) q = q.Where(l => l.ClosedAt == null);
         if (s.SiteId is { } siteId)

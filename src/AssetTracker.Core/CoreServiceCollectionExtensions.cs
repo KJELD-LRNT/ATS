@@ -1,5 +1,6 @@
 using AssetTracker.Core.Admin;
 using AssetTracker.Core.Auditing;
+using AssetTracker.Core.Catalog;
 using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
@@ -24,8 +25,11 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<ClockOptions>();
         services.AddScoped<SiteCalendar>();
         services.AddScoped<AuditWriter>();
+        services.AddScoped<TagGenerator>();
         services.AddScoped<AssetService>();
         services.AddScoped<PoolService>();
+        // Admin-defined asset types, custom fields, vendors and models.
+        services.AddScoped<CatalogService>();
 
         // Notifications (WP2.3). Options are bound from "Notifications" by the infrastructure layer.
         services.AddOptions<NotificationOptions>();

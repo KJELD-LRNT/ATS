@@ -65,7 +65,7 @@ public class InventoryPagesTests : IClassFixture<AppFactory>
         // Authorization runs before antiforgery validation, so the policy rejects the request outright.
         var res = await client.PostAsync("/Assets/Create", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["Input.Tag"] = "IP-0003", ["Input.Type"] = "Laptop", ["Input.SiteId"] = site.Id.ToString(),
+            ["Input.Tag"] = "IP-0003", ["Input.TypeId"] = BuiltIn.Laptop.ToString(), ["Input.SiteId"] = site.Id.ToString(),
             ["Input.Description"] = "Laptop",
         }));
 
@@ -81,14 +81,15 @@ public class InventoryPagesTests : IClassFixture<AppFactory>
 
         var res = await AntiforgeryHelper.PostFormAsync(client, "/Assets/Create", new Dictionary<string, string>
         {
-            ["Input.Tag"] = "ip-0004", ["Input.Type"] = "Phone", ["Input.SiteId"] = site.Id.ToString(),
-            ["Input.Description"] = "Phone model", ["Input.PhoneNumber"] = "+31 6 1234 0404",
-            ["Input.Imei"] = "490154203237518",
+            ["Input.Tag"] = "ip-0004", ["Input.TypeId"] = BuiltIn.Phone.ToString(), ["Input.SiteId"] = site.Id.ToString(),
+            ["Input.Description"] = "Phone model", [$"Input.Fields[{BuiltIn.PhonePhoneNumberField}]"] = "+31 6 1234 0404",
+            [$"Input.Fields[{BuiltIn.PhoneImeiField}]"] = "490154203237518",
         });
 
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var asset = await _f.WithDbAsync(db => db.Assets.SingleAsync(a => a.Tag == "IP-0004"));
-        Assert.Equal("+31612340404", asset.PhoneNumber);
+        Assert.Equal(["+31612340404"], await _f.WithDbAsync(db => db.FieldValues
+            .Where(v => v.AssetId == asset.Id && v.FieldId == BuiltIn.PhonePhoneNumberField).Select(v => v.Value).ToListAsync()));
         Assert.EndsWith($"/Assets/Details/{asset.Id}", res.Headers.Location!.OriginalString);
     }
 
@@ -99,15 +100,15 @@ public class InventoryPagesTests : IClassFixture<AppFactory>
         var client = _f.CreateClientAs(TestUser.It);
         var fields = new Dictionary<string, string>
         {
-            ["Input.Tag"] = "IP-0005", ["Input.Type"] = "Laptop", ["Input.SiteId"] = site.Id.ToString(),
-            ["Input.Description"] = "Laptop", ["Input.PhoneNumber"] = "+31612340505",
+            ["Input.Tag"] = "IP-0005", ["Input.TypeId"] = BuiltIn.Phone.ToString(), ["Input.SiteId"] = site.Id.ToString(),
+            ["Input.Description"] = "Phone", [$"Input.Fields[{BuiltIn.PhoneImeiField}]"] = "12345",
         };
 
         var invalid = await AntiforgeryHelper.PostFormAsync(client, "/Assets/Create", fields);
         Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
-        Assert.Contains("only applies to phones", await invalid.Content.ReadAsStringAsync());
+        Assert.Contains("15 digits", await invalid.Content.ReadAsStringAsync());
 
-        fields.Remove("Input.PhoneNumber");
+        fields.Remove($"Input.Fields[{BuiltIn.PhoneImeiField}]");
         var noToken = await client.PostAsync("/Assets/Create", new FormUrlEncodedContent(fields));
         Assert.Equal(HttpStatusCode.BadRequest, noToken.StatusCode);
         Assert.False(await _f.WithDbAsync(db => db.Assets.AnyAsync(a => a.Tag == "IP-0005")));
@@ -173,6 +174,6 @@ public class InventoryPagesTests : IClassFixture<AppFactory>
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var stored = await _f.WithDbAsync(db => db.Assets.AsNoTracking().SingleAsync(a => a.Id == asset.Id));
         Assert.Equal(("IP-0008", "Renamed"), (stored.Tag, stored.Description));
-        Assert.Equal(AssetType.Laptop, stored.Type);
+        Assert.Equal(BuiltIn.Laptop, stored.TypeId);
     }
 }
