@@ -347,7 +347,7 @@ public class CatalogPagesTests : IClassFixture<AppFactory>
         Assert.Matches(@"ckpick\.near[\s\S]*?badge--info"">CK03", searched);
         Assert.Matches(@"ckpick\.far[\s\S]*?badge--info"">CK04", searched);
         Assert.Contains("Other site than the item (CK03)", searched);
-        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(searched, "Other site than the item").Count);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(searched, "Other site than the item"));
 
         // A person picked in the typeahead arrives as holderId: only they are offered, already selected.
         var picked = await it.GetStringAsync($"/Loans/Checkout?tag=CK-LT-1&who=ckpick.far&holderId={far.Id}");

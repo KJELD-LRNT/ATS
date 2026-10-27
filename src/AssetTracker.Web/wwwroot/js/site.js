@@ -23,58 +23,6 @@ document.addEventListener("click", function (e) {
     input.dispatchEvent(new Event("change", { bubbles: true }));
 });
 
-// Inputs sharing a data-sync key mirror each other (checkout: the search form's quantity and the confirmed quantity),
-// so the number on screen is always the number that gets submitted.
-["input", "change"].forEach(function (type) {
-    document.addEventListener(type, function (e) {
-        var source = e.target instanceof HTMLInputElement ? e.target : null;
-        var key = source && source.getAttribute("data-sync");
-        if (!key) return;
-        document.querySelectorAll("input[data-sync]").forEach(function (other) {
-            if (other !== source && other.getAttribute("data-sync") === key && other.value !== source.value) {
-                other.value = source.value;
-            }
-        });
-    });
-});
-
-// Segmented control (checkout: tagged asset vs pool). Shows one panel and disables the other's fields so they are
-// not submitted. Without JavaScript the control stays hidden and both panels are shown.
-(function () {
-    var group = document.querySelector("[data-segmented]");
-    if (!group) return;
-    var form = group.closest("form");
-    var options = Array.prototype.slice.call(group.querySelectorAll("[data-segment]"));
-
-    function select(name, focus) {
-        options.forEach(function (o) {
-            var on = o.getAttribute("data-segment") === name;
-            o.setAttribute("aria-checked", on ? "true" : "false");
-            o.tabIndex = on ? 0 : -1;
-            if (on && focus) o.focus();
-        });
-        form.querySelectorAll("[data-segment-panel]").forEach(function (panel) {
-            var on = panel.getAttribute("data-segment-panel") === name;
-            panel.hidden = !on;
-            panel.querySelectorAll("input, select, button").forEach(function (c) { c.disabled = !on; });
-        });
-        form.querySelectorAll("[data-segment-or]").forEach(function (el) { el.hidden = true; });
-    }
-
-    options.forEach(function (o, i) {
-        o.addEventListener("click", function () { select(o.getAttribute("data-segment"), false); });
-        o.addEventListener("keydown", function (e) {
-            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-            e.preventDefault();
-            var next = options[(i + (e.key === "ArrowLeft" || e.key === "ArrowUp" ? options.length - 1 : 1)) % options.length];
-            select(next.getAttribute("data-segment"), true);
-        });
-    });
-
-    group.hidden = false;
-    var initial = options.filter(function (o) { return o.getAttribute("aria-checked") === "true"; })[0] || options[0];
-    select(initial.getAttribute("data-segment"), false);
-})();
 
 // Forms marked data-autosubmit reload (GET) when one of their selects changes, e.g. choosing the type of a new asset
 // shows that type's fields. The button inside is the fallback without JavaScript and is hidden here.
@@ -116,34 +64,21 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
     narrow();
 })();
 
-// People typeahead (checkout, "Who receives it?"). While typing, /Loans/Checkout?handler=People returns matching people
-// with their site; picking one fills the hidden holderId so the confirm step has that person selected. Plain ARIA
-// combobox: arrows move, Enter picks, Escape closes. Without JavaScript the text is searched on "Find" as before.
-(function () {
-    var root = document.querySelector("[data-people-lookup]");
-    if (!root) return;
-    var input = root.querySelector("input[role=combobox]");
-    var idField = root.querySelector("[data-people-id]");
-    var list = root.querySelector("[role=listbox]");
-    var selected = root.querySelector("[data-people-selected]");
-    var url = root.getAttribute("data-url");
-    var min = Number(root.getAttribute("data-min") || 2);
-    var timer = null, controller = null, people = [], active = -1;
+// ---------------------------------------------------------------------------------------------------------------
+// Typeahead comboboxes on the checkout page: "What is being lent?" (items) and "Who receives it?" (people).
+// createCombo wires one ARIA combobox: while typing (or on focus, when `browse` is set) it fetches JSON from the page's
+// handler, renders the rows, and calls `choose` for the picked one. Arrows move (rows that cannot be picked are skipped),
+// Enter picks, Escape closes. Both finders only enhance a plain GET form: without JavaScript the typed text is sent with
+// "Find" and searched on the server.
+function createCombo(o) {
+    var input = o.input, list = o.list;
+    var timer = null, controller = null, rows = [], active = -1;
 
     function make(tag, className, text) {
         var node = document.createElement(tag);
         if (className) node.className = className;
         if (text !== undefined) node.textContent = text;
         return node;
-    }
-
-    function initials(name) {
-        var parts = name.trim().split(/\s+/).filter(Boolean);
-        return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-    }
-
-    function siteBadge(p) {
-        return p.siteKey ? make("span", "badge badge--info", p.siteKey) : make("span", "badge badge--muted", "No site");
     }
 
     function close() {
@@ -153,63 +88,52 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
         active = -1;
     }
 
+    function options() { return Array.prototype.slice.call(list.querySelectorAll("[role=option]")); }
+
     function setActive(index) {
-        var options = list.querySelectorAll("[role=option]");
-        if (options.length === 0) return;
-        active = (index + options.length) % options.length;
-        Array.prototype.forEach.call(options, function (o, i) { o.setAttribute("aria-selected", i === active ? "true" : "false"); });
-        input.setAttribute("aria-activedescendant", options[active].id);
-        options[active].scrollIntoView({ block: "nearest" });
+        var opts = options();
+        var pickable = opts.map(function (el, i) { return el.getAttribute("aria-disabled") === "true" ? -1 : i; })
+            .filter(function (i) { return i >= 0; });
+        if (pickable.length === 0) return;
+        var at = pickable.indexOf(index);
+        active = at >= 0 ? index : pickable[index < 0 ? pickable.length - 1 : 0];
+        opts.forEach(function (el, i) { el.setAttribute("aria-selected", i === active ? "true" : "false"); });
+        input.setAttribute("aria-activedescendant", opts[active].id);
+        opts[active].scrollIntoView({ block: "nearest" });
     }
 
-    function showSelected(p) {
-        selected.textContent = "";
-        selected.appendChild(make("span", null, "Selected:"));
-        selected.appendChild(make("strong", null, p.name));
-        selected.appendChild(siteBadge(p));
-        if (p.siteName) selected.appendChild(make("span", null, p.siteName));
-        selected.hidden = false;
+    function step(delta) {
+        var opts = options();
+        var i = active;
+        for (var n = 0; n < opts.length; n++) {
+            i = (i + delta + opts.length) % opts.length;
+            if (opts[i].getAttribute("aria-disabled") !== "true") { setActive(i); return; }
+        }
     }
 
-    function clearSelection() {
-        idField.value = "";
-        selected.hidden = true;
-        selected.textContent = "";
-    }
-
-    function choose(p) {
-        input.value = p.name;
-        idField.value = String(p.id);
-        showSelected(p);
+    function pick(row) {
         close();
+        o.choose(row);
     }
 
     function render() {
         list.textContent = "";
         active = -1;
-        if (people.length === 0) {
-            var none = make("li", "combo-empty", "No matching people who can receive a loan.");
+        if (rows.length === 0) {
+            var none = make("li", "combo-empty", o.emptyText);
             none.setAttribute("role", "presentation");
             list.appendChild(none);
         }
-        people.forEach(function (p, i) {
-            var option = make("li", "combo-option");
-            option.id = "who-option-" + i;
+        rows.forEach(function (row, i) {
+            var pickable = o.pickable ? o.pickable(row) : true;
+            var option = make("li", "combo-option" + (pickable ? "" : " combo-option--disabled"));
+            option.id = o.idPrefix + i;
             option.setAttribute("role", "option");
             option.setAttribute("aria-selected", "false");
-
-            var text = make("span", "picker-text");
-            var name = make("span", "combo-name");
-            name.appendChild(document.createTextNode(p.name + " "));
-            name.appendChild(siteBadge(p));
-            text.appendChild(name);
-            var meta = [p.username, p.email, p.siteName, p.jobTitle].filter(Boolean).join(" · ");
-            text.appendChild(make("span", "combo-meta", meta));
-
-            option.appendChild(make("span", "avatar", initials(p.name)));
-            option.appendChild(text);
+            if (!pickable) option.setAttribute("aria-disabled", "true");
+            o.render(row, option);
             // mousedown, not click: the input would lose focus (and close the list) before a click lands.
-            option.addEventListener("mousedown", function (e) { e.preventDefault(); choose(p); });
+            option.addEventListener("mousedown", function (e) { e.preventDefault(); if (pickable) pick(row); });
             list.appendChild(option);
         });
         list.hidden = false;
@@ -218,20 +142,20 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
 
     function search() {
         var q = input.value.trim();
-        if (q.length < min) { close(); return; }
+        if (q.length < o.min && !(o.browse && q.length === 0)) { close(); return; }
         if (controller) controller.abort();
         controller = typeof AbortController === "function" ? new AbortController() : null;
-        fetch(url + "&q=" + encodeURIComponent(q), {
+        fetch(o.url(q), {
             headers: { Accept: "application/json" },
             credentials: "same-origin",
             signal: controller ? controller.signal : undefined
         }).then(function (res) {
-            if (!res.ok) throw new Error("people search failed");
+            if (!res.ok) throw new Error("search failed");
             return res.json();
         }).then(function (found) {
             // Ignore an answer to text that has changed meanwhile.
             if (input.value.trim() !== q) return;
-            people = found;
+            rows = found;
             render();
         }).catch(function (err) {
             if (err && err.name === "AbortError") return;
@@ -240,19 +164,21 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
     }
 
     input.addEventListener("input", function () {
-        if (idField.value) clearSelection();
+        if (o.edited) o.edited();
         clearTimeout(timer);
         timer = setTimeout(search, 200);
     });
 
+    if (o.browse) input.addEventListener("focus", function () { if (input.value.trim() === "") search(); });
+
     input.addEventListener("keydown", function (e) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            if (list.hidden) { if (people.length) render(); else return; }
+            if (list.hidden) { if (rows.length) render(); else { search(); return; } }
             e.preventDefault();
-            setActive(active < 0 ? (e.key === "ArrowDown" ? 0 : -1) : active + (e.key === "ArrowDown" ? 1 : -1));
+            if (active < 0) setActive(e.key === "ArrowDown" ? 0 : -1); else step(e.key === "ArrowDown" ? 1 : -1);
         } else if (e.key === "Enter" && !list.hidden && active >= 0) {
             e.preventDefault();
-            choose(people[active]);
+            pick(rows[active]);
         } else if (e.key === "Escape" && !list.hidden) {
             e.preventDefault();
             close();
@@ -260,5 +186,140 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
     });
 
     input.addEventListener("blur", close);
-    // A person chosen earlier (we came back with holderId) keeps their id until the text is edited.
+
+    return { make: make, refresh: function () { clearTimeout(timer); search(); }, close: close };
+}
+
+// People typeahead ("Who receives it?"). /Loans/Checkout?handler=People returns matching people with their site; picking
+// one fills the hidden holderId so the confirm step has that person selected, and narrows the item finder to their site.
+(function () {
+    var root = document.querySelector("[data-people-lookup]");
+    if (!root) return;
+    var input = root.querySelector("input[role=combobox]");
+    var idField = root.querySelector("[data-people-id]");
+    var selected = root.querySelector("[data-people-selected]");
+    var url = root.getAttribute("data-url");
+
+    function initials(name) {
+        var parts = name.trim().split(/\s+/).filter(Boolean);
+        return ((parts[0] || "?")[0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+    }
+
+    var combo = createCombo({
+        input: input, list: root.querySelector("[role=listbox]"), idPrefix: "who-option-", min: Number(root.getAttribute("data-min") || 2),
+        emptyText: "No matching people who can receive a loan.",
+        url: function (q) { return url + "&q=" + encodeURIComponent(q); },
+        render: function (p, option) {
+            var text = combo.make("span", "picker-text");
+            var name = combo.make("span", "combo-name");
+            name.appendChild(document.createTextNode(p.name + " "));
+            name.appendChild(siteBadge(p));
+            text.appendChild(name);
+            text.appendChild(combo.make("span", "combo-meta", [p.username, p.email, p.siteName, p.jobTitle].filter(Boolean).join(" · ")));
+            option.appendChild(combo.make("span", "avatar", initials(p.name)));
+            option.appendChild(text);
+        },
+        choose: function (p) {
+            input.value = p.name;
+            idField.value = String(p.id);
+            selected.textContent = "";
+            selected.appendChild(combo.make("span", null, "Selected:"));
+            selected.appendChild(combo.make("strong", null, p.name));
+            selected.appendChild(siteBadge(p));
+            if (p.siteName) selected.appendChild(combo.make("span", null, p.siteName));
+            selected.hidden = false;
+            // Most loans stay within a site: show that site's items, unless the site was chosen by hand.
+            document.dispatchEvent(new CustomEvent("checkout:person", { detail: p }));
+        },
+        edited: function () {
+            if (!idField.value) return;
+            idField.value = "";
+            selected.hidden = true;
+            selected.textContent = "";
+        }
+    });
+
+    function siteBadge(p) {
+        var badge = document.createElement("span");
+        badge.className = p.siteKey ? "badge badge--info" : "badge badge--muted";
+        badge.textContent = p.siteKey || "No site";
+        return badge;
+    }
+})();
+
+// Item finder ("What is being lent?"). /Loans/Checkout?handler=Items returns tagged assets and quantity pools matching the
+// text, type and site (an empty box lists what is available). Items that cannot be lent are shown with their state and
+// cannot be picked. Picking fills the hidden assetId/poolId (enabled only then) and moves on to the person field.
+(function () {
+    var root = document.querySelector("[data-item-lookup]");
+    if (!root) return;
+    var input = root.querySelector("input[role=combobox]");
+    var assetField = root.querySelector("[data-item-asset]");
+    var poolField = root.querySelector("[data-item-pool]");
+    var typeSelect = document.querySelector("[data-item-type]");
+    var siteSelect = document.querySelector("[data-item-site]");
+    var url = root.getAttribute("data-url");
+    var siteChosenByHand = !!(siteSelect && siteSelect.value);
+
+    // A picked item (after "Find") keeps its id until the text is edited.
+    [assetField, poolField].forEach(function (f) { f.disabled = !f.value; });
+
+    function setPicked(kind, id) {
+        assetField.value = kind === "asset" ? String(id) : "";
+        poolField.value = kind === "pool" ? String(id) : "";
+        assetField.disabled = !assetField.value;
+        poolField.disabled = !poolField.value;
+    }
+
+    function badge(text, kind) {
+        var b = document.createElement("span");
+        b.className = "badge" + (kind ? " badge--" + kind : "");
+        b.textContent = text;
+        return b;
+    }
+
+    var combo = createCombo({
+        input: input, list: root.querySelector("[role=listbox]"), idPrefix: "item-option-", min: Number(root.getAttribute("data-min") || 2),
+        browse: true, emptyText: "Nothing found. Try another word or clear the type and site filters.",
+        url: function (q) {
+            var u = url + "&q=" + encodeURIComponent(q);
+            if (typeSelect && typeSelect.value) u += "&type=" + encodeURIComponent(typeSelect.value);
+            if (siteSelect && siteSelect.value) u += "&site=" + encodeURIComponent(siteSelect.value);
+            return u;
+        },
+        pickable: function (i) { return i.canCheckOut; },
+        render: function (i, option) {
+            var text = combo.make("span", "picker-text");
+            var name = combo.make("span", "combo-name");
+            name.appendChild(combo.make("span", "mono", i.key));
+            name.appendChild(document.createTextNode(" "));
+            name.appendChild(badge(i.siteKey, "info"));
+            name.appendChild(document.createTextNode(" "));
+            var status = i.kind === "pool" ? i.status : (i.canCheckOut ? "Available" : i.status + (i.holder ? " to " + i.holder : ""));
+            name.appendChild(badge(status, i.canCheckOut ? null : "muted"));
+            text.appendChild(name);
+            text.appendChild(combo.make("span", "combo-meta",
+                [i.title, i.type, i.description, i.kind === "pool" ? "quantity item" : null, i.siteName].filter(Boolean).join(" · ")));
+            option.appendChild(text);
+        },
+        choose: function (i) {
+            input.value = i.key;
+            setPicked(i.kind, i.id);
+            var person = document.getElementById("f-who");
+            if (person && !person.value) person.focus();
+        },
+        edited: function () { setPicked(null, null); }
+    });
+
+    // Filters narrow the suggestions straight away.
+    if (typeSelect) typeSelect.addEventListener("change", function () { input.focus(); combo.refresh(); });
+    if (siteSelect) siteSelect.addEventListener("change", function () { siteChosenByHand = true; input.focus(); combo.refresh(); });
+
+    document.addEventListener("checkout:person", function (e) {
+        var site = e.detail && e.detail.siteId;
+        if (!siteSelect || siteChosenByHand || !site) return;
+        var value = String(site);
+        var known = Array.prototype.some.call(siteSelect.options, function (o) { return o.value === value; });
+        if (known) siteSelect.value = value;
+    });
 })();
