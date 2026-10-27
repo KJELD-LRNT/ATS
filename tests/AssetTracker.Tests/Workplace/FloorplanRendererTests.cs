@@ -49,6 +49,25 @@ public class FloorplanRendererTests
     }
 
     [Fact]
+    public void Occupancy_adds_classes_names_and_a_tooltip()
+    {
+        var (floor, spots) = Build();
+        var occupancy = new Dictionary<int, SpotOccupancy>
+        {
+            [10] = new("Fox <Jr>", false, 2), [11] = new("Gone Person", true, 0), [12] = new(null, false, 1),
+        };
+        var svg = FloorplanRenderer.Render(floor, spots, [], occupancy);
+
+        Assert.Contains("fp-occ", svg);
+        Assert.Contains("fp-occ fp-left", svg);
+        Assert.Contains("fp-itm", svg);
+        Assert.Contains("data-person=\"Fox &lt;Jr&gt;\"", svg);
+        Assert.Contains("<title>R7-T01-S01 · Fox &lt;Jr&gt; · 2 items</title>", svg);
+        Assert.Contains("(left)", svg);
+        Assert.Contains("<title>R7-T01-S03 · 1 item</title>", svg);
+    }
+
+    [Fact]
     public void A_switched_off_seat_is_marked_and_is_not_coloured_by_its_team()
     {
         var (floor, spots) = Build();

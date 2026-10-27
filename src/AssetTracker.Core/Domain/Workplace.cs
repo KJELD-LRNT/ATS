@@ -82,3 +82,35 @@ public class FloorTeam
 
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>
+/// Something placed at a workspot: a person (who sits there), a tagged asset (a desktop, a screen) or units of a pool
+/// (two headsets). It records <b>where</b> things are, for planning; it is separate from loans (who is responsible)
+/// and never changes stock. At most one open row per person and per asset (a thing is in one place), one person per
+/// workspot, and one row per pool and workspot. Releasing sets <see cref="ReleasedAt"/>: the row stays as history.
+/// </summary>
+public class WorkspotAssignment
+{
+    public int Id { get; set; }
+
+    public int WorkspotId { get; set; }
+    public Workspot? Workspot { get; set; }
+
+    public int? PersonId { get; set; }
+    public Person? Person { get; set; }
+
+    public int? AssetId { get; set; }
+    public IndividualAsset? Asset { get; set; }
+
+    public int? PoolId { get; set; }
+    public Pool? Pool { get; set; }
+
+    /// <summary>1 for a person or an asset; the number of units for a pool.</summary>
+    public int Quantity { get; set; } = 1;
+
+    public DateTimeOffset AssignedAt { get; set; }
+    public string AssignedBy { get; set; } = "";
+
+    public DateTimeOffset? ReleasedAt { get; set; }
+    public string? ReleasedBy { get; set; }
+}

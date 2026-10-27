@@ -111,6 +111,26 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             await teams.CreateAsync("Engineering", await SeatsOf("1.02"), ct);
             await teams.CreateAsync("Service desk", await SeatsOf("1.03", 8), ct);
 
+            // People, desktops and headsets placed at seats. AMS-LT-003 is on loan to someone else than the person at its
+            // seat, and the leaver (disabled in the later syncs) still has a seat: both show up under "To check".
+            var assign = sp.GetRequiredService<Core.Workplace.AssignmentService>();
+            async Task<List<int>> Seats(string room) =>
+                await db.Workspots.Where(w => w.FloorId == ams1.Floor.Id && w.RoomId == room).OrderBy(w => w.ElementId)
+                    .Select(w => w.Id).ToListAsync(ct);
+            var finance = await Seats("1.01");
+            var engineering = await Seats("1.02");
+            await assign.AssignPersonAsync(finance[0], P(6), ct);
+            await assign.AssignAssetAsync(finance[0], assets["AMS-DT-001"], ct);
+            await assign.AssignPoolAsync(finance[0], pools[("AMS", "HS-STEREO")], 2, ct);
+            await assign.AssignPersonAsync(finance[1], P(40), ct);
+            await assign.AssignAssetAsync(finance[1], assets["AMS-DT-002"], ct);
+            await assign.AssignAssetAsync(finance[1], assets["AMS-LT-003"], ct);
+            await assign.AssignPersonAsync(finance[2], P(41), ct);
+            await assign.AssignPersonAsync(finance[3], P(42), ct);
+            await assign.AssignAssetAsync(finance[4], assets["AMS-DT-003"], ct);
+            await assign.AssignPersonAsync(engineering[0], people[DemoDirectorySource.LeaverUsername], ct);
+            await assign.AssignPersonAsync(engineering[1], P(43), ct);
+
             await sp.GetRequiredService<RoleAssignmentService>()
                 .AssignAsync(people[DemoDefaults.FacilityUsername], AppRoles.Facility, ct);
             return 0;

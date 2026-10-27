@@ -13,7 +13,8 @@ public static class FloorplanRenderer
 {
     private static readonly XNamespace Svg = "http://www.w3.org/2000/svg";
 
-    public static string Render(Floor floor, IReadOnlyCollection<Workspot> spots, IReadOnlyCollection<FloorTeam> teams)
+    public static string Render(Floor floor, IReadOnlyCollection<Workspot> spots, IReadOnlyCollection<FloorTeam> teams,
+        IReadOnlyDictionary<int, SpotOccupancy>? occupancy = null)
     {
         var root = XElement.Parse(floor.Svg);
         var byId = new Dictionary<string, XElement>(StringComparer.Ordinal);
@@ -43,6 +44,24 @@ public static class FloorplanRenderer
                         ? (Math.Min(cur.MinX, b.MinX), Math.Min(cur.MinY, b.MinY), Math.Max(cur.MaxX, b.MaxX), Math.Max(cur.MaxY, b.MaxY))
                         : b;
             }
+            // Who sits here and what is placed: classes for the occupancy view and a tooltip with the names.
+            var tip = spot.Label;
+            if (occupancy is not null && occupancy.TryGetValue(spot.Id, out var occ))
+            {
+                if (occ.Person is not null)
+                {
+                    classes.Add(occ.PersonLeft ? "fp-occ fp-left" : "fp-occ");
+                    el.SetAttributeValue("data-person", occ.Person);
+                    tip += " · " + occ.Person + (occ.PersonLeft ? " (left)" : "");
+                }
+                if (occ.Items > 0)
+                {
+                    classes.Add("fp-itm");
+                    tip += $" · {occ.Items} item{(occ.Items == 1 ? "" : "s")}";
+                }
+            }
+            if (el.Element(Svg + "title") is { } title) title.Value = tip;
+            else el.AddFirst(new XElement(Svg + "title", tip));
             var existing = (string?)el.Attribute("class");
             el.SetAttributeValue("class", string.IsNullOrEmpty(existing) ? string.Join(' ', classes) : existing + " " + string.Join(' ', classes));
         }

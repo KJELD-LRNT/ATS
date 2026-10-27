@@ -40,6 +40,13 @@
     <section class="wp-stage card" aria-label="Floor plan">
         <div class="wp-toolbar">
             <div class="wp-find">@await Html.PartialAsync("_FindBox", "wp-q")</div>
+            <div class="wp-view">
+                <label for="wp-view">Show</label>
+                <select id="wp-view" data-view>
+                    <option value="teams">Teams</option>
+                    <option value="occupancy">Occupancy</option>
+                </select>
+            </div>
             <div class="wp-tools" role="group" aria-label="Map tools">
                 <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
                 <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
@@ -69,6 +76,45 @@
                 <dt>Team</dt><dd data-fact="team"></dd>
             </dl>
             <ul class="wp-selected" data-sel-list></ul>
+
+            <div class="wp-spot" data-when="one" hidden data-spot-url="@Url.Page("Floor", "Spot", new { id = floor.Id })">
+                <h3>At this workspot</h3>
+                <p class="muted" data-spot-status>Loading…</p>
+                <div data-spot-body hidden>
+                    <div data-spot-person></div>
+                    <ul class="wp-items" data-spot-assets></ul>
+                    <ul class="wp-items" data-spot-pools></ul>
+                    <ul class="wp-hints" data-spot-hints></ul>
+                </div>
+            </div>
+
+            @if (Model.CanEdit)
+            {
+                <div class="field combo wp-place" data-when="one" hidden data-place data-place-url="@Url.Page("Floor", "Place", new { id = floor.Id })">
+                    <label for="wp-place-q">Place a person, asset or pool here</label>
+                    <div class="searchbox">
+                        @Ui.Icon("search", 16, 2)
+                        <input id="wp-place-q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded="false"
+                               aria-controls="wp-place-list" placeholder="Name, tag or SKU" />
+                    </div>
+                    <ul id="wp-place-list" class="combo-list" role="listbox" aria-label="People, assets and pools" hidden></ul>
+                    <div class="wp-qty" data-place-qty hidden>
+                        <label for="wp-qty">Units of <strong data-place-pool></strong></label>
+                        <input id="wp-qty" type="number" min="1" max="@AssignmentService.QuantityMax" value="1" />
+                        <button type="button" class="btn--primary btn--sm" data-place-confirm>Place units</button>
+                    </div>
+                </div>
+                <form id="wp-assign-form" method="post" asp-page-handler="Assign" asp-route-id="@floor.Id" hidden>
+                    <input type="hidden" name="workspotId" data-assign="workspotId" />
+                    <input type="hidden" name="kind" data-assign="kind" />
+                    <input type="hidden" name="targetId" data-assign="targetId" />
+                    <input type="hidden" name="quantity" data-assign="quantity" value="1" />
+                </form>
+                <form id="wp-release-form" method="post" asp-page-handler="Release" asp-route-id="@floor.Id" hidden>
+                    <input type="hidden" name="assignmentId" data-release="assignmentId" />
+                    <input type="hidden" name="workspotId" data-release="workspotId" />
+                </form>
+            }
 
             @if (Model.CanEdit)
             {
@@ -137,6 +183,29 @@
             </section>
         }
 
+        <section class="card wp-box" data-legend="occupancy" hidden aria-label="Legend">
+            <h2>Occupancy</h2>
+            <ul class="wp-legend">
+                <li><span class="wp-swatch wp-sw-occ" aria-hidden="true"></span> Someone sits here</li>
+                <li><span class="wp-swatch wp-sw-itm" aria-hidden="true"></span> Items placed, nobody sits here</li>
+                <li><span class="wp-swatch wp-sw-left" aria-hidden="true"></span> The person has left</li>
+                <li><span class="wp-swatch wp-sw-free" aria-hidden="true"></span> Free</li>
+            </ul>
+        </section>
+
+        @if (Model.Hints.Count > 0)
+        {
+            <section class="card wp-box" aria-labelledby="wp-hints-h">
+                <h2 id="wp-hints-h">To check <span class="badge badge--warning">@Model.Hints.Count</span></h2>
+                <ul class="wp-hints">
+                    @foreach (var h in Model.Hints)
+                    {
+                        <li><button type="button" class="wp-hint-show" data-show-spot="@h.WorkspotId"><strong>@h.Label</strong> @h.Text</button></li>
+                    }
+                </ul>
+            </section>
+        }
+
         <section class="card wp-box" aria-labelledby="wp-teams-h">
             <h2 id="wp-teams-h">Teams</h2>
             @if (Model.View.Teams.Count == 0)
@@ -198,6 +267,9 @@
                         <tr><td class="muted">@(type == "" ? "Not in a room" : char.ToUpperInvariant(type[0]) + type[1..])</td><td class="num">@count</td></tr>
                     }
                     <tr><th scope="row">In a team</th><td class="num">@Model.TeamSeats.Values.Sum()</td></tr>
+                    <tr><th scope="row">Seated</th><td class="num">@Model.Seated</td></tr>
+                    <tr><td class="muted">Free</td><td class="num">@Model.FreeSeats</td></tr>
+                    <tr><td class="muted">Items placed</td><td class="num">@Model.ItemsPlaced</td></tr>
                 </tbody>
             </table>
         </section>

@@ -23,6 +23,7 @@ public partial class WorkspotService(AppDbContext db, AccessScope scope, AuditWr
     public const int LabelMax = 100;
     public const int MarkMax = 500;
     public const int FindLimit = 8;
+    public const int PlacedLimit = 5;
 
     [GeneratedRegex(@"\sid=""([^""]+)""")]
     private static partial Regex IdAttribute();
@@ -109,6 +110,20 @@ public partial class WorkspotService(AppDbContext db, AccessScope scope, AuditWr
         var spots = await LoadSameFloorAsync(workspotIds, ct);
         var changing = spots.Where(s => s.IsActive != active).ToList();
         if (changing.Count == 0) return 0;
+        if (!active) return await SwitchOffAsync(changing, ct);
+        return await SwitchAsync(changing, true, ct);
+    }
+
+    private async Task<int> SwitchOffAsync(List<Workspot> changing, CancellationToken ct)
+    {
+        var ids = changing.Select(s => s.Id).ToList();
+        if (await db.WorkspotAssignments.AnyAsync(a => ids.Contains(a.WorkspotId) && a.ReleasedAt == null, ct))
+            throw new DomainException("workspot.in-use", "A selected workspot still has a person or items placed. Release them first.");
+        return await SwitchAsync(changing, false, ct);
+    }
+
+    private async Task<int> SwitchAsync(List<Workspot> changing, bool active, CancellationToken ct)
+    {
         foreach (var s in changing)
         {
             s.IsActive = active;
@@ -170,10 +185,32 @@ public partial class WorkspotService(AppDbContext db, AccessScope scope, AuditWr
                 Seats = db.Workspots.Count(w => w.TeamId == t.Id && w.IsActive) })
             .Take(FindLimit).ToListAsync(ct);
 
+        // People, assets and pools that are placed somewhere (the ones that are not placed have no spot to show).
+        var placed = from a in db.WorkspotAssignments.AsNoTracking()
+                     join w in db.Workspots.AsNoTracking() on a.WorkspotId equals w.Id
+                     join f in floors on w.FloorId equals f.Id
+                     where a.ReleasedAt == null && w.IsActive
+                     select new { a, w, FloorId = f.Id, FloorName = f.Name, SiteKey = f.Site!.Key };
+        var people = await placed.Where(x => x.a.Person != null &&
+                (EF.Functions.Like(x.a.Person.DisplayName.ToLower(), pattern, "\\") || EF.Functions.Like(x.a.Person.Username.ToLower(), pattern, "\\")))
+            .OrderBy(x => x.a.Person!.DisplayName).Take(PlacedLimit)
+            .Select(x => new { x.w.Id, Name = x.a.Person!.DisplayName, x.w.Label, x.w.RoomName, x.FloorId, x.FloorName, x.SiteKey }).ToListAsync(ct);
+        var assets = await placed.Where(x => x.a.Asset != null &&
+                (EF.Functions.Like(x.a.Asset.Tag.ToLower(), pattern, "\\") || EF.Functions.Like(x.a.Asset.Description.ToLower(), pattern, "\\")))
+            .OrderBy(x => x.a.Asset!.Tag).Take(PlacedLimit)
+            .Select(x => new { x.w.Id, Name = x.a.Asset!.Tag, x.w.Label, x.w.RoomName, x.FloorId, x.FloorName, x.SiteKey }).ToListAsync(ct);
+        var pools = await placed.Where(x => x.a.Pool != null &&
+                (EF.Functions.Like(x.a.Pool.Sku.ToLower(), pattern, "\\") || EF.Functions.Like(x.a.Pool.Description.ToLower(), pattern, "\\")))
+            .OrderBy(x => x.a.Pool!.Sku).Take(PlacedLimit)
+            .Select(x => new { x.w.Id, Name = x.a.Pool!.Sku, x.w.Label, x.w.RoomName, x.FloorId, x.FloorName, x.SiteKey, x.a.Quantity }).ToListAsync(ct);
+
         var hits = new List<WorkplaceHit>();
         hits.AddRange(teams.Select(t => new WorkplaceHit("team", t.FloorId, t.FloorName, t.SiteKey, t.Name, $"Team · {t.Seats} seats", $"team:{t.Id}", t.Seats)));
         hits.AddRange(rooms.Select(r => new WorkplaceHit("room", r.FloorId, r.FloorName, r.SiteKey,
             r.RoomName is { Length: > 0 } ? $"{r.RoomName} ({r.RoomId})" : r.RoomId!, $"Room · {r.Seats} seats", $"room:{r.RoomId}", r.Seats)));
+        hits.AddRange(people.Select(p => new WorkplaceHit("person", p.FloorId, p.FloorName, p.SiteKey, p.Name, $"Sits at {p.Label}" + (p.RoomName is null ? "" : $" · {p.RoomName}"), $"ws:{p.Id}", 1)));
+        hits.AddRange(assets.Select(p => new WorkplaceHit("asset", p.FloorId, p.FloorName, p.SiteKey, p.Name, $"At {p.Label}" + (p.RoomName is null ? "" : $" · {p.RoomName}"), $"ws:{p.Id}", 1)));
+        hits.AddRange(pools.Select(p => new WorkplaceHit("pool", p.FloorId, p.FloorName, p.SiteKey, p.Name, $"{p.Quantity} at {p.Label}" + (p.RoomName is null ? "" : $" · {p.RoomName}"), $"ws:{p.Id}", 1)));
         hits.AddRange(spots.Select(s => new WorkplaceHit("workspot", s.FloorId, s.FloorName, s.SiteKey, s.Label,
             s.RoomName ?? s.RoomId, $"ws:{s.Id}", 1)));
         return hits;

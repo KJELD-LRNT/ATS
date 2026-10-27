@@ -734,3 +734,30 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
     .wp { grid-template-columns: minmax(0, 1fr); }
     .wp-canvas { height: 62vh; }
 }
+
+/* Workplace: what sits at a workspot, placing things, and the occupancy view. */
+.wp-view { display: flex; align-items: center; gap: 6px; }
+.wp-view label { color: var(--ink-2); font-size: 14px; }
+.wp-spot h3 { font-size: 14px; margin: 12px 0 6px; }
+.wp-items { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wp-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wp-item-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.wp-item-text .muted { font-size: 13px; }
+.wp-hints { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.wp-hints li { color: var(--due-text); background: var(--due-bg); border-radius: var(--radius); padding: 6px 8px; }
+.wp-hint-show { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.wp-hint-show:hover { text-decoration: underline; }
+.wp-place { margin-top: 12px; }
+.wp-qty { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 8px; }
+.wp-qty input[type="number"] { width: 90px; }
+.wp-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.wp-legend li { display: flex; align-items: center; gap: 8px; }
+.wp-sw-occ { background: #2F9E5A; }
+.wp-sw-itm { background: #E0A100; }
+.wp-sw-left { background: #D6403A; }
+.wp-sw-free { background: #C9CED6; }
+.wp-canvas.view-occupancy .floorplan .fp-ws { fill: #C9CED6; }
+.wp-canvas.view-occupancy .floorplan .fp-ws.fp-itm { fill: #E0A100; }
+.wp-canvas.view-occupancy .floorplan .fp-ws.fp-occ { fill: #2F9E5A; }
+.wp-canvas.view-occupancy .floorplan .fp-ws.fp-occ.fp-left { fill: #D6403A; }
+.wp-canvas.view-occupancy .floorplan .fp-teamlayer { display: none; }

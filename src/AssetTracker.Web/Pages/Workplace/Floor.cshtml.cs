@@ -15,7 +15,7 @@ namespace AssetTracker.Web.Pages.Workplace;
 /// forms post the selected ids.
 /// </summary>
 [Authorize(Policy = Policies.WorkplaceRead)]
-public class FloorModel(FloorService floors, WorkspotService spots, TeamService teams, AccessScope access) : PageModel
+public class FloorModel(FloorService floors, WorkspotService spots, TeamService teams, AssignmentService assignments, AccessScope access) : PageModel
 {
     private const int MaxIds = 2000;
 
@@ -30,6 +30,11 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
     public IReadOnlyDictionary<int, int> TeamSeats { get; private set; } = new Dictionary<int, int>();
     public IReadOnlyList<(string Type, int Count)> RoomTypes { get; private set; } = [];
 
+    public IReadOnlyList<Hint> Hints { get; private set; } = [];
+    public int Seated { get; private set; }
+    public int FreeSeats { get; private set; }
+    public int ItemsPlaced { get; private set; }
+
     [BindProperty(SupportsGet = true)] public string? Focus { get; set; }
 
     [TempData] public string? Message { get; set; }
@@ -42,6 +47,31 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         var view = await floors.GetAsync(id, ct);
         return view is null ? NotFound() : Content(view.Floor.Css, "text/css");
     }
+
+
+    /// <summary>What sits at one workspot (JSON for the side panel).</summary>
+    public async Task<IActionResult> OnGetSpotAsync(int id, int workspotId, CancellationToken ct)
+    {
+        var detail = await assignments.GetSpotAsync(workspotId, ct);
+        return detail is null || detail.FloorId != id ? NotFound() : new JsonResult(detail);
+    }
+
+    /// <summary>People, assets and pools that can be placed (JSON, IT and facility).</summary>
+    public async Task<IActionResult> OnGetPlaceAsync(int id, string? q, CancellationToken ct) =>
+        new JsonResult(await assignments.SearchAsync(id, q, ct));
+
+    public Task<IActionResult> OnPostAssignAsync(int id, int workspotId, string? kind, int targetId, int? quantity, CancellationToken ct) =>
+        RunAsync(id, () => kind switch
+        {
+            "person" => assignments.AssignPersonAsync(workspotId, targetId, ct),
+            "asset" => assignments.AssignAssetAsync(workspotId, targetId, ct),
+            "pool" => assignments.AssignPoolAsync(workspotId, targetId, quantity ?? 1, ct),
+            _ => throw new DomainException("assignment.kind", "Choose a person, an asset or a pool."),
+        }, ct, workspotId);
+
+    public Task<IActionResult> OnPostReleaseAsync(int id, int assignmentId, int workspotId, CancellationToken ct) =>
+        RunAsync(id, () => assignments.ReleaseAsync(assignmentId, ct), ct, workspotId);
+
 
     public Task<IActionResult> OnPostLabelAsync(int id, int workspotId, string? label, CancellationToken ct) =>
         RunAsync(id, async () => { await spots.RenameAsync(workspotId, label ?? "", ct); return "Label saved."; }, ct);
@@ -90,13 +120,13 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
     public Task<IActionResult> OnPostUnarchiveAsync(int id, CancellationToken ct) =>
         RunAsync(id, async () => { await floors.SetActiveAsync(id, true, ct); return "Floor is visible again."; }, ct);
 
-    private async Task<IActionResult> RunAsync(int id, Func<Task<string>> action, CancellationToken ct)
+    private async Task<IActionResult> RunAsync(int id, Func<Task<string>> action, CancellationToken ct, int? focusSpot = null)
     {
         if (!CanEdit) return NotFound();
         try
         {
             Message = await action();
-            return RedirectToPage(new { id });
+            return RedirectToPage(new { id, focus = focusSpot is { } f ? $"ws:{f}" : null });
         }
         catch (DomainException ex) { this.Show(ex); }
         return await LoadAsync(id, ct) ? Page() : NotFound();
@@ -107,7 +137,13 @@ public class FloorModel(FloorService floors, WorkspotService spots, TeamService 
         var view = await floors.GetAsync(id, ct);
         if (view is null) return false;
         View = view;
-        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Teams);
+        var occupancy = await assignments.OccupancyAsync(id, ct);
+        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Teams, occupancy);
+        Hints = await assignments.HintsAsync(id, ct);
+        var active = view.ActiveSpots.ToList();
+        Seated = active.Count(s => occupancy.TryGetValue(s.Id, out var o) && o.Person is not null);
+        FreeSeats = active.Count - Seated;
+        ItemsPlaced = occupancy.Values.Sum(o => o.Items);
         HasDeclaredSeats = view.Spots.Any(s => s.RoomId is not null || s.TableId is not null) ||
                            view.Floor.Svg.Contains("data-kind=\"seat\"", StringComparison.Ordinal);
         FocusIds = await spots.ElementIdsForFocusAsync(id, Focus, ct);

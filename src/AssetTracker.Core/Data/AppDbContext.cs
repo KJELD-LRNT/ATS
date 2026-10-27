@@ -28,6 +28,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Floor> Floors => Set<Floor>();
     public DbSet<Workspot> Workspots => Set<Workspot>();
     public DbSet<FloorTeam> FloorTeams => Set<FloorTeam>();
+    public DbSet<WorkspotAssignment> WorkspotAssignments => Set<WorkspotAssignment>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<NotificationOutbox> Outbox => Set<NotificationOutbox>();
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
@@ -214,6 +215,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Name).HasMaxLength(100);
             e.HasIndex(x => new { x.FloorId, x.Name }).IsUnique();
             e.HasOne(x => x.Floor).WithMany(f => f.Teams).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<WorkspotAssignment>(e =>
+        {
+            e.Property(x => x.AssignedBy).HasMaxLength(256);
+            e.Property(x => x.ReleasedBy).HasMaxLength(256);
+            e.HasIndex(x => new { x.WorkspotId, x.ReleasedAt });
+            // Open rows only: a person is in one place, an asset is in one place, a workspot has one person.
+            e.HasIndex(x => x.PersonId).IsUnique().HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenPerson");
+            e.HasIndex(x => x.AssetId).IsUnique().HasFilter("[AssetId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenAsset");
+            e.HasIndex(x => x.WorkspotId).IsUnique().HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenSeatPerson");
+            e.HasIndex(x => new { x.WorkspotId, x.PoolId }).IsUnique().HasFilter("[PoolId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenPool");
+            e.HasIndex(x => x.PoolId);
+            e.HasOne(x => x.Workspot).WithMany().HasForeignKey(x => x.WorkspotId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Person).WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Asset).WithMany().HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Pool).WithMany().HasForeignKey(x => x.PoolId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_WorkspotAssignment_OneKind",
+                    "([PersonId] IS NOT NULL AND [AssetId] IS NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NOT NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NULL AND [PoolId] IS NOT NULL)");
+                t.HasCheckConstraint("CK_WorkspotAssignment_Quantity", "[Quantity] > 0");
+            });
         });
 
         b.Entity<Pool>(e =>
