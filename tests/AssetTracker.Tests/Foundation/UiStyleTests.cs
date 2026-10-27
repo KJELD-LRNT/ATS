@@ -24,7 +24,7 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
     {
         var html = await _f.CreateClientAs(TestUser.It).GetStringAsync("/");
         Assert.Contains("href=\"/css/site.css?v=", html);
-        Assert.Contains("<link rel=\"preload\" href=\"/fonts/ibm-plex-sans-latin-400-normal.woff2\" as=\"font\" type=\"font/woff2\" crossorigin", html);
+        Assert.Contains("<link rel=\"preload\" href=\"/fonts/inter-latin-400-normal.woff2\" as=\"font\" type=\"font/woff2\" crossorigin", html);
         Assert.DoesNotContain("fonts.googleapis.com", html);
         Assert.DoesNotContain("fonts.gstatic.com", html);
         Assert.Contains("class=\"skip-link\" href=\"#main\"", html);
@@ -40,7 +40,7 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
         Assert.DoesNotContain("@import", css);
 
         var fonts = CssFontUrl().Matches(css).Select(m => m.Groups[1].Value).Distinct().ToList();
-        Assert.Equal(6, fonts.Count); // Plex Sans 400/500/600/700 + Plex Mono 400/500
+        Assert.Equal(6, fonts.Count); // Inter 400/500/600/700 + JetBrains Mono 400/500
         foreach (var font in fonts)
         {
             var res = await client.GetAsync($"/fonts/{font}");
@@ -61,6 +61,38 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
         var csp = res.Headers.GetValues("Content-Security-Policy").Single();
         Assert.Contains("font-src 'self'", csp);
         Assert.Contains("style-src 'self'", csp);
+    }
+
+    [Fact]
+    public async Task Layout_applies_the_saved_theme_before_first_paint_and_offers_a_switch()
+    {
+        var html = await _f.CreateClientAs(TestUser.It).GetStringAsync("/");
+        var theme = html.IndexOf("<script src=\"/js/theme.js?v=", StringComparison.Ordinal);
+        Assert.True(theme > 0, "theme.js is linked");
+        Assert.True(theme < html.IndexOf("</head>", StringComparison.Ordinal), "theme.js runs in <head>");
+        Assert.DoesNotContain("<script src=\"/js/theme.js?v=\" defer", html);
+        Assert.Contains("data-theme-switch", html);
+        foreach (var mode in new[] { "light", "system", "dark" }) Assert.Contains($"data-theme-set=\"{mode}\"", html);
+        Assert.Contains("data-rail-toggle", html);
+
+        var js = await _f.CreateClient().GetStringAsync("/js/theme.js");
+        Assert.Contains("ats-theme", js);
+        Assert.Contains("prefers-color-scheme: dark", js);
+
+        var css = await _f.CreateClient().GetStringAsync("/css/site.css");
+        Assert.Contains(":root[data-theme=\"dark\"]", css);
+    }
+
+    [Fact]
+    public async Task Top_bar_search_is_the_find_lookup_for_it_and_a_plain_search_for_managers()
+    {
+        var it = await _f.CreateClientAs(TestUser.It).GetStringAsync("/Loans");
+        Assert.Contains("class=\"topbar-search\" data-find-lookup data-global-search", it);
+        Assert.Contains("data-url=\"/?handler=Find\"", it);
+
+        var manager = await _f.CreateClientAs(TestUser.Manager).GetStringAsync("/Loans");
+        Assert.Contains("data-global-search", manager);
+        Assert.DoesNotContain("data-find-lookup data-global-search", manager);
     }
 
     public static TheoryData<string, string> Pages() => new()

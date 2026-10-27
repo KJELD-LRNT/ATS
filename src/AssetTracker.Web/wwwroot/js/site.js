@@ -327,9 +327,8 @@ function createCombo(o) {
 // Overview "Find, check out and return" (IT). /?handler=Find returns assets, pools and people; each result links to its
 // page and offers the action that fits its state (check out an available item, return a checked-out one). Enter on an
 // exact tag goes straight to the return (checked out) or the asset page, so a scanner can be used without the mouse.
-(function () {
-    var root = document.querySelector("[data-find-lookup]");
-    if (!root) return;
+// The top bar has the same lookup (IT only), so every [data-find-lookup] gets its own combo.
+document.querySelectorAll("[data-find-lookup]").forEach(function (root) {
     var input = root.querySelector("input[role=combobox]");
     var url = root.getAttribute("data-url");
     var site = root.getAttribute("data-site");
@@ -362,7 +361,7 @@ function createCombo(o) {
     }
 
     var combo = createCombo({
-        input: input, list: root.querySelector("[role=listbox]"), idPrefix: "find-option-", min: 2,
+        input: input, list: root.querySelector("[role=listbox]"), idPrefix: root.getAttribute("data-prefix") || "find-option-", min: 2,
         emptyText: "Nothing found.",
         url: findUrl,
         render: function (row, option) {
@@ -421,7 +420,7 @@ function createCombo(o) {
             })
             .catch(function () { input.form.submit(); });
     });
-})();
+});
 
 // Narrow screens: the menu folds away behind a "Menu" button (open on desktop; without JavaScript it simply stays open).
 (function () {
@@ -1250,4 +1249,73 @@ function seatSpacing(svg) {
         var go = function () { setTimeout(function () { layout(); window.print(); }, 300); };
         if (document.fonts && document.fonts.ready) document.fonts.ready.then(go); else go();
     }
+})();
+
+// ---------------------------------------------------------------------------------------------------------------
+// Theme switch in the top bar: light, dark or follow the system. theme.js applied the saved choice before the first
+// paint; this keeps the buttons in step, saves new choices and follows the system setting live while on "system".
+(function () {
+    var group = document.querySelector("[data-theme-switch]");
+    if (!group) return;
+    var root = document.documentElement;
+    var media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    function pref() { return root.getAttribute("data-theme-pref") || "system"; }
+    function apply(p) {
+        var dark = p === "dark" || (p === "system" && media && media.matches);
+        root.setAttribute("data-theme", dark ? "dark" : "light");
+        root.setAttribute("data-theme-pref", p);
+        group.querySelectorAll("[data-theme-set]").forEach(function (b) {
+            b.setAttribute("aria-pressed", b.getAttribute("data-theme-set") === p ? "true" : "false");
+        });
+    }
+    group.hidden = false;
+    apply(pref());
+    group.addEventListener("click", function (e) {
+        var b = e.target instanceof Element ? e.target.closest("[data-theme-set]") : null;
+        if (!b) return;
+        var p = b.getAttribute("data-theme-set");
+        try { localStorage.setItem("ats-theme", p); } catch (err) { /* not saved, still applied */ }
+        apply(p);
+    });
+    if (media) {
+        var onChange = function () { if (pref() === "system") apply("system"); };
+        if (media.addEventListener) media.addEventListener("change", onChange); else media.addListener(onChange);
+    }
+})();
+
+// Collapse the sidebar to icons (wide screens). The choice is remembered; theme.js restores it before the first paint.
+(function () {
+    var toggle = document.querySelector("[data-rail-toggle]");
+    if (!toggle) return;
+    var root = document.documentElement;
+    var label = toggle.querySelector(".rail-toggle-label");
+    function sync() {
+        var collapsed = root.getAttribute("data-rail") === "collapsed";
+        toggle.setAttribute("aria-pressed", collapsed ? "true" : "false");
+        toggle.title = collapsed ? "Expand menu" : "Collapse menu";
+        if (label) label.textContent = collapsed ? "Expand menu" : "Collapse menu";
+    }
+    toggle.hidden = false;
+    sync();
+    toggle.addEventListener("click", function () {
+        var collapsed = root.getAttribute("data-rail") !== "collapsed";
+        if (collapsed) root.setAttribute("data-rail", "collapsed"); else root.removeAttribute("data-rail");
+        try { localStorage.setItem("ats-rail", collapsed ? "collapsed" : ""); } catch (err) { /* not saved */ }
+        sync();
+    });
+})();
+
+// Ctrl+K / Cmd+K, or "/" outside a text field, focuses the search in the top bar.
+(function () {
+    var input = document.querySelector("[data-global-search] input[type=search]");
+    if (!input) return;
+    document.addEventListener("keydown", function (e) {
+        var typing = e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]");
+        var combo = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "k" || e.key === "K");
+        if (combo || (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
 })();

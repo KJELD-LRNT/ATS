@@ -14,9 +14,12 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>@ViewData["Title"] - Asset Tracker</title>
-    <link rel="preload" href="~/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="~/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="~/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="~/fonts/inter-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin />
+    @* Not deferred: applies the saved light/dark theme before the first paint (no flash of the wrong colours). *@
+    <script src="~/js/theme.js" asp-append-version="true"></script>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     @await RenderSectionAsync("Head", required: false)
     <script src="~/js/site.js" asp-append-version="true" defer></script>
@@ -100,6 +103,7 @@
             </ul>
         }
 
+        <button type="button" class="rail-toggle" data-rail-toggle aria-pressed="false" hidden>@Ui.Icon("sidebar")<span class="rail-toggle-label">Collapse menu</span></button>
         <div class="user-card">
             <span class="avatar" aria-hidden="true">@Ui.Initials(CurrentUser.Name)</span>
             <span class="user-text">
@@ -110,10 +114,58 @@
         </div>
     </nav>
 
-    <main class="main" id="main" tabindex="-1">
-        @await Component.InvokeAsync("SyncStatus")
-        @RenderBody()
-    </main>
+    <div class="main-col">
+        <header class="topbar">
+            <div class="topbar-title">Asset Tracker <span aria-hidden="true">/</span> <strong>@ViewData["Title"]</strong></div>
+            @if (CurrentUser.IsIt)
+            {
+                @* The same lookup as the overview's "Find" box: scan or type a tag and press Enter to jump straight to its
+                   return (checked out) or its page; people open their loans. Ctrl+K or / focuses it from anywhere. *@
+                <form method="get" action="@Url.Page("/Assets/Index")" role="search" class="topbar-search" data-find-lookup data-global-search
+                      data-prefix="top-find-option-" data-url="@Url.Page("/Index", "Find")" data-site=""
+                      data-asset-url="@Url.Page("/Assets/Details", new { id = 123456789 })"
+                      data-pool-url="@Url.Page("/Pools/Details", new { id = 123456789 })"
+                      data-return-url="@Url.Page("/Loans/Return", new { id = 123456789 })"
+                      data-checkout-asset-url="@Url.Page("/Loans/Checkout", new { assetId = 123456789 })"
+                      data-checkout-pool-url="@Url.Page("/Loans/Checkout", new { poolId = 123456789 })"
+                      data-person-url="@Url.Page("/Loans/Index", new { q = "__Q__" })">
+                    <div class="combo">
+                        <label for="top-q" class="visually-hidden">Find an item or a person</label>
+                        <div class="searchbox">
+                            @Ui.Icon("search", 16, 2)
+                            <input id="top-q" name="q" type="search" placeholder="Scan a tag, find an item or a person" autocomplete="off"
+                                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="top-find-list" aria-keyshortcuts="Control+K /" />
+                            <kbd class="kbd" aria-hidden="true">Ctrl K</kbd>
+                        </div>
+                        <ul id="top-find-list" class="combo-list" role="listbox" aria-label="Matching items and people" hidden></ul>
+                    </div>
+                </form>
+            }
+            else if (CurrentUser.IsManager)
+            {
+                <form method="get" action="@Url.Page("/Assets/Index")" role="search" class="topbar-search" data-global-search>
+                    <label for="top-q" class="visually-hidden">Search assets</label>
+                    <div class="searchbox">
+                        @Ui.Icon("search", 16, 2)
+                        <input id="top-q" name="q" type="search" placeholder="Search tag, model, serial…" aria-keyshortcuts="Control+K /" />
+                        <kbd class="kbd" aria-hidden="true">Ctrl K</kbd>
+                    </div>
+                </form>
+            }
+            <div class="topbar-tools">
+                @* Light / follow the system / dark. Without JavaScript the buttons stay hidden and the light theme applies. *@
+                <div class="theme-switch" role="group" aria-label="Colour theme" data-theme-switch hidden>
+                    <button type="button" data-theme-set="light" aria-pressed="false" title="Light theme">@Ui.Icon("sun", 16)<span class="visually-hidden">Light theme</span></button>
+                    <button type="button" data-theme-set="system" aria-pressed="false" title="Follow the system setting">@Ui.Icon("monitor", 16)<span class="visually-hidden">System theme</span></button>
+                    <button type="button" data-theme-set="dark" aria-pressed="false" title="Dark theme">@Ui.Icon("moon", 16)<span class="visually-hidden">Dark theme</span></button>
+                </div>
+            </div>
+        </header>
+        <main class="main" id="main" tabindex="-1">
+            @await Component.InvokeAsync("SyncStatus")
+            @RenderBody()
+        </main>
+    </div>
 </div>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
