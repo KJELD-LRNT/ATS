@@ -75,6 +75,7 @@
                 <div><dt>State</dt><dd>@Ui.Label(a.State)@(a.RetiredAt is { } r ? $" (retired {r:yyyy-MM-dd})" : "")</dd></div>
                 <div><dt>Type</dt><dd>@a.Type</dd></div>
                 <div><dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd></div>
+                <div><dt>On the floor plan</dt><dd>@if (Model.Place is { } place) { <a asp-page="/Workplace/Floor" asp-route-id="@place.FloorId" asp-route-focus="ws:@place.WorkspotId">@place.FloorName · @place.Label</a>@(place.RoomName is null ? "" : $" ({place.RoomName})") } else { <span class="muted">Not placed</span> }</dd></div>
                 @if (a.Type?.UsesModel == true || a.Model is not null)
                 {
                     <div><dt>Vendor</dt><dd>@(a.Model?.Vendor?.Name ?? a.Vendor?.Name ?? "—")</dd></div>

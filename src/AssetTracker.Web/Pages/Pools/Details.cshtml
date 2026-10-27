@@ -68,6 +68,28 @@
 </section>
 <div asp-validation-summary="All" class="alert alert--error"></div>
 
+@if (Model.Places.Count > 0)
+{
+    <section class="card card--flush" aria-labelledby="places-h">
+        <div class="card-header"><h2 id="places-h">On the floor plans</h2></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Workspot</th><th scope="col">Floor</th><th scope="col" class="num">Units</th></tr></thead>
+                <tbody>
+                @foreach (var pl in Model.Places)
+                {
+                    <tr>
+                        <td><a asp-page="/Workplace/Floor" asp-route-id="@pl.FloorId" asp-route-focus="ws:@pl.WorkspotId">@pl.Label</a>@(pl.RoomName is null ? "" : $" ({pl.RoomName})")</td>
+                        <td>@pl.SiteKey · @pl.FloorName</td>
+                        <td class="num">@pl.Quantity</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
 <section class="card card--flush" aria-labelledby="open-h">
     <div class="card-header"><h2 id="open-h">Open loans</h2></div>
     <div class="table-wrap">

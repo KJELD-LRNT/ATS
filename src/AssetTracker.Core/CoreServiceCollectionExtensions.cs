@@ -49,6 +49,7 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<FloorService>();
         services.AddScoped<WorkspotService>();
         services.AddScoped<TeamService>();
+        services.AddScoped<AssignmentService>();
         // Database-backed settings (WP4.1). ISettingsReloader/ISecretProtector come from the infrastructure layer.
         services.AddScoped<SettingsService>();
 

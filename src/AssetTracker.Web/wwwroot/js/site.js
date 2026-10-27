@@ -448,7 +448,7 @@ function createCombo(o) {
         var input = root.querySelector("input[role=combobox]");
         var url = root.getAttribute("data-url");
         var floorUrl = root.getAttribute("data-floor-url");
-        var KINDS = { workspot: "Seat", room: "Room", team: "Team" };
+        var KINDS = { workspot: "Seat", room: "Room", team: "Team", person: "Person", asset: "Asset", pool: "Pool" };
 
         var combo = createCombo({
             input: input, list: root.querySelector("[role=listbox]"), idPrefix: input.id + "-option-", min: 2,
@@ -612,6 +612,7 @@ function createCombo(o) {
             if (idField) idField.value = one.getAttribute("data-ws");
             var labelField = root.querySelector("[data-ws-label]");
             if (labelField) labelField.value = one.getAttribute("data-label") || "";
+            loadSpot(one);
         }
     }
 
@@ -778,6 +779,164 @@ function createCombo(o) {
         areaMode = !areaMode;
         area.setAttribute("aria-pressed", areaMode ? "true" : "false");
         canvas.classList.toggle("is-area", areaMode);
+    });
+
+    // ---- what sits at the selected workspot, and placing things there ----------------------------------------
+
+    var spotHolder = root.querySelector("[data-spot-url]");
+    var spotToken = 0;
+    var releaseForm = document.getElementById("wp-release-form");
+    var assignForm = document.getElementById("wp-assign-form");
+    var place = root.querySelector("[data-place]");
+    var pending = null;
+
+    function node(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+    }
+
+    function releaseButton(assignmentId, workspotId, label) {
+        if (!releaseForm) return null;
+        var b = node("button", "btn--sm", "Release");
+        b.type = "button";
+        b.setAttribute("aria-label", "Release " + label);
+        b.addEventListener("click", function () {
+            releaseForm.querySelector("[data-release=assignmentId]").value = String(assignmentId);
+            releaseForm.querySelector("[data-release=workspotId]").value = String(workspotId);
+            releaseForm.submit();
+        });
+        return b;
+    }
+
+    function renderSpot(d) {
+        root.querySelector("[data-spot-status]").hidden = true;
+        root.querySelector("[data-spot-body]").hidden = false;
+
+        var person = root.querySelector("[data-spot-person]");
+        person.textContent = "";
+        var row = node("div", "wp-item");
+        if (d.person) {
+            var text = node("span", "wp-item-text");
+            var name = node("strong", null, d.person.name);
+            text.appendChild(name);
+            if (!d.person.isActive) text.appendChild(node("span", "badge badge--muted", "Left"));
+            text.appendChild(node("span", "muted", [d.person.username, d.person.jobTitle, d.person.siteKey].filter(Boolean).join(" · ")));
+            row.appendChild(text);
+            var rb = releaseButton(d.person.assignmentId, d.workspotId, d.person.name);
+            if (rb) row.appendChild(rb);
+        } else {
+            row.appendChild(node("span", "muted", "Nobody sits here."));
+        }
+        person.appendChild(row);
+
+        function fill(listSelector, items, describe) {
+            var ul = root.querySelector(listSelector);
+            ul.textContent = "";
+            items.forEach(function (it) {
+                var li = node("li", "wp-item");
+                var t = node("span", "wp-item-text");
+                var parts = describe(it);
+                t.appendChild(node("strong", null, parts[0]));
+                t.appendChild(node("span", "muted", parts[1]));
+                li.appendChild(t);
+                var b = releaseButton(it.assignmentId, d.workspotId, parts[0]);
+                if (b) li.appendChild(b);
+                ul.appendChild(li);
+            });
+        }
+        fill("[data-spot-assets]", d.assets, function (a) {
+            return [a.tag, [a.type, a.model, a.description, a.state === "Available" || a.state === "CheckedOut" ? "" : a.state].filter(Boolean).join(" · ")];
+        });
+        fill("[data-spot-pools]", d.pools, function (p) { return [p.quantity + " × " + p.sku, [p.type, p.description].filter(Boolean).join(" · ")]; });
+
+        var hints = root.querySelector("[data-spot-hints]");
+        hints.textContent = "";
+        d.hints.forEach(function (h) { hints.appendChild(node("li", null, h)); });
+    }
+
+    function loadSpot(seat) {
+        if (!spotHolder) return;
+        var status = root.querySelector("[data-spot-status]");
+        var token = ++spotToken;
+        status.hidden = false;
+        status.textContent = "Loading…";
+        root.querySelector("[data-spot-body]").hidden = true;
+        if (place) {
+            place.querySelector("input[role=combobox]").value = "";
+            place.querySelector("[data-place-qty]").hidden = true;
+            pending = null;
+        }
+        fetch(spotHolder.getAttribute("data-spot-url") + "&workspotId=" + encodeURIComponent(seat.getAttribute("data-ws")), {
+            headers: { Accept: "application/json" }, credentials: "same-origin"
+        }).then(function (res) {
+            if (!res.ok) throw new Error("spot failed");
+            return res.json();
+        }).then(function (d) {
+            if (token === spotToken) renderSpot(d);
+        }).catch(function () {
+            if (token === spotToken) status.textContent = "Could not load what is at this workspot.";
+        });
+    }
+
+    function submitAssign(kind, id, quantity) {
+        var one = seats()[0];
+        if (!assignForm || !one) return;
+        assignForm.querySelector("[data-assign=workspotId]").value = one.getAttribute("data-ws");
+        assignForm.querySelector("[data-assign=kind]").value = kind;
+        assignForm.querySelector("[data-assign=targetId]").value = String(id);
+        assignForm.querySelector("[data-assign=quantity]").value = String(quantity || 1);
+        assignForm.submit();
+    }
+
+    if (place) {
+        var pInput = place.querySelector("input[role=combobox]");
+        var qtyBox = place.querySelector("[data-place-qty]");
+        var BADGE = { person: "Person", asset: "Asset", pool: "Pool" };
+        var pcombo = createCombo({
+            input: pInput, list: place.querySelector("[role=listbox]"), idPrefix: "wp-place-option-", min: 2,
+            emptyText: "No matching people, assets or pools.",
+            url: function (q) { return place.getAttribute("data-place-url") + "&q=" + encodeURIComponent(q); },
+            pickable: function (row) { return !row.reason; },
+            render: function (row, option) {
+                var text = pcombo.make("span", "picker-text");
+                var name = pcombo.make("span", "combo-name");
+                name.appendChild(document.createTextNode(row.title + " "));
+                name.appendChild(pcombo.make("span", "badge badge--info", BADGE[row.kind] || row.kind));
+                text.appendChild(name);
+                var meta = [row.subtitle, row.place ? "now at " + row.place : "", row.reason].filter(Boolean).join(" · ");
+                text.appendChild(pcombo.make("span", "combo-meta", meta));
+                option.appendChild(text);
+            },
+            choose: function (row) {
+                if (row.kind === "pool") {
+                    pending = row;
+                    qtyBox.hidden = false;
+                    place.querySelector("[data-place-pool]").textContent = row.title;
+                    pInput.value = row.title;
+                    place.querySelector("#wp-qty").focus();
+                    return;
+                }
+                if (row.place && !window.confirm(row.title + " is now at " + row.place + ". Move it here?")) return;
+                submitAssign(row.kind, row.id, 1);
+            }
+        });
+        var confirmQty = place.querySelector("[data-place-confirm]");
+        if (confirmQty) confirmQty.addEventListener("click", function () {
+            if (pending) submitAssign("pool", pending.id, Number(place.querySelector("#wp-qty").value) || 1);
+        });
+    }
+
+    var viewSelect = root.querySelector("[data-view]");
+    if (viewSelect) viewSelect.addEventListener("change", function () {
+        var occupancy = viewSelect.value === "occupancy";
+        canvas.classList.toggle("view-occupancy", occupancy);
+        Array.prototype.forEach.call(root.querySelectorAll('[data-legend="occupancy"]'), function (l) { l.hidden = !occupancy; });
+    });
+
+    Array.prototype.forEach.call(root.querySelectorAll("[data-show-spot]"), function (b) {
+        b.addEventListener("click", function () { focusSpec("ws:" + b.getAttribute("data-show-spot")); });
     });
 
     root.classList.add("is-live");

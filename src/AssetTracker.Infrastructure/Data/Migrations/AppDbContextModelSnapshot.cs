@@ -1075,6 +1075,78 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("Workspots");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.WorkspotAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AssetId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AssignedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int?>("PersonId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PoolId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ReleasedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ReleasedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("WorkspotId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssetId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WorkspotAssignments_OpenAsset")
+                        .HasFilter("[AssetId] IS NOT NULL AND [ReleasedAt] IS NULL");
+
+                    b.HasIndex("PersonId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WorkspotAssignments_OpenPerson")
+                        .HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL");
+
+                    b.HasIndex("PoolId");
+
+                    b.HasIndex("WorkspotId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WorkspotAssignments_OpenSeatPerson")
+                        .HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL");
+
+                    b.HasIndex("WorkspotId", "PoolId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WorkspotAssignments_OpenPool")
+                        .HasFilter("[PoolId] IS NOT NULL AND [ReleasedAt] IS NULL");
+
+                    b.HasIndex("WorkspotId", "ReleasedAt");
+
+                    b.ToTable("WorkspotAssignments", t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkspotAssignment_OneKind", "([PersonId] IS NOT NULL AND [AssetId] IS NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NOT NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NULL AND [PoolId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_WorkspotAssignment_Quantity", "[Quantity] > 0");
+                        });
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldDefinition", b =>
                 {
                     b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
@@ -1321,6 +1393,38 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Floor");
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.WorkspotAssignment", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.IndividualAsset", "Asset")
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetTracker.Core.Domain.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetTracker.Core.Domain.Pool", "Pool")
+                        .WithMany()
+                        .HasForeignKey("PoolId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetTracker.Core.Domain.Workspot", "Workspot")
+                        .WithMany()
+                        .HasForeignKey("WorkspotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Person");
+
+                    b.Navigation("Pool");
+
+                    b.Navigation("Workspot");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.AssetType", b =>
