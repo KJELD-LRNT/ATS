@@ -28,13 +28,16 @@
         <label for="TypeId">Type</label>
         <select name="type" asp-for="TypeId" asp-items="Model.Types"><option value="">All</option></select>
     </div>
+    <div class="field">
+        <label class="check"><input type="checkbox" name="low" value="true" checked="@Model.BelowMinimum" /> Below minimum only</label>
+    </div>
     <div class="filters-actions"><button type="submit">Search</button></div>
 </form>
 <section class="card card--flush" aria-label="Pools">
     <div class="table-wrap">
         <table>
             <thead>
-            <tr><th scope="col">SKU</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col" class="num">Available</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">On hand</th></tr>
+            <tr><th scope="col">SKU</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col" class="num">Available</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">On hand</th><th scope="col" class="num">Minimum</th></tr>
             </thead>
             <tbody>
             @foreach (var p in Model.Results.Items)
@@ -47,11 +50,12 @@
                     <td class="num"><strong>@p.Available</strong></td>
                     <td class="num">@p.Outstanding</td>
                     <td class="num">@p.OnHand</td>
+                    <td class="num">@if (p.MinimumStock is { } min) { @min } else { <span class="muted">–</span> } @if (p.IsBelowMinimum) { <span class="badge badge--warning">Below</span> }</td>
                 </tr>
             }
             @if (Model.Results.TotalCount == 0)
             {
-                <tr><td colspan="7" class="empty">No pools match.</td></tr>
+                <tr><td colspan="8" class="empty">No pools match.</td></tr>
             }
             </tbody>
         </table>

@@ -323,3 +323,119 @@ function createCombo(o) {
         if (known) siteSelect.value = value;
     });
 })();
+
+// Overview "Find, check out and return" (IT). /?handler=Find returns assets, pools and people; each result links to its
+// page and offers the action that fits its state (check out an available item, return a checked-out one). Enter on an
+// exact tag goes straight to the return (checked out) or the asset page, so a scanner can be used without the mouse.
+(function () {
+    var root = document.querySelector("[data-find-lookup]");
+    if (!root) return;
+    var input = root.querySelector("input[role=combobox]");
+    var url = root.getAttribute("data-url");
+    var site = root.getAttribute("data-site");
+    var ID = "123456789";
+
+    function target(attr, id) { return root.getAttribute(attr).replace(ID, String(id)); }
+
+    function findUrl(q) { return url + "&q=" + encodeURIComponent(q) + (site ? "&site=" + encodeURIComponent(site) : ""); }
+
+    function pageOf(row, fast) {
+        if (row.kind === "person") return root.getAttribute("data-person-url").replace("__Q__", encodeURIComponent(row.key));
+        if (row.kind === "pool") return target("data-pool-url", row.id);
+        if (fast && row.loanId) return target("data-return-url", row.loanId);
+        return target("data-asset-url", row.id);
+    }
+
+    function actionsOf(row) {
+        var actions = [];
+        if (row.kind === "asset" && row.canCheckOut) actions.push(["Check out", target("data-checkout-asset-url", row.id)]);
+        if (row.kind === "asset" && row.loanId) actions.push(["Return", target("data-return-url", row.loanId)]);
+        if (row.kind === "pool" && row.canCheckOut) actions.push(["Check out", target("data-checkout-pool-url", row.id)]);
+        return actions;
+    }
+
+    function badge(text, kind) {
+        var b = document.createElement("span");
+        b.className = "badge" + (kind ? " badge--" + kind : "");
+        b.textContent = text;
+        return b;
+    }
+
+    var combo = createCombo({
+        input: input, list: root.querySelector("[role=listbox]"), idPrefix: "find-option-", min: 2,
+        emptyText: "Nothing found.",
+        url: findUrl,
+        render: function (row, option) {
+            var text = combo.make("span", "picker-text");
+            var name = combo.make("span", "combo-name");
+            var meta;
+            if (row.kind === "person") {
+                name.appendChild(document.createTextNode(row.name + " "));
+                name.appendChild(badge(row.siteKey || "No site", row.siteKey ? "info" : "muted"));
+                if (row.active === false) name.appendChild(badge("Left", "error"));
+                meta = [row.key, row.email, row.jobTitle, "person: their loans"];
+            } else {
+                name.appendChild(combo.make("span", "mono", row.key));
+                name.appendChild(document.createTextNode(" "));
+                name.appendChild(badge(row.siteKey, "info"));
+                name.appendChild(document.createTextNode(" "));
+                var status = row.kind === "pool" ? row.status : (row.canCheckOut ? "Available" : row.status + (row.holder ? " to " + row.holder : ""));
+                name.appendChild(badge(status, row.canCheckOut ? null : "muted"));
+                meta = [row.title, row.type, row.description, row.kind === "pool" ? "quantity item" : null, row.siteName];
+            }
+            text.appendChild(name);
+            text.appendChild(combo.make("span", "combo-meta", meta.filter(Boolean).join(" · ")));
+            option.appendChild(text);
+
+            var actions = actionsOf(row);
+            if (actions.length) {
+                var box = combo.make("span", "combo-actions");
+                actions.forEach(function (a) {
+                    var link = document.createElement("a");
+                    link.href = a[1];
+                    link.textContent = a[0];
+                    // Keep focus in the input (the list would close on blur) but let the click go through.
+                    link.addEventListener("mousedown", function (e) { e.preventDefault(); e.stopPropagation(); });
+                    box.appendChild(link);
+                });
+                option.appendChild(box);
+            }
+        },
+        choose: function (row) { window.location.href = pageOf(row, false); }
+    });
+
+    input.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" || input.getAttribute("aria-activedescendant")) return;
+        var text = input.value.trim();
+        if (text.length < 2) return; // plain form submit
+        e.preventDefault();
+        fetch(findUrl(text), { headers: { Accept: "application/json" }, credentials: "same-origin" })
+            .then(function (res) { if (!res.ok) throw new Error("find failed"); return res.json(); })
+            .then(function (found) {
+                var things = found.filter(function (r) { return r.kind !== "person"; });
+                var exact = things.filter(function (r) { return r.key.toUpperCase() === text.toUpperCase(); })[0];
+                var only = found.length === 1 && things.length === 1 ? things[0] : null;
+                var row = exact || only;
+                if (row) window.location.href = pageOf(row, true);
+                else input.form.submit();
+            })
+            .catch(function () { input.form.submit(); });
+    });
+})();
+
+// Narrow screens: the menu folds away behind a "Menu" button (open on desktop; without JavaScript it simply stays open).
+(function () {
+    var toggle = document.querySelector("[data-menu-toggle]");
+    var menu = document.getElementById("sidebar-menu");
+    if (!toggle || !menu || !window.matchMedia) return;
+    var narrow = window.matchMedia("(max-width: 820px)");
+    function set(open) {
+        menu.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    toggle.hidden = false;
+    set(!narrow.matches);
+    toggle.addEventListener("click", function () { set(menu.hidden); });
+    var onChange = function () { set(!narrow.matches); };
+    if (narrow.addEventListener) narrow.addEventListener("change", onChange); else narrow.addListener(onChange);
+})();

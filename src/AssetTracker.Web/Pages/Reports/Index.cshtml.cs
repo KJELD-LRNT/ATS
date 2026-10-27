@@ -11,5 +11,5 @@ public class IndexModel(ReportService reports) : PageModel
 {
     public InventorySummary Summary { get; private set; } = null!;
 
-    public async Task OnGetAsync(CancellationToken ct) => Summary = await reports.GetSummaryAsync(ct);
+    public async Task OnGetAsync(CancellationToken ct) => Summary = await reports.GetSummaryAsync(ct: ct);
 }

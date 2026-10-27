@@ -29,6 +29,7 @@
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
     </div>
     <label class="check"><input type="checkbox" name="overdue" value="true" checked="@Model.Overdue" /> Overdue only</label>
+    <label class="check"><input type="checkbox" name="inactive" value="true" checked="@Model.InactiveHolder" /> Held by people who left</label>
     <div class="filters-actions"><button type="submit">Filter</button></div>
 </form>
 <section class="card card--flush" aria-label="Loans">

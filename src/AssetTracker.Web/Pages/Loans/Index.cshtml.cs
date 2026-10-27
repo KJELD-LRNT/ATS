@@ -21,6 +21,7 @@ public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbConte
     [BindProperty(SupportsGet = true)] public string? Q { get; set; }
     [BindProperty(SupportsGet = true)] public int? SiteId { get; set; }
     [BindProperty(SupportsGet = true)] public bool Overdue { get; set; }
+    [BindProperty(SupportsGet = true, Name = "inactive")] public bool InactiveHolder { get; set; }
     [BindProperty(SupportsGet = true, Name = "p")] public int PageNumber { get; set; } = 1;
 
     public PagedResult<Loan> Results { get; private set; } = null!;
@@ -33,7 +34,7 @@ public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbConte
 
     public PagerModel Pager => PagerModel.From(Results, new Dictionary<string, object?>
     {
-        ["q"] = Q, ["siteId"] = SiteId, ["overdue"] = Overdue ? "true" : null,
+        ["q"] = Q, ["siteId"] = SiteId, ["overdue"] = Overdue ? "true" : null, ["inactive"] = InactiveHolder ? "true" : null,
     });
 
     public bool IsOverdue(Loan l) => l.IsOpen && OverduePolicy.IsOverdue(l.DueDate, TodayFor(l));
@@ -46,7 +47,7 @@ public class IndexModel(LoanHistoryService loans, AccessScope access, AppDbConte
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        Results = await loans.SearchAsync(new LoanSearch(SiteId, Overdue, Q, Page: PageNumber), ct);
+        Results = await loans.SearchAsync(new LoanSearch(SiteId, Overdue, Q, Page: PageNumber, InactiveHolder: InactiveHolder), ct);
         SiteToday = (await calendar.AllSitesAsync(ct)).ToDictionary(s => s.SiteId, s => s.Today);
         Sites = await InventoryUi.SiteOptionsAsync(db, await access.GetAsync(ct), ct);
     }

@@ -37,7 +37,8 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
 
     // ---------------------------------------------------------------- inventory
 
-    public async Task<InventorySummary> GetSummaryAsync(CancellationToken ct = default)
+    /// <param name="siteId">Limits every figure to one site (still within what the principal may read).</param>
+    public async Task<InventorySummary> GetSummaryAsync(int? siteId = null, CancellationToken ct = default)
     {
         EnsureReader();
         var sites = await db.Sites.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Key, ct);
@@ -46,11 +47,21 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         var typeNames = await db.AssetTypes.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name, ct);
         string TypeName(int id) => typeNames.GetValueOrDefault(id, "?");
 
-        var assetCounts = await (await access.VisibleAssetsAsync(ct))
+        var visibleAssets = await access.VisibleAssetsAsync(ct);
+        var visiblePools = await access.VisiblePoolsAsync(ct);
+        var open = (await access.VisibleLoansAsync(ct)).Where(l => l.ClosedAt == null);
+        if (siteId is { } only)
+        {
+            visibleAssets = visibleAssets.Where(a => a.SiteId == only);
+            visiblePools = visiblePools.Where(p => p.SiteId == only);
+            open = open.Where(l => (l.AssetId != null && l.Asset!.SiteId == only) || (l.PoolId != null && l.Pool!.SiteId == only));
+        }
+
+        var assetCounts = await visibleAssets
             .GroupBy(a => new { a.SiteId, a.TypeId, a.State })
             .Select(g => new { g.Key.SiteId, g.Key.TypeId, g.Key.State, Count = g.Count() })
             .ToListAsync(ct);
-        var poolTotals = await (await access.VisiblePoolsAsync(ct))
+        var poolTotals = await visiblePools
             .GroupBy(p => new { p.SiteId, p.TypeId })
             .Select(g => new
             {
@@ -59,7 +70,6 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
             })
             .ToListAsync(ct);
 
-        var open = (await access.VisibleLoansAsync(ct)).Where(l => l.ClosedAt == null);
         var openLoans = await open.CountAsync(ct);
         var openPoolUnits = await open.Where(l => l.PoolId != null).SumAsync(l => l.Quantity - l.ReturnedQuantity, ct);
         var overdue = await open.Where(await calendar.OverduePredicateAsync(ct)).CountAsync(ct);
@@ -154,7 +164,7 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
             q = q.Where(p => EF.Functions.Like(p.Sku, pat, @"\") || EF.Functions.Like(p.Description, pat, @"\"));
 
         return q.OrderBy(p => p.Site!.Key).ThenBy(p => p.Sku).Select(p => new PoolBalanceRow(
-            p.Id, p.Sku, p.Type!.Name, p.SiteId, p.Site!.Key, p.Description, p.Available, p.Outstanding));
+            p.Id, p.Sku, p.Type!.Name, p.SiteId, p.Site!.Key, p.Description, p.Available, p.Outstanding, p.MinimumStock));
     }
 
     // ---------------------------------------------------------------- current assignments
@@ -192,6 +202,24 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         var page = await (await OverdueQueryAsync(f, ct)).ToPageAsync(f.Page, f.PageSize, ct);
         var today = await SiteTodayAsync(ct);
         return page with { Items = page.Items.Select(r => WithDaysOverdue(r, today)).ToList() };
+    }
+
+    /// <summary>
+    /// Open loans that fall due within the next <paramref name="days"/> days of their site's local calendar (not yet
+    /// overdue), soonest first, with <see cref="LoanRow.DaysUntilDue"/>. The overview's "due soon" list.
+    /// </summary>
+    public async Task<PagedResult<LoanRow>> DueSoonAsync(ReportFilter f, int days = 7, CancellationToken ct = default)
+    {
+        EnsureReader();
+        var q = FilterLoans(await access.VisibleLoansAsync(ct), f, dueDateRange: false)
+            .Where(l => l.ClosedAt == null)
+            .Where(await calendar.DueSoonPredicateAsync(days, ct));
+        var page = await q.OrderBy(l => l.DueDate).ThenBy(l => l.Id).Select(ToRow).ToPageAsync(f.Page, f.PageSize, ct);
+        var today = await SiteTodayAsync(ct);
+        return page with
+        {
+            Items = page.Items.Select(r => r with { DaysUntilDue = r.DueDate!.Value.DayNumber - today[r.SiteId].DayNumber }).ToList(),
+        };
     }
 
     public async Task<CsvExport> ExportOverdueAsync(ReportFilter f, CancellationToken ct = default)

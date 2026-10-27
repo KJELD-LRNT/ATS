@@ -74,12 +74,21 @@ public static class Ui
 
     /// <summary>
     /// Attributes for a <c>&lt;meter class="meter"&gt;</c> showing available of on-hand units: below 20 % is "low"
-    /// (red), up to 40 % "mid" (amber), above that "ok" (accent). The browser colours the bar from low/high/optimum.
+    /// (red), up to 40 % "mid" (amber), above that "ok" (accent). With a <paramref name="minimum"/> the thresholds are the
+    /// minimum and twice the minimum instead. The browser colours the bar from low/high/optimum.
     /// </summary>
-    public static StockMeter Stock(int available, int onHand)
+    public static StockMeter Stock(int available, int onHand, int? minimum = null)
     {
         var max = Math.Max(onHand, 1);
         double low = max * 0.2, high = max * 0.4;
+        // A pool with a minimum stock level is judged by it: red below the minimum, amber up to twice it.
+        if (minimum is { } min and > 0)
+        {
+            // The bar then shows stock against that target, so a pool under its minimum is red even when most units are in.
+            max = Math.Max(max, min * 2);
+            low = min;
+            high = min * 2.0;
+        }
         var level = available < low ? "low" : available <= high ? "mid" : "ok";
         static string N(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         return new StockMeter(max, N(low), N(high), level);

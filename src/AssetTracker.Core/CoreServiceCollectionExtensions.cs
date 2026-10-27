@@ -5,6 +5,7 @@ using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Ops;
+using AssetTracker.Core.Overview;
 using AssetTracker.Core.Privacy;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
@@ -30,6 +31,9 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<PoolService>();
         // Admin-defined asset types, custom fields, vendors and models.
         services.AddScoped<CatalogService>();
+        // Overview: tile visibility per role and the figures no report computes.
+        services.AddScoped<OverviewTileService>();
+        services.AddScoped<OverviewService>();
 
         // Notifications (WP2.3). Options are bound from "Notifications" by the infrastructure layer.
         services.AddOptions<NotificationOptions>();

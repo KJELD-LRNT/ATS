@@ -324,17 +324,18 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     private static async Task<Dictionary<(string, string), int>> CreatePoolsAsync(PoolService svc, SiteIds sites, CancellationToken ct)
     {
         var result = new Dictionary<(string, string), int>();
-        var defs = new (int TypeId, string Sku, string Description, int Quantity)[]
+        // The minimum stock level makes the overview flag a pool: CAM-HD at New York ends up below its minimum of 8.
+        var defs = new (int TypeId, string Sku, string Description, int Quantity, int Minimum)[]
         {
-            (BuiltIn.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20),
-            (BuiltIn.Webcam, "CAM-HD", "HD webcam (demo)", 8),
-            (BuiltIn.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15),
-            (BuiltIn.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25),
+            (BuiltIn.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20, 10),
+            (BuiltIn.Webcam, "CAM-HD", "HD webcam (demo)", 8, 8),
+            (BuiltIn.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15, 5),
+            (BuiltIn.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25, 10),
         };
         foreach (var key in SiteKeys)
             foreach (var d in defs)
                 result[(key, d.Sku)] = (await svc.CreateAsync(
-                    new CreatePoolInput(d.TypeId, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)"), ct)).Id;
+                    new CreatePoolInput(d.TypeId, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)", d.Minimum), ct)).Id;
         return result;
     }
 

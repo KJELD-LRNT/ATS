@@ -20,5 +20,13 @@ public class Pool
 
     public int OnHand => Available + Outstanding;
 
+    /// <summary>
+    /// Optional minimum number of units that should stay on the shelf. When <see cref="Available"/> drops below it the
+    /// pool is flagged on the overview and in the pool list. Null = no minimum.
+    /// </summary>
+    public int? MinimumStock { get; set; }
+
+    public bool IsBelowMinimum => MinimumStock is { } m && Available < m;
+
     public DateTimeOffset CreatedAt { get; set; }
 }

@@ -34,6 +34,11 @@
             <input asp-for="Input.InitialQuantity" type="number" min="0" class="qty" />
         </div>
         <div class="field">
+            <label asp-for="Input.MinimumStock">Minimum stock <span class="optional">(optional)</span></label>
+            <input asp-for="Input.MinimumStock" type="number" min="0" max="@PoolService.MinimumStockMax" class="qty" />
+            <span class="hint">The overview flags the pool when fewer than this are available.</span>
+        </div>
+        <div class="field">
             <label asp-for="Input.Reason">Reason for initial stock</label>
             <input asp-for="Input.Reason" placeholder="Initial stock" maxlength="2000" />
         </div>

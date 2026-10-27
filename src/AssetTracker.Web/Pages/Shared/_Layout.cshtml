@@ -30,6 +30,9 @@
             <span class="brand-mark">@Ui.Icon("tag", 18, 2)</span>
             <span class="brand-text"><span class="brand-name">Asset Tracker</span><span class="brand-sub">Internal IT</span></span>
         </a>
+        @* Narrow screens only (and only with JavaScript): the menu folds away behind this button so the page content is not pushed down. *@
+        <button type="button" class="menu-toggle" aria-controls="sidebar-menu" aria-expanded="true" data-menu-toggle hidden>Menu</button>
+        <div class="sidebar-menu" id="sidebar-menu">
 
         <ul class="nav-group">
             @{ NavLink("/Index", "Overview", "overview"); }
@@ -68,6 +71,7 @@
                     NavLink("/Admin/Vendors", "Vendors", "vendors");
                     NavLink("/Admin/Models", "Models", "models");
                     NavLink("/Admin/Grants", "Grants", "grants");
+                    NavLink("/Admin/OverviewTiles", "Overview tiles", "overview");
                     NavLink("/Admin/Settings", "Settings", "settings");
                     NavLink("/Admin/Sync", "Directory sync", "sync");
                     NavLink("/Admin/Privacy", "Privacy", "privacy");
@@ -92,6 +96,7 @@
                 <span class="user-name">@CurrentUser.Name</span>
                 <span class="user-roles">@Ui.RolesLabel(CurrentUser.Roles)</span>
             </span>
+        </div>
         </div>
     </nav>
 

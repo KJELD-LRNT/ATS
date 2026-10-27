@@ -65,7 +65,7 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
 
     public static TheoryData<string, string> Pages() => new()
     {
-        { "it", "/" }, { "it", "/Assets" }, { "it", "/Assets/Create" }, { "it", "/Pools" }, { "it", "/Pools/Create" },
+        { "it", "/" }, { "it", "/Assets" }, { "it", "/Assets/Create" }, { "it", "/Pools" }, { "it", "/Pools/Create" }, { "it", "/Pools?low=true" }, { "it", "/Loans?inactive=true" },
         { "it", "/Loans" }, { "it", "/Loans/Checkout" }, { "it", "/Reports" }, { "it", "/Reports/Inventory" },
         { "it", "/Reports/Inventory?view=pools" }, { "it", "/Reports/Assignments" }, { "it", "/Reports/Overdue" },
         { "it", "/Reports/History" }, { "it", "/Audit" }, { "it", "/Ops" }, { "it", "/Ops/Mail" }, { "it", "/Admin/Sync" },
@@ -73,7 +73,7 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
         { "admin", "/" }, { "admin", "/Admin/Sites" }, { "admin", "/Admin/Grants?q=zz" }, { "admin", "/Admin/Settings" },
         { "admin", "/Admin/Sync" }, { "admin", "/Admin/Privacy?q=zz" },
         { "admin", "/Admin/Types" }, { "admin", "/Admin/TypeEdit/4" }, { "admin", "/Admin/TypeEdit/4?fieldId=5" },
-        { "admin", "/Admin/Vendors" }, { "admin", "/Admin/Models" },
+        { "admin", "/Admin/Vendors" }, { "admin", "/Admin/Models" }, { "admin", "/Admin/OverviewTiles" },
         { "it", "/Assets/Create?typeId=3" }, { "it", "/Assets/Create?typeId=4" },
     };
 

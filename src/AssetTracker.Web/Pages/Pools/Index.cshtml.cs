@@ -17,6 +17,7 @@ public class IndexModel(PoolService pools, AccessScope access, AppDbContext db, 
     [BindProperty(SupportsGet = true)] public string? Q { get; set; }
     [BindProperty(SupportsGet = true)] public int? SiteId { get; set; }
     [BindProperty(SupportsGet = true, Name = "type")] public int? TypeId { get; set; }
+    [BindProperty(SupportsGet = true, Name = "low")] public bool BelowMinimum { get; set; }
     [BindProperty(SupportsGet = true, Name = "p")] public int PageNumber { get; set; } = 1;
 
     public PagedResult<Pool> Results { get; private set; } = null!;
@@ -26,12 +27,12 @@ public class IndexModel(PoolService pools, AccessScope access, AppDbContext db, 
 
     public PagerModel Pager => PagerModel.From(Results, new Dictionary<string, object?>
     {
-        ["q"] = Q, ["siteId"] = SiteId, ["type"] = TypeId,
+        ["q"] = Q, ["siteId"] = SiteId, ["type"] = TypeId, ["low"] = BelowMinimum ? "true" : null,
     });
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        Results = await pools.SearchAsync(new PoolSearch(Q, SiteId, TypeId, PageNumber), ct);
+        Results = await pools.SearchAsync(new PoolSearch(Q, SiteId, TypeId, PageNumber, BelowMinimum: BelowMinimum), ct);
         Types = await InventoryUi.TypeOptionsAsync(db, InventoryMode.Pooled, includeInactive: true, ct: ct);
         Sites = await InventoryUi.SiteOptionsAsync(db, await access.GetAsync(ct), ct);
     }

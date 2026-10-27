@@ -147,6 +147,30 @@ public class SiteCalendar(AppDbContext db, IClock clock, IOptionsMonitor<ClockOp
         return Expression.Lambda<Func<Loan, bool>>(body, param);
     }
 
+    /// <summary>
+    /// Query predicate: the loan is due after its site's local today but within <paramref name="days"/> days from it
+    /// (so not yet overdue by <see cref="OverduePolicy"/>). It does not check that the loan is open.
+    /// </summary>
+    public async Task<Expression<Func<Loan, bool>>> DueSoonPredicateAsync(int days, CancellationToken ct = default) =>
+        DueSoonPredicate(await AllSitesAsync(ct), days);
+
+    public static Expression<Func<Loan, bool>> DueSoonPredicate(IEnumerable<SiteDay> sites, int days)
+    {
+        var param = LoanSiteId.Parameters[0];
+        Expression body = Expression.Constant(false);
+        foreach (var group in sites.GroupBy(s => s.Today).OrderBy(g => g.Key))
+        {
+            var ids = group.Select(s => s.SiteId).ToList();
+            var after = OverduePolicy.LatestOverdueDueDate(group.Key); // due dates up to here are overdue
+            var until = group.Key.AddDays(days);
+            Expression<Func<Loan, bool>> clause = l =>
+                l.DueDate != null && l.DueDate > after && l.DueDate <= until &&
+                ids.Contains(l.AssetId != null ? l.Asset!.SiteId : l.Pool!.SiteId);
+            body = Expression.OrElse(body, new ParameterSwap(clause.Parameters[0], param).Visit(clause.Body));
+        }
+        return Expression.Lambda<Func<Loan, bool>>(body, param);
+    }
+
     private async Task<Dictionary<int, string?>> SiteZoneIdsAsync(int? mustContain, CancellationToken ct)
     {
         if (_siteZoneIds is null || (mustContain is { } id && !_siteZoneIds.ContainsKey(id)))
