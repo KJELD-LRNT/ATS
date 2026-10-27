@@ -1,5 +1,6 @@
 @page
 @model AssetTracker.Web.Pages.Audit.IndexModel
+@using AssetTracker.Core.Auditing
 @{
     ViewData["Title"] = "Audit log";
 }
@@ -21,7 +22,7 @@
             <option value="">(any)</option>
             @foreach (var t in Model.EntityTypes)
             {
-                <option value="@t" selected="@(t == Model.Entity)">@t</option>
+                <option value="@t" selected="@(t == AuditNames.CurrentEntityType(Model.Entity ?? ""))">@t</option>
             }
         </select>
     </div>
@@ -59,8 +60,9 @@
                     <td class="mono">@e.Id</td>
                     <td class="nowrap">@e.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
                     <td>@e.Actor</td>
-                    <td class="mono nowrap">@e.Action</td>
-                    <td class="nowrap">@e.EntityType @e.EntityId</td>
+                    @{ var action = AuditNames.CurrentAction(e.Action); var entityType = AuditNames.CurrentEntityType(e.EntityType); }
+                    <td class="mono nowrap">@action@if (action != e.Action) { <br /><small class="muted">(was @e.Action)</small> }</td>
+                    <td class="nowrap">@entityType @e.EntityId@if (entityType != e.EntityType) { <br /><small class="muted">(was @e.EntityType)</small> }</td>
                     <td>@e.SiteId</td>
                     <td>@e.Reason</td>
                     <td><code class="details">@e.DetailsJson</code></td>

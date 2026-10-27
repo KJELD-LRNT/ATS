@@ -27,8 +27,22 @@ public class AuditQueryService(AppDbContext db, AccessScope scope)
 
         var q = db.AuditEvents.AsNoTracking();
         if (Clean(filter.Action) is { } action)
-            q = action.EndsWith('*') ? q.Where(e => e.Action.StartsWith(action.TrimEnd('*'))) : q.Where(e => e.Action == action);
-        if (Clean(filter.EntityType) is { } entity) q = q.Where(e => e.EntityType == entity);
+        {
+            // A current name also matches what it was called before (zone.* also finds the older team.* rows).
+            var actions = AuditNames.ActionAliases(action);
+            if (action.EndsWith('*'))
+            {
+                var p0 = actions[0].TrimEnd('*');
+                var p1 = actions[^1].TrimEnd('*');
+                q = q.Where(e => e.Action.StartsWith(p0) || e.Action.StartsWith(p1));
+            }
+            else q = q.Where(e => actions.Contains(e.Action));
+        }
+        if (Clean(filter.EntityType) is { } entity)
+        {
+            var types = AuditNames.EntityTypeAliases(entity);
+            q = q.Where(e => types.Contains(e.EntityType));
+        }
         if (Clean(filter.EntityId) is { } entityId) q = q.Where(e => e.EntityId == entityId);
         if (Clean(filter.Actor) is { } actor) q = q.Where(e => e.Actor == actor);
         if (filter.From is { } from)
@@ -47,11 +61,12 @@ public class AuditQueryService(AppDbContext db, AccessScope scope)
         return new PagedResult<AuditEvent>(items, total, page, pageSize);
     }
 
-    /// <summary>Distinct entity types, for the filter dropdown.</summary>
+    /// <summary>Distinct entity types, for the filter dropdown; an old name is listed under its current one (FloorTeam → FloorZone).</summary>
     public async Task<IReadOnlyList<string>> EntityTypesAsync(CancellationToken ct = default)
     {
         scope.EnsureIt();
-        return await db.AuditEvents.Select(e => e.EntityType).Distinct().OrderBy(x => x).ToListAsync(ct);
+        var types = await db.AuditEvents.Select(e => e.EntityType).Distinct().ToListAsync(ct);
+        return types.Select(AuditNames.CurrentEntityType).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
     }
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

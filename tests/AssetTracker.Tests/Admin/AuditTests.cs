@@ -58,6 +58,48 @@ public class AuditTests : IClassFixture<AppFactory>
     }
 
     [Fact]
+    public async Task Old_team_rows_show_and_filter_as_zone_rows()
+    {
+        // Rows written before teams were renamed to zones keep their names in the ledger.
+        var oldCreate = await _f.WithDbAsync(async db =>
+        {
+            var rows = new[]
+            {
+                new AuditEvent { OccurredAt = _f.Clock.UtcNow, Actor = "CORP\\legacy", Action = "team.create", EntityType = "FloorTeam", EntityId = "9101", CorrelationId = "c" },
+                new AuditEvent { OccurredAt = _f.Clock.UtcNow, Actor = "CORP\\legacy", Action = "team.remove", EntityType = "Floor", EntityId = "9102", CorrelationId = "c" },
+                new AuditEvent { OccurredAt = _f.Clock.UtcNow, Actor = "CORP\\legacy", Action = "zone.create", EntityType = "FloorZone", EntityId = "9103", CorrelationId = "c" },
+            };
+            db.AuditEvents.AddRange(rows);
+            await db.SaveChangesAsync();
+            return rows[0];
+        });
+        Task<PagedResult<AuditEvent>> Search(AuditFilter filter) =>
+            _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<AuditQueryService>().SearchAsync(filter with { Actor = "CORP\\legacy" }, 1));
+
+        Assert.Equal(["9101", "9102", "9103"], (await Search(new AuditFilter(Action: "zone*"))).Items.Select(i => i.EntityId!).Order());
+        Assert.Equal(["9101", "9102", "9103"], (await Search(new AuditFilter(Action: "zone.*"))).Items.Select(i => i.EntityId!).Order());
+        Assert.Equal(["9101", "9103"], (await Search(new AuditFilter(Action: "zone.create"))).Items.Select(i => i.EntityId!).Order());
+        Assert.Equal(["9101"], (await Search(new AuditFilter(Action: "team.create"))).Items.Select(i => i.EntityId!));
+        Assert.Equal(["9101", "9103"], (await Search(new AuditFilter(EntityType: "FloorZone"))).Items.Select(i => i.EntityId!).Order());
+        Assert.Equal(["9101", "9103"], (await Search(new AuditFilter(EntityType: "FloorTeam"))).Items.Select(i => i.EntityId!).Order());
+
+        // the entity dropdown lists one FloorZone entry, no FloorTeam
+        var types = await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<AuditQueryService>().EntityTypesAsync());
+        Assert.Contains("FloorZone", types);
+        Assert.DoesNotContain("FloorTeam", types);
+
+        // the page shows the current name, with the stored one muted; the row itself is unchanged
+        var html = await (await _f.CreateClientAs(TestUser.It).GetAsync("/Audit?actor=CORP%5Clegacy&entityId=9101")).Content.ReadAsStringAsync();
+        Assert.Contains("zone.create", html);
+        Assert.Contains("(was team.create)", html);
+        Assert.Contains("FloorZone 9101", html);
+        Assert.Contains("(was FloorTeam)", html);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<option value=\"FloorZone\""));
+        var stored = await _f.WithDbAsync(db => db.AuditEvents.AsNoTracking().SingleAsync(e => e.Id == oldCreate.Id));
+        Assert.Equal(("team.create", "FloorTeam"), (stored.Action, stored.EntityType));
+    }
+
+    [Fact]
     public async Task Audit_page_is_paged()
     {
         for (var i = 0; i < 7; i++) await AddAuditAsync("pagetest.item");
