@@ -146,8 +146,8 @@ public class ReportTests : IClassFixture<AppFactory>
         var html = await (await client.GetAsync("/Reports/Overdue?q=abc&from=2026-01-01")).Content.ReadAsStringAsync();
         Assert.Contains("href=\"/Reports/Overdue?q=abc&amp;from=2026-01-01&amp;handler=Export\"", html);
 
-        var history = await (await client.GetAsync("/Reports/History?type=Laptop")).Content.ReadAsStringAsync();
-        Assert.Contains("type=Laptop&amp;handler=ExportEvents", history);
+        var history = await (await client.GetAsync($"/Reports/History?type={BuiltIn.Laptop}")).Content.ReadAsStringAsync();
+        Assert.Contains($"type={BuiltIn.Laptop}&amp;handler=ExportEvents", history);
 
         var inventory = await (await client.GetAsync("/Reports/Inventory?view=pools&state=Available")).Content.ReadAsStringAsync();
         Assert.Contains("state=Available&amp;view=pools&amp;handler=Export", inventory);

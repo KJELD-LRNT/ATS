@@ -46,6 +46,170 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSensitive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUnique")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxValues")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Options")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TypeId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TypeId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("AssetFields", (string)null);
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldValue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FieldId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UniqueKey")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FieldId");
+
+                    b.HasIndex("UniqueKey")
+                        .IsUnique()
+                        .HasFilter("[UniqueKey] IS NOT NULL");
+
+                    b.HasIndex("AssetId", "FieldId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("AssetFieldValues", (string)null);
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetModel", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("TypeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VendorId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TypeId");
+
+                    b.HasIndex("VendorId", "TypeId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("AssetModels", (string)null);
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TagPattern")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("UsesCondition")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsesDescription")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsesModel")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("UsesSerialNumber")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("AssetTypes", (string)null);
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AuditEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -119,13 +283,8 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<string>("Imei")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("PhoneNumber")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                    b.Property<int?>("ModelId")
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("RetiredAt")
                         .HasColumnType("datetimeoffset");
@@ -145,23 +304,24 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
-                    b.Property<int>("Type")
+                    b.Property<int>("TypeId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("VendorId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Imei")
-                        .IsUnique()
-                        .HasFilter("[Imei] IS NOT NULL AND [RetiredAt] IS NULL");
-
-                    b.HasIndex("PhoneNumber")
-                        .IsUnique()
-                        .HasFilter("[PhoneNumber] IS NOT NULL AND [RetiredAt] IS NULL");
+                    b.HasIndex("ModelId");
 
                     b.HasIndex("Tag")
                         .IsUnique();
 
-                    b.HasIndex("SiteId", "Type", "State");
+                    b.HasIndex("TypeId");
+
+                    b.HasIndex("VendorId");
+
+                    b.HasIndex("SiteId", "TypeId", "State");
 
                     b.ToTable("IndividualAssets", (string)null);
                 });
@@ -527,12 +687,14 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int>("Type")
+                    b.Property<int>("TypeId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("SiteId");
+
+                    b.HasIndex("TypeId");
 
                     b.HasIndex("Sku", "SiteId")
                         .IsUnique();
@@ -569,6 +731,10 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("TagCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<string>("TimeZoneId")
                         .HasMaxLength(100)
@@ -685,15 +851,128 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("SyncRuns");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.TagCounter", b =>
+                {
+                    b.Property<int>("TypeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SiteId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("TypeId", "SiteId");
+
+                    b.HasIndex("SiteId");
+
+                    b.ToTable("TagCounters");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.Vendor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Vendors");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldDefinition", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
+                        .WithMany("Fields")
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Type");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldValue", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.IndividualAsset", "Asset")
+                        .WithMany("Values")
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.AssetFieldDefinition", "Field")
+                        .WithMany()
+                        .HasForeignKey("FieldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Asset");
+
+                    b.Navigation("Field");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetModel", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Type");
+
+                    b.Navigation("Vendor");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>
                 {
+                    b.HasOne("AssetTracker.Core.Domain.AssetModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AssetTracker.Core.Domain.Site", "Site")
                         .WithMany()
                         .HasForeignKey("SiteId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.Vendor", "Vendor")
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Model");
+
                     b.Navigation("Site");
+
+                    b.Navigation("Type");
+
+                    b.Navigation("Vendor");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Loan", b =>
@@ -785,7 +1064,15 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Site");
+
+                    b.Navigation("Type");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.StockEvent", b =>
@@ -797,6 +1084,31 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Pool");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.TagCounter", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.Site", null)
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.AssetType", null)
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AssetType", b =>
+                {
+                    b.Navigation("Fields");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>
+                {
+                    b.Navigation("Values");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Loan", b =>

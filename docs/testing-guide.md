@@ -44,7 +44,7 @@ The `Demo` launch profile sets `ASPNETCORE_ENVIRONMENT=Development` and `Demo__E
 
 The exact folder is shown on the **Demo controls** page (`/Demo`). It contains `demo.db` (the SQLite database), `mail/` (the demo mailbox, one `.eml` file per message, which any mail program can open) and `keys/` (the encryption keys for the SMTP password field on the settings page). To use another folder, start with `Demo__DataDirectory=<path>` set in the environment.
 
-**To reset**, use **Reset demo data** on `/Demo`. It deletes all data and mail, sets the clock back to now and seeds the fictional data again. You can also stop the app and delete the folder; the next start recreates everything.
+**To reset**, use **Reset demo data** on `/Demo`. It deletes all data and mail, sets the clock back to now and seeds the fictional data again. You can also stop the app and delete the folder; the next start recreates everything. A demo database created by an older version of the app does not have the asset catalog tables (the demo schema is not migrated): delete the folder once after updating.
 
 ## 4. What is simulated
 
@@ -137,6 +137,7 @@ Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6,
 ### IT / editor
 
 - [ ] **Check out a laptop** (Stage 2). Go to *Loans → Check out*, enter tag `AMS-LT-008`, search a person (for example `alex`), pick a due date and confirm. **Expected:** the loan page opens and `AMS-LT-008` is *CheckedOut*. Within about 10 s the demo mailbox shows two *Checked out* messages: one to the holder and one to `it-helpdesk@demo.example`.
+- [ ] **Person typeahead shows the site.** On *Loans → Check out* type `an` in *Person*. **Expected:** suggestions appear while typing, each with the person's name, username, email, job title and a site badge (`AMS`, `NYC`, `SIN` or *No site*). Arrow keys and Enter, or a click, pick one; *Find* then offers just that person, already selected, with a note when their site differs from the item's.
 - [ ] **Missing email blocks checkout** (Stage 2). Try to check out to `lou.fixturo`. **Expected:** this person is not offered as a recipient, or the checkout is refused with "has no valid email address".
 - [ ] **Inactive people cannot receive new loans** (Stage 1/2). Search `kai.demoson`. **Expected:** not offered for checkout.
 - [ ] **Unmapped site can still borrow** (D8). `jules.fixturo` has no site and already holds `NYC-LT-003`. Check out another item to them. **Expected:** it works.
@@ -167,6 +168,8 @@ Switch to **Demo Manager (AMS)** with only the **Manager** role.
 Switch to **Admin** only.
 
 - [ ] **Admin alone sees no inventory** (Stage 1). There are no Assets, Loans or Reports links, and their URLs return *Forbidden*.
+- [ ] **Tag generator and type-specific forms.** *Assets → New asset*, choose *Laptop* and a site. **Expected:** the form previews the next tag (for example `AMS-LT-011`); leaving the tag empty creates the asset with it. Choose *Phone*: vendor and model dropdowns and two IMEI fields. Choose *Phone number*: only the phone number, provider, SIM type, SIM status, SIM number and PUC (marked IT only).
+- [ ] **Asset types, fields, vendors and models** (admin). *Asset types → Phone number*: switch standard fields, change the tag pattern (the example updates), add a custom field (for example a *Choice*), move it up or down and open a new asset form to see it. *Vendors* and *Models*: add a vendor and a model for *Laptop*, then pick it on a new laptop (choosing a vendor narrows the models). Deactivating a model removes it from new forms but not from existing assets. *Sites → Tag code* sets the `{SITE}` part of generated tags.
 - [ ] **Sites and grants**. *Sites*: edit a site's timezone or directory value. *Grants*: grant `Demo Manager (AMS)` access to NYC, then switch to the manager and see NYC appear. Remove the grant again.
 - [ ] **Settings: test directory query** (WP4.1). *Settings → Test directory query*. **Expected:** "Fetched 151 entries: 149 valid, 2 would be quarantined … 2 have an unmapped site value … 3 are disabled", plus a sample. Nothing is synced.
 - [ ] **Settings: test email**. Enter an address (for example `you@demo.example`) and click *Send test email*. **Expected:** success, and the message is in the demo mailbox.

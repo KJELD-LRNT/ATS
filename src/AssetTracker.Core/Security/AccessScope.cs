@@ -72,6 +72,9 @@ public class AccessScope(AppDbContext db, ICurrentUser user)
         if (!(await GetAsync(ct)).CanRead(siteId)) throw new Common.AccessDeniedException();
     }
 
+    /// <summary>Whether the principal may see values of sensitive custom fields (e.g. a SIM PUC): IT only.</summary>
+    public bool CanSeeSensitiveFields => user.IsIt;
+
     public void EnsureIt()
     {
         if (!user.IsIt) throw new Common.AccessDeniedException();

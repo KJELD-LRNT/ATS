@@ -43,15 +43,18 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         var sites = await db.Sites.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Key, ct);
         string Key(int id) => sites.GetValueOrDefault(id, "?");
 
+        var typeNames = await db.AssetTypes.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name, ct);
+        string TypeName(int id) => typeNames.GetValueOrDefault(id, "?");
+
         var assetCounts = await (await access.VisibleAssetsAsync(ct))
-            .GroupBy(a => new { a.SiteId, a.Type, a.State })
-            .Select(g => new { g.Key.SiteId, g.Key.Type, g.Key.State, Count = g.Count() })
+            .GroupBy(a => new { a.SiteId, a.TypeId, a.State })
+            .Select(g => new { g.Key.SiteId, g.Key.TypeId, g.Key.State, Count = g.Count() })
             .ToListAsync(ct);
         var poolTotals = await (await access.VisiblePoolsAsync(ct))
-            .GroupBy(p => new { p.SiteId, p.Type })
+            .GroupBy(p => new { p.SiteId, p.TypeId })
             .Select(g => new
             {
-                g.Key.SiteId, g.Key.Type, Pools = g.Count(),
+                g.Key.SiteId, g.Key.TypeId, Pools = g.Count(),
                 Available = g.Sum(p => p.Available), Outstanding = g.Sum(p => p.Outstanding),
             })
             .ToListAsync(ct);
@@ -62,9 +65,9 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         var overdue = await open.Where(await calendar.OverduePredicateAsync(ct)).CountAsync(ct);
 
         return new InventorySummary(
-            assetCounts.Select(x => new AssetCount(Key(x.SiteId), x.Type, x.State, x.Count))
+            assetCounts.Select(x => new AssetCount(Key(x.SiteId), TypeName(x.TypeId), x.State, x.Count))
                 .OrderBy(x => x.SiteKey).ThenBy(x => x.Type).ThenBy(x => x.State).ToList(),
-            poolTotals.Select(x => new PoolTotal(Key(x.SiteId), x.Type, x.Pools, x.Available, x.Outstanding))
+            poolTotals.Select(x => new PoolTotal(Key(x.SiteId), TypeName(x.TypeId), x.Pools, x.Available, x.Outstanding))
                 .OrderBy(x => x.SiteKey).ThenBy(x => x.Type).ToList(),
             openLoans, openPoolUnits, overdue);
     }
@@ -72,7 +75,8 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
     public async Task<PagedResult<InventoryAssetRow>> InventoryAssetsAsync(ReportFilter f, CancellationToken ct = default)
     {
         EnsureReader();
-        return await (await AssetQueryAsync(f, ct)).ToPageAsync(f.Page, f.PageSize, ct);
+        var page = await (await AssetQueryAsync(f, ct)).ToPageAsync(f.Page, f.PageSize, ct);
+        return page with { Items = await WithIdentifiersAsync(page.Items, ct) };
     }
 
     public async Task<PagedResult<PoolBalanceRow>> PoolBalancesAsync(ReportFilter f, CancellationToken ct = default)
@@ -85,36 +89,57 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
     public async Task<CsvExport> ExportInventoryAsync(ReportFilter f, CancellationToken ct = default)
     {
         EnsureReader();
-        var assets = await (await AssetQueryAsync(f, ct)).ToListAsync(ct);
+        var assets = await WithIdentifiersAsync(await (await AssetQueryAsync(f, ct)).ToListAsync(ct), ct);
         // The asset state filter has no pool equivalent; with a state filter only matching assets are exported.
         var pools = f.State is null ? await (await PoolQueryAsync(f, ct)).ToListAsync(ct) : [];
 
-        var csv = new CsvWriter().Header("Kind", "Tag/SKU", "Type", "Site", "State", "Description", "Serial number",
+        var csv = new CsvWriter().Header("Kind", "Tag/SKU", "Type", "Site", "State", "Vendor", "Model", "Description", "Serial number",
             "Phone number", "IMEI", "Current holder", "Holder username", "Due date", "Available", "Outstanding", "On hand");
         foreach (var a in assets)
-            csv.Text("Tagged").Text(a.Tag).Text(a.Type.ToString()).Text(a.SiteKey).Text(a.State.ToString())
-                .Text(a.Description).Text(a.SerialNumber).Text(a.PhoneNumber).Text(a.Imei).Text(a.HolderName)
+            csv.Text("Tagged").Text(a.Tag).Text(a.Type).Text(a.SiteKey).Text(a.State.ToString())
+                .Text(a.Vendor).Text(a.Model).Text(a.Description).Text(a.SerialNumber).Text(a.PhoneNumbers).Text(a.Imeis).Text(a.HolderName)
                 .Text(a.HolderUsername).Date(a.DueDate).Text(null).Text(null).Text(null).EndRow();
         foreach (var p in pools)
-            csv.Text("Pool").Text(p.Sku).Text(p.Type.ToString()).Text(p.SiteKey).Text(null).Text(p.Description)
+            csv.Text("Pool").Text(p.Sku).Text(p.Type).Text(p.SiteKey).Text(null).Text(null).Text(null).Text(p.Description)
                 .Text(null).Text(null).Text(null).Text(null).Text(null).Date(null)
                 .Number(p.Available).Number(p.Outstanding).Number(p.OnHand).EndRow();
 
         return await FinishExportAsync(ExportInventoryAction, "inventory", f, csv, assets.Count + pools.Count, ct);
     }
 
+    /// <summary>
+    /// Adds each asset's phone numbers and IMEIs (values of fields of those kinds) to the rows. Sensitive fields are
+    /// left out for principals who may not see them.
+    /// </summary>
+    private async Task<List<InventoryAssetRow>> WithIdentifiersAsync(IReadOnlyList<InventoryAssetRow> rows, CancellationToken ct)
+    {
+        var ids = rows.Select(r => r.Id).ToList();
+        var sensitive = access.CanSeeSensitiveFields;
+        var values = await db.FieldValues.AsNoTracking()
+            .Where(v => ids.Contains(v.AssetId) && (sensitive || !v.Field!.IsSensitive) &&
+                        (v.Field!.Kind == FieldKind.PhoneNumber || v.Field.Kind == FieldKind.Imei))
+            .OrderBy(v => v.Field!.SortOrder).ThenBy(v => v.FieldId).ThenBy(v => v.Position)
+            .Select(v => new { v.AssetId, v.Field!.Kind, v.Value }).ToListAsync(ct);
+        string? Join(int id, FieldKind kind) =>
+            values.Where(v => v.AssetId == id && v.Kind == kind).Select(v => v.Value).ToList() is { Count: > 0 } list
+                ? string.Join("; ", list) : null;
+        return rows.Select(r => r with { PhoneNumbers = Join(r.Id, FieldKind.PhoneNumber), Imeis = Join(r.Id, FieldKind.Imei) }).ToList();
+    }
+
     private async Task<IQueryable<InventoryAssetRow>> AssetQueryAsync(ReportFilter f, CancellationToken ct)
     {
         var q = (await access.VisibleAssetsAsync(ct)).AsNoTracking();
         if (f.SiteId is { } siteId) q = q.Where(a => a.SiteId == siteId);
-        if (f.Type is { } type) q = q.Where(a => a.Type == type);
+        if (f.TypeId is { } typeId) q = q.Where(a => a.TypeId == typeId);
         if (f.State is { } state) q = q.Where(a => a.State == state);
         if (Pattern(f.Query) is { } p)
             q = q.Where(a => EF.Functions.Like(a.Tag, p, @"\") || EF.Functions.Like(a.Description, p, @"\") ||
                              (a.SerialNumber != null && EF.Functions.Like(a.SerialNumber, p, @"\")));
 
         return q.OrderBy(a => a.Site!.Key).ThenBy(a => a.Tag).Select(a => new InventoryAssetRow(
-            a.Id, a.Tag, a.Type, a.SiteId, a.Site!.Key, a.State, a.Description, a.SerialNumber, a.PhoneNumber, a.Imei,
+            a.Id, a.Tag, a.Type!.Name, a.SiteId, a.Site!.Key, a.State,
+            a.Model != null ? a.Model.Vendor!.Name : (a.Vendor != null ? a.Vendor.Name : null),
+            a.Model != null ? a.Model.Name : null, a.Description, a.SerialNumber,
             db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => l.Holder!.DisplayName).FirstOrDefault(),
             db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => l.Holder!.Username).FirstOrDefault(),
             db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => l.DueDate).FirstOrDefault()));
@@ -124,12 +149,12 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
     {
         var q = (await access.VisiblePoolsAsync(ct)).AsNoTracking();
         if (f.SiteId is { } siteId) q = q.Where(p => p.SiteId == siteId);
-        if (f.Type is { } type) q = q.Where(p => p.Type == type);
+        if (f.TypeId is { } typeId) q = q.Where(p => p.TypeId == typeId);
         if (Pattern(f.Query) is { } pat)
             q = q.Where(p => EF.Functions.Like(p.Sku, pat, @"\") || EF.Functions.Like(p.Description, pat, @"\"));
 
         return q.OrderBy(p => p.Site!.Key).ThenBy(p => p.Sku).Select(p => new PoolBalanceRow(
-            p.Id, p.Sku, p.Type, p.SiteId, p.Site!.Key, p.Description, p.Available, p.Outstanding));
+            p.Id, p.Sku, p.Type!.Name, p.SiteId, p.Site!.Key, p.Description, p.Available, p.Outstanding));
     }
 
     // ---------------------------------------------------------------- current assignments
@@ -291,8 +316,8 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         q = q.AsNoTracking();
         if (f.SiteId is { } siteId)
             q = q.Where(l => (l.AssetId != null && l.Asset!.SiteId == siteId) || (l.PoolId != null && l.Pool!.SiteId == siteId));
-        if (f.Type is { } type)
-            q = q.Where(l => (l.AssetId != null && l.Asset!.Type == type) || (l.PoolId != null && l.Pool!.Type == type));
+        if (f.TypeId is { } typeId)
+            q = q.Where(l => (l.AssetId != null && l.Asset!.TypeId == typeId) || (l.PoolId != null && l.Pool!.TypeId == typeId));
         if (Pattern(f.Query) is { } p)
             q = q.Where(l =>
                 EF.Functions.Like(l.Holder!.DisplayName, p, @"\") ||
@@ -330,8 +355,12 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         IsPool = l.PoolId != null,
         AssetTag = l.Asset != null ? l.Asset.Tag : null,
         PoolSku = l.Pool != null ? l.Pool.Sku : null,
-        ItemDescription = l.Asset != null ? l.Asset.Description : l.Pool!.Description,
-        Type = l.Asset != null ? l.Asset.Type : l.Pool!.Type,
+        ItemDescription = l.Asset != null
+            ? (l.Asset.Model != null
+                ? l.Asset.Model.Vendor!.Name + " " + l.Asset.Model.Name + (l.Asset.Description != "" ? " – " + l.Asset.Description : "")
+                : l.Asset.Description)
+            : l.Pool!.Description,
+        Type = l.Asset != null ? l.Asset.Type!.Name : l.Pool!.Type!.Name,
         SiteId = l.AssetId != null ? l.Asset!.SiteId : l.Pool!.SiteId,
         SiteKey = l.Asset != null ? l.Asset.Site!.Key : l.Pool!.Site!.Key,
         Quantity = l.Quantity,
@@ -373,7 +402,7 @@ public class ReportService(AppDbContext db, AccessScope access, AuditWriter audi
         foreach (var r in rows)
         {
             csv.Number(r.LoanId).Text(r.IsPool ? "Pool" : "Tagged").Text(r.AssetTag).Text(r.PoolSku)
-                .Text(r.ItemDescription).Text(r.Type.ToString()).Text(r.SiteKey)
+                .Text(r.ItemDescription).Text(r.Type).Text(r.SiteKey)
                 .Number(r.Quantity).Number(r.ReturnedQuantity).Number(r.OutstandingQuantity)
                 .Timestamp(r.StartedAt).Date(r.DueDate);
             if (includeOverdue) csv.Number(r.DaysOverdue);

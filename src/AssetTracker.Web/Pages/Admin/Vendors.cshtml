@@ -1,0 +1,64 @@
+@page
+@model AssetTracker.Web.Pages.Admin.VendorsModel
+@{
+    ViewData["Title"] = "Vendors";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Vendors</h1>
+        <div class="prose">
+            <p>Manufacturers and brands for the vendor dropdown on asset forms. Each <a asp-page="Models">model</a> belongs to a vendor. Deactivate a vendor to hide it from new assets; existing assets keep it.</p>
+        </div>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+
+<section class="card card--flush" aria-label="Vendors">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Name</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+            @foreach (var v in Model.Vendors)
+            {
+                <tr class="@(Model.Editing?.Id == v.Id ? "selected" : "")">
+                    <td>@v.Name</td>
+                    <td>@(v.IsActive ? Ui.Pill("available", "Yes") : Ui.Pill("unavailable", "No"))</td>
+                    <td class="actions-cell"><a class="btn btn--sm" asp-page="/Admin/Vendors" asp-route-editId="@v.Id">Edit</a></td>
+                </tr>
+            }
+            @if (Model.Vendors.Count == 0)
+            {
+                <tr><td colspan="3" class="empty">No vendors yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (Model.Editing is { } editing)
+{
+    <form method="post" asp-page-handler="Update" asp-route-id="@editing.Id" class="card form-card" aria-labelledby="vendor-form-h">
+        <h2 id="vendor-form-h">Edit vendor</h2>
+        <div asp-validation-summary="All" class="alert alert--error"></div>
+        <div class="fields">
+            <div class="field"><label asp-for="Input.Name">Name</label> <input asp-for="Input.Name" maxlength="100" required /></div>
+            <div class="field span-all"><label class="check"><input asp-for="Input.IsActive" /> Active</label></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Save</button> <a class="text-link" asp-page="/Admin/Vendors">Cancel</a></div>
+    </form>
+}
+else
+{
+    <form method="post" asp-page-handler="Create" class="card form-card" aria-labelledby="vendor-form-h">
+        <h2 id="vendor-form-h">New vendor</h2>
+        <div asp-validation-summary="All" class="alert alert--error"></div>
+        <div class="fields">
+            <div class="field"><label asp-for="Input.Name">Name</label> <input asp-for="Input.Name" maxlength="100" required /></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Add vendor</button></div>
+    </form>
+}

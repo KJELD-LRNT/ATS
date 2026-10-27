@@ -52,8 +52,14 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
             Assert.Equal(42, await db.Assets.CountAsync());
             Assert.Equal(2, await db.Assets.CountAsync(a => a.State == AssetState.Retired));
             Assert.Equal(1, await db.Assets.CountAsync(a => a.State == AssetState.Unavailable));
-            Assert.All(await db.Assets.Where(a => a.Imei != null).Select(a => a.Imei!).ToListAsync(),
-                imei => Assert.Equal(imei, AssetTracker.Core.Common.Normalization.Imei(imei)));
+            var imeis = await db.FieldValues.Where(v => v.Field!.Kind == FieldKind.Imei).Select(v => v.Value).ToListAsync();
+            Assert.NotEmpty(imeis);
+            Assert.All(imeis, imei => Assert.Equal(imei, AssetTracker.Core.Common.Normalization.Imei(imei)));
+            // Dual-SIM demo phones carry two IMEIs, and the generator produced the tag series AMS-LT-001 ...
+            Assert.True(await db.FieldValues.CountAsync(v => v.Field!.Kind == FieldKind.Imei && v.Position == 1) > 0);
+            Assert.Equal(10, await db.Assets.CountAsync(a => a.Tag.StartsWith("AMS-LT-")));
+            Assert.True(await db.Assets.AnyAsync(a => a.Tag == "AMS-LT-010"));
+            Assert.True(await db.Assets.AnyAsync(a => a.ModelId != null));
             Assert.StartsWith("=", (await db.Assets.SingleAsync(a => a.Tag == DemoSeeder.FormulaAssetTag)).Description);
             Assert.Equal(12, await db.Pools.CountAsync());
 
@@ -120,7 +126,8 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
         var rows = new List<string>();
         rows.AddRange(await db.Sites.Select(s => $"site {s.Id} {s.Key} {s.DirectoryValue} {s.TimeZoneId}").ToListAsync());
         rows.AddRange(await db.People.Select(p => $"person {p.Id} {p.DirectoryId} {p.Username} {p.Email} {p.SiteId} {p.IsActive}").ToListAsync());
-        rows.AddRange(await db.Assets.Select(a => $"asset {a.Id} {a.Tag} {a.Type} {a.SiteId} {a.State} {a.Imei} {a.PhoneNumber} {a.Description}").ToListAsync());
+        rows.AddRange(await db.Assets.Select(a => $"asset {a.Id} {a.Tag} {a.TypeId} {a.SiteId} {a.State} {a.ModelId} {a.Description}").ToListAsync());
+        rows.AddRange(await db.FieldValues.Select(v => $"value {v.Id} {v.AssetId} {v.FieldId} {v.Position} {v.Value}").ToListAsync());
         rows.AddRange(await db.Pools.Select(p => $"pool {p.Id} {p.Sku} {p.SiteId} {p.Available} {p.Outstanding}").ToListAsync());
         rows.AddRange(await db.Loans.Select(l => $"loan {l.Id} {l.AssetId} {l.PoolId} {l.HolderId} {l.Quantity} {l.ReturnedQuantity} {l.DueDate} {l.ClosedAt != null}").ToListAsync());
         rows.AddRange(await db.ManagerSiteGrants.Select(g => $"grant {g.PrincipalDirectoryId} {g.SiteId}").ToListAsync());

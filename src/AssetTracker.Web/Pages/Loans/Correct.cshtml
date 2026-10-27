@@ -22,7 +22,7 @@
 </header>
 <section class="card">
     <dl class="dl-grid">
-        <div><dt>Item</dt><dd>@(l.Asset is { } a ? $"{a.Tag} – {a.Description} (asset is {a.State})" : $"{l.Pool?.Sku} (pool at {l.Pool?.Site?.Key})")</dd></div>
+        <div><dt>Item</dt><dd>@(l.Asset is { } a ? $"{a.Tag} – {a.Title} (asset is {a.State})" : $"{l.Pool?.Sku} (pool at {l.Pool?.Site?.Key})")</dd></div>
         <div><dt>Effective holder</dt><dd><strong>@currentHolder</strong></dd></div>
         <div><dt>Quantity</dt><dd><strong>@l.Quantity</strong>, returned @l.ReturnedQuantity</dd></div>
         <div><dt>Status</dt><dd>@(l.IsOpen ? "open" : "returned")</dd></div>

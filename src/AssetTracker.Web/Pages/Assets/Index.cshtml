@@ -6,7 +6,7 @@
 <header class="page-header">
     <div class="page-heading">
         <h1>Tagged assets</h1>
-        <p class="page-subtitle">Individually tagged laptops, desktops, phones and phone numbers.</p>
+        <p class="page-subtitle">Individually tagged items: every asset type that is tracked by tag (laptops, desktops, phones, phone numbers ...).</p>
     </div>
     @if (Model.CanEdit)
     {
@@ -18,15 +18,15 @@
 <form method="get" class="filters" role="search">
     <div class="field field--grow">
         <label for="f-q">Search</label>
-        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="Tag, description, serial, phone, IMEI" />
+        <input id="f-q" name="q" value="@Model.Q" type="search" placeholder="Tag, model, description, serial, phone, IMEI" />
     </div>
     <div class="field">
         <label for="SiteId">Site</label>
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
     </div>
     <div class="field">
-        <label for="Type">Type</label>
-        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+        <label for="TypeId">Type</label>
+        <select name="type" asp-for="TypeId" asp-items="Model.Types"><option value="">All</option></select>
     </div>
     <div class="field">
         <label for="State">State</label>
@@ -38,7 +38,7 @@
     <div class="table-wrap">
         <table>
             <thead>
-            <tr><th scope="col">Tag</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col">State</th><th scope="col">Serial</th><th scope="col">Phone</th><th scope="col">IMEI</th></tr>
+            <tr><th scope="col">Tag</th><th scope="col">Type</th><th scope="col">Model</th><th scope="col">Description</th><th scope="col">Site</th><th scope="col">State</th><th scope="col">Serial</th><th scope="col">Phone / IMEI</th></tr>
             </thead>
             <tbody>
             @foreach (var a in Model.Results.Items)
@@ -46,12 +46,12 @@
                 <tr>
                     <td class="nowrap"><a class="mono" asp-page="Details" asp-route-id="@a.Id">@a.Tag</a></td>
                     <td>@a.Type</td>
+                    <td>@(a.Model?.DisplayName ?? a.Vendor?.Name)</td>
                     <td>@a.Description</td>
                     <td>@a.Site?.Key</td>
                     <td>@Ui.Pill(a.State)</td>
                     <td class="mono">@a.SerialNumber</td>
-                    <td class="mono nowrap">@a.PhoneNumber</td>
-                    <td class="mono">@a.Imei</td>
+                    <td class="mono">@string.Join(", ", a.ValuesOfKind(FieldKind.PhoneNumber, FieldKind.Imei))</td>
                 </tr>
             }
             @if (Model.Results.TotalCount == 0)

@@ -48,15 +48,17 @@ public static class NotificationSeed
     }
 
     public static async Task<Loan> TaggedLoanAsync(AppDbContext db, Site site, Person holder, string tag, DateOnly? due,
-        AssetType type = AssetType.Laptop, string? phoneNumber = null)
+        int type = BuiltIn.Laptop, string? phoneNumber = null)
     {
         var asset = new IndividualAsset
         {
-            Tag = tag, Type = type, SiteId = site.Id, Description = $"{type} {tag}", State = AssetState.CheckedOut,
-            PhoneNumber = phoneNumber, CreatedAt = Started,
+            Tag = tag, TypeId = type, SiteId = site.Id, Description = $"{tag} description", State = AssetState.CheckedOut,
+            CreatedAt = Started,
         };
         db.Assets.Add(asset);
         await db.SaveChangesAsync();
+        if (phoneNumber is not null)
+            await Infrastructure.Seed.ValueAsync(db, asset, type == BuiltIn.PhoneNumber ? BuiltIn.LinePhoneNumberField : BuiltIn.PhonePhoneNumberField, phoneNumber);
         var (loan, _) = NewTaggedLoan(asset, holder, due);
         db.Loans.Add(loan);
         await db.SaveChangesAsync();
@@ -68,7 +70,7 @@ public static class NotificationSeed
     {
         var pool = new Pool
         {
-            Sku = sku, Type = AssetType.Headset, SiteId = site.Id, Description = $"Headset {sku}",
+            Sku = sku, TypeId = BuiltIn.Headset, SiteId = site.Id, Description = $"Headset {sku}",
             Available = 10, Outstanding = quantity - returned, CreatedAt = Started,
         };
         db.Pools.Add(pool);

@@ -9,10 +9,10 @@ using Microsoft.EntityFrameworkCore;
 namespace AssetTracker.Core.Inventory;
 
 public sealed record CreatePoolInput(
-    AssetType Type, string Sku, int SiteId, string Description, int InitialQuantity = 0, string? Reason = null);
+    int TypeId, string Sku, int SiteId, string Description, int InitialQuantity = 0, string? Reason = null);
 
 public sealed record PoolSearch(
-    string? Query = null, int? SiteId = null, AssetType? Type = null,
+    string? Query = null, int? SiteId = null, int? TypeId = null,
     int Page = 1, int PageSize = Paging.DefaultPageSize);
 
 /// <summary>
@@ -27,9 +27,9 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
 
     public async Task<PagedResult<Pool>> SearchAsync(PoolSearch s, CancellationToken ct = default)
     {
-        var q = (await access.VisiblePoolsAsync(ct)).AsNoTracking().Include(p => p.Site).AsQueryable();
+        var q = (await access.VisiblePoolsAsync(ct)).AsNoTracking().Include(p => p.Site).Include(p => p.Type).AsQueryable();
         if (s.SiteId is { } siteId) q = q.Where(p => p.SiteId == siteId);
-        if (s.Type is { } type) q = q.Where(p => p.Type == type);
+        if (s.TypeId is { } typeId) q = q.Where(p => p.TypeId == typeId);
 
         var term = s.Query?.Trim();
         if (!string.IsNullOrEmpty(term))
@@ -44,7 +44,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
     /// <summary>Returns the pool if visible to the current principal; otherwise <see cref="AccessDeniedException"/> (404).</summary>
     public async Task<Pool> GetAsync(int id, CancellationToken ct = default)
     {
-        var pool = await (await access.VisiblePoolsAsync(ct)).AsNoTracking().Include(p => p.Site)
+        var pool = await (await access.VisiblePoolsAsync(ct)).AsNoTracking().Include(p => p.Site).Include(p => p.Type)
             .FirstOrDefaultAsync(p => p.Id == id, ct);
         return pool ?? throw new AccessDeniedException();
     }
@@ -64,7 +64,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
         access.EnsureIt();
         var source = await GetAsync(poolId, ct);
         return await db.Pools.AsNoTracking().Include(p => p.Site)
-            .Where(p => p.Sku == source.Sku && p.Type == source.Type && p.Id != source.Id)
+            .Where(p => p.Sku == source.Sku && p.TypeId == source.TypeId && p.Id != source.Id)
             .OrderBy(p => p.Site!.Key).ToListAsync(ct);
     }
 
@@ -72,9 +72,13 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
     {
         access.EnsureIt();
 
-        if (!AssetTypes.PoolEligible.Contains(input.Type))
+        var type = await db.AssetTypes.AsNoTracking().FirstOrDefaultAsync(t => t.Id == input.TypeId, ct)
+            ?? throw new DomainException("pool.type_invalid", "Choose a pooled type.");
+        if (type.Mode != InventoryMode.Pooled)
             throw new DomainException("pool.type_ineligible",
-                $"{input.Type} cannot be pooled; only peripherals, webcams and headsets can.");
+                $"{type.Name} is tracked by asset tag and cannot be pooled; choose a type that is defined as a quantity pool.");
+        if (!type.IsActive)
+            throw new DomainException("pool.type_inactive", $"{type.Name} is inactive.");
         var sku = Normalization.Code(input.Sku);
         if (sku.Length == 0) throw new DomainException("pool.sku_required", "SKU is required.");
         if (sku.Length > SkuMaxLength)
@@ -92,7 +96,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
         var now = clock.UtcNow;
         var pool = new Pool
         {
-            Type = input.Type, Sku = sku, SiteId = input.SiteId, Description = description,
+            TypeId = type.Id, Sku = sku, SiteId = input.SiteId, Description = description,
             Available = input.InitialQuantity, CreatedAt = now,
         };
 
@@ -114,7 +118,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
                 Normalization.OptionalText(input.Reason) ?? "Initial stock", now));
         }
         audit.Record("pool.create", nameof(Pool), pool.Id, pool.SiteId, Normalization.OptionalText(input.Reason),
-            new { pool.Sku, Type = pool.Type.ToString(), pool.Description, input.InitialQuantity });
+            new { pool.Sku, Type = type.Name, pool.Description, input.InitialQuantity });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return pool;
@@ -191,7 +195,7 @@ public class PoolService(AppDbContext db, AccessScope access, AuditWriter audit,
         var target = await LoadAsync(toPoolId, ct);
         if (source.Id == target.Id || source.SiteId == target.SiteId)
             throw new DomainException("pool.transfer_same_site", "Transfers must go to a pool at a different site.");
-        if (source.Sku != target.Sku || source.Type != target.Type)
+        if (source.Sku != target.Sku || source.TypeId != target.TypeId)
             throw new DomainException("pool.transfer_mismatch", "Transfers must go to a pool with the same SKU and type.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);

@@ -1,0 +1,134 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Admin.TypeEditModel
+@using AssetTracker.Core.Domain
+@using AssetTracker.Core.Inventory
+@{
+    var t = Model.Type;
+    var tagged = t.Mode == InventoryMode.Tagged;
+    ViewData["Title"] = $"Asset type {t.Name}";
+}
+<nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Types">Asset types</a><span aria-hidden="true">/</span><span aria-current="page">@t.Name</span></nav>
+<header class="page-header page-header--top">
+    <div class="page-heading">
+        <div class="title-row">
+            <h1>@t.Name</h1>
+            @(t.IsActive ? Ui.Pill("available", "Active") : Ui.Pill("unavailable", "Inactive"))
+        </div>
+        <p class="title-meta">@(tagged ? "Tracked by asset tag" : "Tracked as a quantity pool per site and SKU")</p>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+<div asp-validation-summary="All" class="alert alert--error"></div>
+
+<form method="post" class="card form-card" aria-labelledby="type-h">
+    <h2 id="type-h">Type settings</h2>
+    <div class="fields">
+        <div class="field"><label asp-for="Input.Name">Name</label> <input asp-for="Input.Name" maxlength="100" required /></div>
+        <div class="field span-all"><label class="check"><input asp-for="Input.IsActive" /> Active (can be chosen for new @(tagged ? "assets" : "pools"))</label></div>
+        @if (tagged)
+        {
+            <div class="field span-all">
+                <span class="field-label">Standard fields on the asset form</span>
+                <div class="checks">
+                    <label class="check"><input asp-for="Input.UsesModel" /> Vendor and model</label>
+                    <label class="check"><input asp-for="Input.UsesDescription" /> Description</label>
+                    <label class="check"><input asp-for="Input.UsesSerialNumber" /> Serial number</label>
+                    <label class="check"><input asp-for="Input.UsesCondition" /> Condition</label>
+                </div>
+                <small class="hint">Switch off what does not apply, e.g. a phone number needs none of them. Values already stored stay in the database.</small>
+            </div>
+            <div class="field span-all">
+                <label asp-for="Input.TagPattern">Tag pattern <span class="optional">(optional)</span></label>
+                <input asp-for="Input.TagPattern" class="mono" maxlength="100" placeholder="{SITE}D{000}OMA" />
+                <small class="hint">Generates asset tags, counting up per type and site. <code>{SITE}</code> is the site's tag code (Admin → Sites), <code>{000}</code> the counter (zeros = minimum digits), everything else is literal. Empty = tags are typed by hand.@if (Model.PatternExample is not null) { <text> Example for a site with code R: <strong class="mono">@Model.PatternExample</strong>, then the next number.</text> }</small>
+            </div>
+        }
+    </div>
+    <div class="form-actions"><button type="submit" class="btn--primary">Save type</button> <a class="text-link" asp-page="Types">Back</a></div>
+</form>
+
+@if (tagged)
+{
+    <section class="card card--flush" aria-labelledby="fields-h">
+        <div class="card-header">
+            <h2 id="fields-h">Custom fields</h2>
+            <span class="card-note">Shown on the asset form in this order. Deactivate a field to hide it; values already stored are kept.</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Field</th><th scope="col">Kind</th><th scope="col">Values</th><th scope="col">Rules</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                @foreach (var f in t.Fields)
+                {
+                    <tr class="@(Model.Editing?.Id == f.Id ? "selected" : "")">
+                        <td>@f.Name</td>
+                        <td>@TypeEditModel.KindLabel(f.Kind)@(f.Kind == FieldKind.Choice ? $": {string.Join(", ", FieldValueRules.OptionList(f))}" : "")</td>
+                        <td>@f.MaxValues</td>
+                        <td>@string.Join(", ", new[] { f.IsRequired ? "required" : null, f.IsUnique ? "unique" : null, f.IsSensitive ? "IT only" : null }.Where(x => x is not null))</td>
+                        <td>@(f.IsActive ? Ui.Pill("available", "Yes") : Ui.Pill("unavailable", "No"))</td>
+                        <td class="actions-cell">
+                            <a class="btn btn--sm" asp-page="/Admin/TypeEdit" asp-route-id="@t.Id" asp-route-fieldId="@f.Id">Edit</a>
+                            <form method="post" asp-page-handler="Move" asp-route-id="@t.Id" class="inline-form">
+                                <input type="hidden" name="fieldId" value="@f.Id" />
+                                <button type="submit" name="up" value="true" class="btn btn--sm" aria-label="Move @f.Name up">↑</button>
+                                <button type="submit" name="up" value="false" class="btn btn--sm" aria-label="Move @f.Name down">↓</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                @if (t.Fields.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty">No custom fields yet.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    var editing = Model.Editing;
+    <form method="post" asp-page-handler="@(editing is null ? "AddField" : "UpdateField")" asp-route-id="@t.Id" asp-route-fieldId="@editing?.Id" class="card form-card" aria-labelledby="field-h">
+        <h2 id="field-h">@(editing is null ? "Add a field" : $"Edit field {editing.Name}")</h2>
+        <div class="fields">
+            <div class="field"><label asp-for="Field.Name">Name</label> <input asp-for="Field.Name" maxlength="100" required placeholder="e.g. SIM status" /></div>
+            <div class="field">
+                <label asp-for="Field.Kind">Kind</label>
+                <select asp-for="Field.Kind">
+                    @foreach (var k in TypeEditModel.Kinds)
+                    {
+                        <option value="@k" selected="@(Model.Field.Kind == k)">@TypeEditModel.KindLabel(k)</option>
+                    }
+                </select>
+                <small class="hint">@(editing is null ? "" : "Cannot change once assets have a value. ")Phone numbers (with country code) and IMEIs (15 digits, check digit) are validated.</small>
+            </div>
+            <div class="field span-all">
+                <label asp-for="Field.Options">Choices <span class="optional">(choice fields only, one per line)</span></label>
+                <textarea asp-for="Field.Options" rows="4" maxlength="2000" placeholder="Physical SIM&#10;eSIM"></textarea>
+            </div>
+            <div class="field">
+                <label asp-for="Field.MaxValues">Number of values</label>
+                <input asp-for="Field.MaxValues" type="number" min="1" max="@FieldValueRules.MaxValuesLimit" class="qty" />
+                <small class="hint">2 for a field such as IMEI on dual-SIM phones.</small>
+            </div>
+            <div class="field span-all">
+                <div class="checks">
+                    <label class="check"><input asp-for="Field.IsRequired" /> Required</label>
+                    <label class="check"><input asp-for="Field.IsUnique" /> Unique among active assets</label>
+                    <label class="check"><input asp-for="Field.IsSensitive" /> IT only (hidden from managers, e.g. a PUC)</label>
+                    <label class="check"><input asp-for="Field.IsActive" /> Active</label>
+                </div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn--primary">@(editing is null ? "Add field" : "Save field")</button>
+            @if (editing is not null) { <a class="text-link" asp-page="/Admin/TypeEdit" asp-route-id="@t.Id">Cancel</a> }
+        </div>
+    </form>
+}
+else
+{
+    <div class="alert alert--info" role="note">@Ui.Icon("error", 18, 2)<div class="alert-body">Quantity pool types carry only an SKU and a description, so they have no custom fields, vendors or models.</div></div>
+}

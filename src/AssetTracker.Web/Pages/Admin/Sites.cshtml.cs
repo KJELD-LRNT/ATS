@@ -54,6 +54,9 @@ public class SitesModel(AdminService admin, SiteCalendar calendar) : PageModel
 
         [StringLength(100), Display(Name = "Timezone")]
         public string? TimeZoneId { get; set; }
+
+        [StringLength(16), Display(Name = "Tag code")]
+        public string? TagCode { get; set; }
     }
 
     public async Task OnGetAsync(int? editId, CancellationToken ct)
@@ -64,7 +67,7 @@ public class SitesModel(AdminService admin, SiteCalendar calendar) : PageModel
             Input = new SiteInput
             {
                 Key = Editing.Key, Name = Editing.Name, DirectoryValue = Editing.DirectoryValue, IsActive = Editing.IsActive,
-                TimeZoneId = Editing.TimeZoneId,
+                TimeZoneId = Editing.TimeZoneId, TagCode = Editing.TagCode,
             };
         }
         Sites = await admin.ListSitesAsync(ct);
@@ -77,7 +80,7 @@ public class SitesModel(AdminService admin, SiteCalendar calendar) : PageModel
             try
             {
                 var site = await admin.CreateSiteAsync(Input.Key ?? "", Input.Name, Input.DirectoryValue, Input.IsActive,
-                    Input.TimeZoneId, ct);
+                    Input.TimeZoneId, Input.TagCode, ct);
                 Message = $"Site {site.Key} created.";
                 return RedirectToPage();
             }
@@ -94,7 +97,8 @@ public class SitesModel(AdminService admin, SiteCalendar calendar) : PageModel
         {
             try
             {
-                var site = await admin.UpdateSiteAsync(id, Input.Name, Input.DirectoryValue, Input.IsActive, Input.TimeZoneId, ct);
+                var site = await admin.UpdateSiteAsync(id, Input.Name, Input.DirectoryValue, Input.IsActive, Input.TimeZoneId,
+                    Input.TagCode, ct);
                 Message = $"Site {site.Key} updated.";
                 return RedirectToPage();
             }

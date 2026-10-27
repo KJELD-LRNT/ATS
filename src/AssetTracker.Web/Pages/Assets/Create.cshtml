@@ -1,52 +1,109 @@
 @page
 @model AssetTracker.Web.Pages.Assets.CreateModel
+@using AssetTracker.Core.Inventory
 @{
     ViewData["Title"] = "New asset";
+    var type = Model.Type;
+    var generated = Model.Preview?.Tag;
 }
 <nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Assets</a><span aria-hidden="true">/</span><span aria-current="page">New asset</span></nav>
 <header class="page-header">
     <div class="page-heading">
         <h1>New tagged asset</h1>
-        <p class="page-subtitle">The asset tag cannot be changed after creation. Phone number applies to phones and phone numbers; IMEI to phones only.</p>
+        <p class="page-subtitle">The asset tag cannot be changed after creation. The type decides which fields the form shows; admins define types, fields, vendors and models.</p>
     </div>
 </header>
-<form method="post" class="card form-card">
-    <div asp-validation-summary="All" class="alert alert--error"></div>
+
+<form method="get" class="card form-card" aria-labelledby="step1-h" data-autosubmit>
+    <h2 id="step1-h"><span class="step-number">1.</span> Type and site</h2>
     <div class="fields">
         <div class="field">
-            <label asp-for="Input.Tag">Asset tag</label>
-            <input asp-for="Input.Tag" required maxlength="64" class="mono" />
+            <label for="f-type">Type</label>
+            <select id="f-type" name="typeId" asp-for="Input.TypeId" asp-items="Model.Types"></select>
         </div>
         <div class="field">
-            <label asp-for="Input.Type">Type</label>
-            <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions<AssetType>()"></select>
-        </div>
-        <div class="field">
-            <label asp-for="Input.SiteId">Site</label>
-            <select asp-for="Input.SiteId" asp-items="Model.Sites"></select>
-        </div>
-        <div class="field">
-            <label asp-for="Input.Description">Description / model</label>
-            <input asp-for="Input.Description" required maxlength="500" />
-        </div>
-        <div class="field">
-            <label asp-for="Input.Condition">Condition <span class="optional">(optional)</span></label>
-            <input asp-for="Input.Condition" maxlength="200" />
-        </div>
-        <div class="field">
-            <label asp-for="Input.SerialNumber">Serial number <span class="optional">(optional)</span></label>
-            <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
-        </div>
-        <div class="field">
-            <label asp-for="Input.PhoneNumber">Phone number</label>
-            <input asp-for="Input.PhoneNumber" placeholder="+31 20 123 4567" class="mono" />
-            <span class="hint">Phones and phone numbers only, with country code.</span>
-        </div>
-        <div class="field">
-            <label asp-for="Input.Imei">IMEI</label>
-            <input asp-for="Input.Imei" class="mono" />
-            <span class="hint">Phones only.</span>
+            <label for="f-site">Site</label>
+            <select id="f-site" name="siteId" asp-for="Input.SiteId" asp-items="Model.Sites"></select>
         </div>
     </div>
-    <div class="form-actions"><button type="submit" class="btn--primary">Create</button> <a class="text-link" asp-page="Index">Cancel</a></div>
+    <div class="form-actions"><button type="submit" data-autosubmit-button>Show fields</button></div>
 </form>
+
+@if (type is null)
+{
+    <div class="alert alert--info" role="note">@Ui.Icon("error", 18, 2)<div class="alert-body">Choose an asset type tracked by tag. Quantity items such as headsets are created as <a asp-page="/Pools/Create">pools</a>.</div></div>
+}
+else
+{
+    <form method="post" class="card form-card" aria-labelledby="step2-h">
+        <h2 id="step2-h"><span class="step-number">2.</span> Details of the new @type.Name</h2>
+        <div asp-validation-summary="All" class="alert alert--error"></div>
+        <input type="hidden" asp-for="Input.TypeId" />
+        <input type="hidden" asp-for="Input.SiteId" />
+        <div class="fields">
+            <div class="field span-all">
+                <label asp-for="Input.Tag">Asset tag @if (generated is not null) { <span class="optional">(optional: generated)</span> }</label>
+                <input asp-for="Input.Tag" maxlength="64" class="mono" placeholder="@generated" required="@(generated is null)" autocomplete="off" />
+                @if (generated is not null)
+                {
+                    <span class="hint">Leave empty to get the next tag in the series: <strong class="mono">@generated</strong>. Type a tag to override it.</span>
+                }
+                else
+                {
+                    <span class="hint">@(Model.Preview?.Problem ?? "Type the asset tag.")</span>
+                }
+            </div>
+            @if (type.UsesModel)
+            {
+                <div class="field">
+                    <label asp-for="Input.VendorId">Vendor <span class="optional">(optional)</span></label>
+                    <select asp-for="Input.VendorId" data-vendor-select>
+                        <option value="">–</option>
+                        @foreach (var v in Model.Vendors)
+                        {
+                            <option value="@v.Id" selected="@(Model.Input.VendorId == v.Id)">@v.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label asp-for="Input.ModelId">Model <span class="optional">(optional)</span></label>
+                    <select asp-for="Input.ModelId" data-model-select>
+                        <option value="">–</option>
+                        @foreach (var m in Model.Models)
+                        {
+                            <option value="@m.Id" data-vendor="@m.VendorId" selected="@(Model.Input.ModelId == m.Id)">@m.DisplayName</option>
+                        }
+                    </select>
+                    <span class="hint">Models are defined by admins under Admin → Models.</span>
+                </div>
+            }
+            @if (type.UsesDescription)
+            {
+                <div class="field span-all">
+                    <label asp-for="Input.Description">Description <span class="optional">(optional)</span></label>
+                    <input asp-for="Input.Description" maxlength="500" />
+                </div>
+            }
+            @if (type.UsesSerialNumber)
+            {
+                <div class="field">
+                    <label asp-for="Input.SerialNumber">Serial number <span class="optional">(optional)</span></label>
+                    <input asp-for="Input.SerialNumber" maxlength="128" class="mono" />
+                </div>
+            }
+            @if (type.UsesCondition)
+            {
+                <div class="field">
+                    <label asp-for="Input.Condition">Condition <span class="optional">(optional)</span></label>
+                    <input asp-for="Input.Condition" maxlength="200" />
+                </div>
+            }
+            @foreach (var f in type.Fields.Where(f => f.IsActive))
+            {
+                var values = Model.Input.Fields.TryGetValue(f.Id, out var submitted) ? submitted : [];
+                @await Html.PartialAsync("_FieldInputs", new FieldInputModel(f, values, "Input.Fields[" + f.Id + "]"))
+            }
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary">Create</button> <a class="text-link" asp-page="Index">Cancel</a></div>
+    </form>
+}

@@ -13,7 +13,7 @@
     <div class="page-heading">
         <h1>Return loan <span class="title-mono">#@l.Id</span></h1>
         <p class="title-meta">
-            @if (l.Asset is { } a) { <span class="mono">@a.Tag</span> <text>– @a.Description</text> }
+            @if (l.Asset is { } a) { <span class="mono">@a.Tag</span> <text>– @a.Title</text> }
             else { <span class="mono">@l.Pool?.Sku</span> <text>(pool at @l.Pool?.Site?.Key)</text> }
             held by <strong>@(l.Holder?.DisplayName ?? l.HolderNameSnapshot)</strong>@(l.Holder is { IsActive: false } ? " (inactive)" : "")
         </p>

@@ -9,8 +9,8 @@
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
     </div>
     <div class="field">
-        <label for="Type">Type</label>
-        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+        <label for="TypeId">Type</label>
+        <select name="type" asp-for="TypeId" asp-items="Model.Types"><option value="">All</option></select>
     </div>
     @if (Model.DateRangeLabel is not null)
     {

@@ -5,7 +5,8 @@
     var hasTarget = Model.TargetError is null && (Model.Asset is not null || Model.Pool is not null);
     // Initial segment: pool when a pool is chosen (and no tag), otherwise tagged asset.
     var poolMode = Model.Asset is null && string.IsNullOrEmpty(Model.Tag) && (Model.Pool is not null || Model.PoolId is not null);
-    var staleText = "The people directory snapshot is stale. Checkout is still allowed, but recently disabled accounts may still appear active. The stale state is recorded on the loan and in the audit log.";
+    var itemSiteKey = Model.Asset?.Site?.Key ?? Model.Pool?.Site?.Key;
+    var staleText ="The people directory snapshot is stale. Checkout is still allowed, but recently disabled accounts may still appear active. The stale state is recorded on the loan and in the audit log.";
 }
 <nav class="breadcrumb" aria-label="Breadcrumb"><a asp-page="Index">Loans</a><span aria-hidden="true">/</span><span aria-current="page">Check out</span></nav>
 <h1>Check out</h1>
@@ -50,12 +51,16 @@
             <fieldset>
                 <legend><span class="step-number">2.</span> Who receives it?</legend>
                 <div class="search-row">
-                    <div class="field field--grow">
+                    <div class="field field--grow combo" data-people-lookup data-url="@Url.Page("Checkout", "People")" data-min="@CheckoutModel.MinSearchLength">
                         <label for="f-who">Person</label>
-                        <input id="f-who" name="who" value="@Model.Who" type="search" placeholder="Name, username or email" />
+                        <input id="f-who" name="who" value="@Model.Who" type="search" placeholder="Start typing a name, username or email"
+                               autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="who-list" aria-describedby="who-hint" />
+                        <input type="hidden" name="holderId" value="@Model.HolderId" data-people-id />
+                        <ul id="who-list" class="combo-list" role="listbox" aria-label="Matching people" hidden></ul>
+                        <div class="combo-selected" data-people-selected role="status" hidden></div>
                     </div>
                 </div>
-                <span class="hint">Only active people with an email address can receive new loans.</span>
+                <span class="hint" id="who-hint">Suggestions appear as you type, with each person's site. Only active people with an email address can receive new loans.</span>
             </fieldset>
             <div class="form-actions"><button type="submit" class="@(hasTarget ? "" : "btn--primary")">Find</button></div>
         </form>
@@ -92,8 +97,22 @@
                                         <input type="radio" name="Input.HolderId" value="@person.Id" required checked="@(Model.Input.HolderId == person.Id)" />
                                         <span class="avatar" aria-hidden="true">@Ui.Initials(person.DisplayName)</span>
                                         <span class="picker-text">
-                                            <span class="picker-name">@person.DisplayName</span>
-                                            <span class="picker-meta">@person.Username · @person.Email @person.SiteKey</span>
+                                            <span class="picker-name">
+                                                @person.DisplayName
+                                                @if (person.SiteKey is not null)
+                                                {
+                                                    <span class="badge badge--info">@person.SiteKey</span>
+                                                    @if (itemSiteKey is not null && !string.Equals(person.SiteKey, itemSiteKey, StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        <span class="badge badge--warning">Other site than the item (@itemSiteKey)</span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge badge--muted">No site</span>
+                                                }
+                                            </span>
+                                            <span class="picker-meta">@person.Username · @person.Email@(person.SiteName is null ? "" : $" · {person.SiteName}")@(string.IsNullOrEmpty(person.JobTitle) ? "" : $" · {person.JobTitle}")</span>
                                         </span>
                                         <span class="picker-check">@Ui.Icon("check", 18, 2.4)</span>
                                     </label>
@@ -133,7 +152,7 @@
                 {
                     <div class="summary-qty">
                         <span class="summary-big">1×</span>
-                        <span class="summary-item"><span class="mono">@a.Tag</span><span class="secondary">@a.Description (@a.Type) at @a.Site?.Key</span></span>
+                        <span class="summary-item"><span class="mono">@a.Tag</span><span class="secondary">@(string.IsNullOrEmpty(a.Title) ? "" : a.Title + " ")(@a.Type) at @a.Site?.Key</span></span>
                     </div>
                     <dl class="dl-list">
                         <div><dt>Item</dt><dd>Tagged asset · quantity <strong>1</strong></dd></div>

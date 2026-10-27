@@ -7,15 +7,15 @@
 <header class="page-header">
     <div class="page-heading">
         <h1>New quantity pool</h1>
-        <p class="page-subtitle">One pool per SKU and site. Only peripherals, webcams and headsets can be pooled.</p>
+        <p class="page-subtitle">One pool per SKU and site. Only asset types defined as a quantity pool (such as peripherals, webcams and headsets) can be pooled; admins manage the types.</p>
     </div>
 </header>
 <form method="post" class="card form-card">
     <div asp-validation-summary="All" class="alert alert--error"></div>
     <div class="fields">
         <div class="field">
-            <label asp-for="Input.Type">Type</label>
-            <select asp-for="Input.Type" asp-items="InventoryUi.EnumOptions(AssetTypes.PoolEligible)"></select>
+            <label asp-for="Input.TypeId">Type</label>
+            <select asp-for="Input.TypeId" asp-items="Model.Types"></select>
         </div>
         <div class="field">
             <label asp-for="Input.Sku">SKU</label>

@@ -1,4 +1,5 @@
 using AssetTracker.Core.Admin;
+using AssetTracker.Core.Catalog;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Domain;
@@ -31,6 +32,7 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     public async Task<bool> SeedIfEmptyAsync(CancellationToken ct = default)
     {
         if (await WithDbAsync(db => db.Sites.AnyAsync(ct))) return false;
+        await WithDbAsync(async db => await CatalogDefaults.EnsureAsync(db, ct));
         await AmbientCurrentUser.RunAsAsync(DemoDefaults.SeedActor, AppRoles.It | AppRoles.Admin, () => SeedAsync(ct));
         return true;
     }
@@ -69,11 +71,15 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         var sites = await RunAsync(Ago(120), async sp =>
         {
             var admin = sp.GetRequiredService<AdminService>();
-            var ams = await admin.CreateSiteAsync("AMS", "Amsterdam (demo)", DemoDirectorySource.AmsValue, true, "Europe/Amsterdam", ct);
-            var nyc = await admin.CreateSiteAsync("NYC", "New York (demo)", DemoDirectorySource.NycValue, true, "America/New_York", ct);
-            var sin = await admin.CreateSiteAsync("SIN", "Singapore (demo)", DemoDirectorySource.SinValue, true, "Asia/Singapore", ct);
+            // The tag code is what the tag generator puts at {SITE}: the demo tags look like AMS-LT-001.
+            var ams = await admin.CreateSiteAsync("AMS", "Amsterdam (demo)", DemoDirectorySource.AmsValue, true, "Europe/Amsterdam", "AMS", ct);
+            var nyc = await admin.CreateSiteAsync("NYC", "New York (demo)", DemoDirectorySource.NycValue, true, "America/New_York", "NYC", ct);
+            var sin = await admin.CreateSiteAsync("SIN", "Singapore (demo)", DemoDirectorySource.SinValue, true, "Asia/Singapore", "SIN", ct);
             return new SiteIds(ams.Id, nyc.Id, sin.Id);
         });
+
+        // 2b. Catalog: tag patterns for the tagged types, plus a few vendors and models to pick from.
+        var models = await RunAsync(Ago(120), sp => SetUpCatalogAsync(sp.GetRequiredService<CatalogService>(), ct));
 
         // 3. People: a directory sync from the historical snapshot (the leaver is still enabled), then the manager grant.
         await DemoDirectorySource.RunWithHistoricalSnapshotAsync(() =>
@@ -84,7 +90,7 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             sp.GetRequiredService<AdminService>().AddGrantAsync(people[DemoDefaults.ManagerUsername], sites.Ams, ct));
 
         // 4. Tagged assets and pools.
-        var assets = await RunAsync(Ago(118), sp => CreateAssetsAsync(sp.GetRequiredService<AssetService>(), sites, ct));
+        var assets = await RunAsync(Ago(118), sp => CreateAssetsAsync(sp.GetRequiredService<AssetService>(), sites, models, ct));
         var pools = await RunAsync(Ago(118), sp => CreatePoolsAsync(sp.GetRequiredService<PoolService>(), sites, ct));
 
         // Site-local "today" now, for due dates relative to today.
@@ -207,7 +213,36 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
 
     private static readonly string[] SiteKeys = ["AMS", "NYC", "SIN"];
 
-    private static async Task<Dictionary<string, int>> CreateAssetsAsync(AssetService svc, SiteIds sites, CancellationToken ct)
+    /// <summary>Vendor and model ids the demo assets are created with.</summary>
+    private sealed record DemoModels(int Vendor, int LaptopModel, int DesktopModel, int PhoneModel);
+
+    /// <summary>Tag patterns that reproduce the demo tags (AMS-LT-001 ...), and a vendor with a model per tagged type.</summary>
+    private static async Task<DemoModels> SetUpCatalogAsync(CatalogService catalog, CancellationToken ct)
+    {
+        foreach (var (typeId, code) in new[] { (BuiltIn.Laptop, "LT"), (BuiltIn.Desktop, "DT"), (BuiltIn.Phone, "PH") })
+        {
+            var type = await catalog.GetTypeAsync(typeId, ct);
+            await catalog.UpdateTypeAsync(typeId, new TypeInput(type.Name, type.Mode, type.UsesModel, type.UsesDescription,
+                type.UsesSerialNumber, type.UsesCondition, "{SITE}-" + code + "-{000}"), ct);
+        }
+        var phoneLine = await catalog.GetTypeAsync(BuiltIn.PhoneNumber, ct);
+        await catalog.UpdateTypeAsync(BuiltIn.PhoneNumber, new TypeInput(phoneLine.Name, phoneLine.Mode, false, false, false, false,
+            "{SITE}-PN-{000}"), ct);
+
+        var acme = await catalog.CreateVendorAsync("Acme Computers", ct);
+        var northwind = await catalog.CreateVendorAsync("Northwind Mobile", ct);
+        await catalog.CreateModelAsync(BuiltIn.Laptop, acme.Id, "Air 13", ct);
+        var laptop = await catalog.CreateModelAsync(BuiltIn.Laptop, acme.Id, "Pro 14", ct);
+        var desktop = await catalog.CreateModelAsync(BuiltIn.Desktop, acme.Id, "Tower D5", ct);
+        var phone = await catalog.CreateModelAsync(BuiltIn.Phone, northwind.Id, "P8", ct);
+        return new DemoModels(acme.Id, laptop.Id, desktop.Id, phone.Id);
+    }
+
+    private static Dictionary<int, IReadOnlyList<string?>> Fields(params (int FieldId, string?[] Values)[] fields) =>
+        fields.ToDictionary(f => f.FieldId, f => (IReadOnlyList<string?>)f.Values);
+
+    private static async Task<Dictionary<string, int>> CreateAssetsAsync(AssetService svc, SiteIds sites, DemoModels models,
+        CancellationToken ct)
     {
         var result = new Dictionary<string, int>();
         // Per site: laptops, desktops, phones, phone numbers.
@@ -224,25 +259,39 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             var (lt, dt, ph, pn) = counts[key];
             for (var i = 1; i <= lt; i++)
             {
-                var tag = $"{key}-LT-{i:000}";
-                var description = tag == FormulaAssetTag
+                // No tag given: the generator counts up per type and site (AMS-LT-001, AMS-LT-002 ...).
+                var description = $"{key}-LT-{i:000}" == FormulaAssetTag
                     ? "=HYPERLINK(\"http://demo.example\",\"click\") formula test laptop (demo)"
                     : $"Demo L{14 + i % 3} laptop";
-                await Create(new CreateAssetInput(tag, AssetType.Laptop, site, description, "Good", $"DEMO-SN-{key}-L{i:000}"));
+                await Create(new CreateAssetInput(null, BuiltIn.Laptop, site, description, "Good", $"DEMO-SN-{key}-L{i:000}",
+                    models.Vendor, models.LaptopModel));
             }
             for (var i = 1; i <= dt; i++)
-                await Create(new CreateAssetInput($"{key}-DT-{i:000}", AssetType.Desktop, site, "Demo D5 desktop", "Good",
-                    $"DEMO-SN-{key}-D{i:000}"));
+                await Create(new CreateAssetInput(null, BuiltIn.Desktop, site, "Demo D5 desktop", "Good",
+                    $"DEMO-SN-{key}-D{i:000}", models.Vendor, models.DesktopModel));
             for (var i = 1; i <= ph; i++)
-                await Create(new CreateAssetInput($"{key}-PH-{i:000}", AssetType.Phone, site, "Demo P8 phone", "Good",
-                    Imei: DemoImei(s * 100 + i), PhoneNumber: DemoPhone(key, i)));
+                await Create(new CreateAssetInput(null, BuiltIn.Phone, site, "Demo phone", "Good", null, null, models.PhoneModel,
+                    Fields: Fields(
+                        // Every second demo phone is a dual-SIM with two IMEIs.
+                        (BuiltIn.PhoneImeiField, i % 2 == 0 ? [DemoImei(s * 100 + i), DemoImei(s * 100 + i + 50)] : [DemoImei(s * 100 + i)]),
+                        (BuiltIn.PhonePhoneNumberField, [DemoPhone(key, i)]))));
             for (var i = 1; i <= pn; i++)
-                await Create(new CreateAssetInput($"{key}-PN-{i:000}", AssetType.PhoneNumber, site, "Demo mobile subscription",
-                    PhoneNumber: DemoPhone(key, 50 + i)));
+                await Create(new CreateAssetInput(null, BuiltIn.PhoneNumber, site,
+                    Fields: Fields(
+                        (BuiltIn.LinePhoneNumberField, [DemoPhone(key, 50 + i)]),
+                        (BuiltIn.LineProviderField, ["Demo Telecom"]),
+                        (BuiltIn.LineSimTypeField, [i % 2 == 0 ? "eSIM" : "Physical SIM"]),
+                        (BuiltIn.LineSimStatusField, ["Active"]),
+                        (BuiltIn.LineSimNumberField, [$"8999900000000{s}{i:0000}"]),
+                        (BuiltIn.LinePucField, [$"{10000000 + s * 100 + i}"]))));
         }
         return result;
 
-        async Task Create(CreateAssetInput input) => result[input.Tag] = (await svc.CreateAsync(input, ct)).Id;
+        async Task Create(CreateAssetInput input)
+        {
+            var asset = await svc.CreateAsync(input, ct);
+            result[asset.Tag] = asset.Id;
+        }
     }
 
     /// <summary>A 15-digit IMEI with a valid Luhn check digit (fictional TAC 35999...).</summary>
@@ -275,17 +324,17 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     private static async Task<Dictionary<(string, string), int>> CreatePoolsAsync(PoolService svc, SiteIds sites, CancellationToken ct)
     {
         var result = new Dictionary<(string, string), int>();
-        var defs = new (AssetType Type, string Sku, string Description, int Quantity)[]
+        var defs = new (int TypeId, string Sku, string Description, int Quantity)[]
         {
-            (AssetType.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20),
-            (AssetType.Webcam, "CAM-HD", "HD webcam (demo)", 8),
-            (AssetType.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15),
-            (AssetType.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25),
+            (BuiltIn.Headset, "HS-STEREO", "Stereo USB headset (demo)", 20),
+            (BuiltIn.Webcam, "CAM-HD", "HD webcam (demo)", 8),
+            (BuiltIn.Peripheral, "KB-US", "USB keyboard, US layout (demo)", 15),
+            (BuiltIn.Peripheral, "MOUSE-W", "Wireless mouse (demo)", 25),
         };
         foreach (var key in SiteKeys)
             foreach (var d in defs)
                 result[(key, d.Sku)] = (await svc.CreateAsync(
-                    new CreatePoolInput(d.Type, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)"), ct)).Id;
+                    new CreatePoolInput(d.TypeId, d.Sku, sites.Of(key), d.Description, d.Quantity, "Initial stock (demo)"), ct)).Id;
         return result;
     }
 

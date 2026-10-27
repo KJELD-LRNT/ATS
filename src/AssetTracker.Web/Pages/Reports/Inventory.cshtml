@@ -13,13 +13,13 @@
 <nav class="view-switch" aria-label="Report view">
     @if (Model.ShowPools)
     {
-        <a asp-route-view="" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.Type">Tagged assets</a>
+        <a asp-route-view="" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.TypeId">Tagged assets</a>
         <span aria-current="page">Pool balances</span>
     }
     else
     {
         <span aria-current="page">Tagged assets</span>
-        <a asp-route-view="pools" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.Type">Pool balances</a>
+        <a asp-route-view="pools" asp-route-q="@Model.Q" asp-route-siteId="@Model.SiteId" asp-route-type="@Model.TypeId">Pool balances</a>
     }
 </nav>
 <form method="get" class="filters" role="search">
@@ -33,8 +33,8 @@
         <select name="siteId" asp-for="SiteId" asp-items="Model.Sites"><option value="">All</option></select>
     </div>
     <div class="field">
-        <label for="Type">Type</label>
-        <select name="type" asp-for="Type" asp-items="InventoryUi.EnumOptions<AssetType>()"><option value="">All</option></select>
+        <label for="TypeId">Type</label>
+        <select name="type" asp-for="TypeId" asp-items="Model.Types"><option value="">All</option></select>
     </div>
     @if (!Model.ShowPools)
     {

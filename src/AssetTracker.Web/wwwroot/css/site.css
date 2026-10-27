@@ -220,6 +220,7 @@ tbody tr:first-child td { border-top: 0; }
 tbody tr:hover td { background: #FAFBFC; }
 td.num, th.num { text-align: right; }
 td.actions-cell { text-align: right; white-space: nowrap; }
+td.actions-cell .inline-form { display: inline-flex; flex-wrap: nowrap; gap: 4px; margin-left: 4px; vertical-align: middle; }
 td.empty, .empty-row td { color: var(--ink-3); text-align: center; padding: 28px 20px; }
 .cell-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .cell-sub { color: var(--ink-3); font-size: 13px; }
@@ -452,6 +453,27 @@ tr.detail-row:hover td { background: transparent; }
 .picker-option:has(input:focus-visible) { outline: 3px solid var(--accent-ring); outline-offset: -1px; }
 .picker-option--inactive { color: var(--ink-3); }
 .picker-empty { padding: 14px 12px; color: var(--ink-3); font-size: 14px; }
+.picker-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.picker-site { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+
+/* Typeahead for people (checkout): suggestions appear under the input while typing. */
+.combo { position: relative; }
+.combo-list { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none;
+    background: var(--surface); border: 1px solid var(--field); border-radius: 8px; max-height: 340px; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(20, 32, 43, 0.14); }
+.combo-list[hidden] { display: none; }
+.combo-option { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--radius); min-height: 52px;
+    cursor: pointer; }
+.combo-option:hover, .combo-option[aria-selected="true"] { background: var(--accent-tint); }
+.combo-option[aria-selected="true"] { outline: 2px solid var(--accent-ring); outline-offset: -2px; }
+.combo-name { font-weight: 600; }
+.combo-meta { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.combo-empty { padding: 12px; color: var(--ink-3); font-size: 14px; }
+.combo-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--ink-2); }
+.combo-selected[hidden] { display: none; }
+
+/* Groups of checkboxes in admin forms. */
+.checks { display: flex; flex-wrap: wrap; gap: 0 24px; }
 
 /* ------------------------------------------------------------------ checkout summary */
 .summary { position: sticky; top: 20px; }

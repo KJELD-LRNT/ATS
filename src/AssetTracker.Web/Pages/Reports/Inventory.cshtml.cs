@@ -20,11 +20,11 @@ public class InventoryModel(ReportService reports, AccessScope access, AppDbCont
     public PagedResult<InventoryAssetRow>? Assets { get; private set; }
     public PagedResult<PoolBalanceRow>? Pools { get; private set; }
 
-    protected override ReportFilter Filter => new(Q, SiteId, Type, State, null, null, PageNumber);
+    protected override ReportFilter Filter => new(Q, SiteId, TypeId, State, null, null, PageNumber);
 
     public override Dictionary<string, object?> FilterValues => new()
     {
-        ["q"] = Q, ["siteId"] = SiteId, ["type"] = Type, ["state"] = State, ["view"] = ShowPools ? "pools" : null,
+        ["q"] = Q, ["siteId"] = SiteId, ["type"] = TypeId, ["state"] = State, ["view"] = ShowPools ? "pools" : null,
     };
 
     public PagerModel Pager => Pools is not null ? PagerFor(Pools) : PagerFor(Assets!);

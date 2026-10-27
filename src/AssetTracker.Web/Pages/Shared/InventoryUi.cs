@@ -30,6 +30,15 @@ public static class InventoryUi
             .Select(s => new SelectListItem($"{s.Key} – {s.Name}", s.Id.ToString())).ToList();
     }
 
+    /// <summary>Asset types for a dropdown. Filters list every type (so old items stay findable); forms list active ones only.</summary>
+    public static async Task<List<SelectListItem>> TypeOptionsAsync(AppDbContext db, InventoryMode? mode = null,
+        bool includeInactive = false, CancellationToken ct = default)
+    {
+        var types = await db.AssetTypes.AsNoTracking()
+            .Where(t => (mode == null || t.Mode == mode) && (includeInactive || t.IsActive)).OrderBy(t => t.Name).ToListAsync(ct);
+        return types.Select(t => new SelectListItem(t.IsActive ? t.Name : $"{t.Name} (inactive)", t.Id.ToString())).ToList();
+    }
+
     public static List<SelectListItem> EnumOptions<T>(IEnumerable<T>? only = null) where T : struct, Enum =>
         (only ?? Enum.GetValues<T>()).Select(v => new SelectListItem(v.ToString(), v.ToString())).ToList();
 
@@ -41,3 +50,6 @@ public static class InventoryUi
         _ => t.ToString(),
     };
 }
+
+/// <summary>Model of the <c>_FieldInputs</c> partial: a field, the values to show, and the form field name its inputs share.</summary>
+public sealed record FieldInputModel(AssetFieldDefinition Field, IReadOnlyList<string?> Values, string Name);

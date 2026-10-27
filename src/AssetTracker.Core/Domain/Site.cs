@@ -14,6 +14,9 @@ public class Site
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>Short code the tag generator puts where a type's pattern says <c>{SITE}</c> (e.g. "R" for Rotterdam).</summary>
+    public string? TagCode { get; set; }
+
     /// <summary>
     /// IANA or Windows timezone id for this site's calendar (due dates, overdue rule, reminder time).
     /// Null = the default timezone (<c>Clock:TimeZoneId</c>). See <c>SiteCalendar</c>.

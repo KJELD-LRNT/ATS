@@ -1,0 +1,73 @@
+@page
+@model AssetTracker.Web.Pages.Admin.TypesModel
+@using AssetTracker.Core.Domain
+@{
+    ViewData["Title"] = "Asset types";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Asset types</h1>
+        <div class="prose">
+            <p>A type decides how items are tracked and what their form asks for. <em>Tagged</em> types get an individual asset tag, standard fields you switch on or off (vendor and model, description, serial number, condition), a tag pattern for generated tags and any custom fields you add. <em>Quantity pool</em> types are counted per site and SKU.</p>
+            <p>Types are never deleted: deactivate one to hide it from new items. Existing items keep working.</p>
+        </div>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+
+<section class="card card--flush" aria-label="Asset types">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th scope="col">Name</th><th scope="col">Tracked as</th><th scope="col">Tag pattern</th><th scope="col">Custom fields</th><th scope="col">Active</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+            @foreach (var t in Model.Types)
+            {
+                <tr>
+                    <td>@t.Name</td>
+                    <td>@(t.Mode == InventoryMode.Tagged ? "Asset tag" : "Quantity pool")</td>
+                    <td class="mono">@(t.TagPattern ?? "–")</td>
+                    <td>@(t.Mode == InventoryMode.Tagged ? t.Fields.Count(f => f.IsActive).ToString() : "–")</td>
+                    <td>@(t.IsActive ? Ui.Pill("available", "Yes") : Ui.Pill("unavailable", "No"))</td>
+                    <td class="actions-cell"><a class="btn btn--sm" asp-page="/Admin/TypeEdit" asp-route-id="@t.Id">Edit</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<form method="post" class="card form-card" aria-labelledby="type-form-h">
+    <h2 id="type-form-h">New asset type</h2>
+    <div asp-validation-summary="All" class="alert alert--error"></div>
+    <div class="fields">
+        <div class="field"><label asp-for="Input.Name"></label> <input asp-for="Input.Name" maxlength="100" /></div>
+        <div class="field">
+            <label asp-for="Input.Mode"></label>
+            <select asp-for="Input.Mode">
+                <option value="@InventoryMode.Tagged">Asset tag (each item is tagged)</option>
+                <option value="@InventoryMode.Pooled">Quantity pool (counted per site and SKU)</option>
+            </select>
+            <small class="hint">Cannot be changed once the type is in use.</small>
+        </div>
+        <div class="field span-all">
+            <span class="field-label">Standard fields of a tagged asset</span>
+            <div class="checks">
+                <label class="check"><input asp-for="Input.UsesModel" /> Vendor and model</label>
+                <label class="check"><input asp-for="Input.UsesDescription" /> Description</label>
+                <label class="check"><input asp-for="Input.UsesSerialNumber" /> Serial number</label>
+                <label class="check"><input asp-for="Input.UsesCondition" /> Condition</label>
+            </div>
+            <small class="hint">Ignored for quantity pools. Custom fields are added after the type exists.</small>
+        </div>
+        <div class="field span-all">
+            <label asp-for="Input.TagPattern">Tag pattern <span class="optional">(optional)</span></label>
+            <input asp-for="Input.TagPattern" class="mono" maxlength="100" placeholder="{SITE}D{000}OMA" />
+            <small class="hint">Generates asset tags. <code>{SITE}</code> is the site's tag code, <code>{000}</code> a counter (zeros = minimum digits), the rest is literal: <code>{SITE}D{000}OMA</code> gives RD001OMA, RD002OMA ... for a site with code R. Empty = tags are typed by hand.</small>
+        </div>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn--primary">Create type</button></div>
+</form>

@@ -1,5 +1,6 @@
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace AssetTracker.Tests.Infrastructure;
 
@@ -51,11 +52,11 @@ public static class Seed
     }
 
     public static async Task<IndividualAsset> AssetAsync(AppDbContext db, string tag, Site site,
-        AssetType type = AssetType.Laptop, AssetState state = AssetState.Available)
+        int type = BuiltIn.Laptop, AssetState state = AssetState.Available)
     {
         var a = new IndividualAsset
         {
-            Tag = tag, Type = type, SiteId = site.Id, Description = $"{type} {tag}", State = state,
+            Tag = tag, TypeId = type, SiteId = site.Id, Description = $"Asset {tag}", State = state,
             CreatedAt = DateTimeOffset.UtcNow,
         };
         db.Assets.Add(a);
@@ -63,12 +64,34 @@ public static class Seed
         return a;
     }
 
+    /// <summary>
+    /// Stores a custom field value directly (for arranging tests), with the unique key the service would set when the
+    /// field is unique and the asset is not retired.
+    /// </summary>
+    public static async Task<AssetFieldValue> ValueAsync(AppDbContext db, IndividualAsset asset, int fieldId, string value,
+        int position = 0)
+    {
+        var field = await db.FieldDefinitions.AsNoTracking().SingleAsync(f => f.Id == fieldId);
+        var v = new AssetFieldValue
+        {
+            AssetId = asset.Id, FieldId = fieldId, Position = position, Value = value,
+            UniqueKey = asset.RetiredAt is null ? AssetTracker.Core.Inventory.FieldValueRules.UniqueKey(field, value) : null,
+        };
+        db.FieldValues.Add(v);
+        await db.SaveChangesAsync();
+        return v;
+    }
+
+    /// <summary>Custom field values for <c>CreateAssetInput</c>/<c>EditAssetInput</c>: field id → values.</summary>
+    public static IReadOnlyDictionary<int, IReadOnlyList<string?>> Fields(params (int FieldId, string?[] Values)[] fields) =>
+        fields.ToDictionary(f => f.FieldId, f => (IReadOnlyList<string?>)f.Values);
+
     public static async Task<Pool> PoolAsync(AppDbContext db, string sku, Site site, int available,
-        AssetType type = AssetType.Headset)
+        int type = BuiltIn.Headset)
     {
         var p = new Pool
         {
-            Sku = sku, Type = type, SiteId = site.Id, Description = sku, Available = available,
+            Sku = sku, TypeId = type, SiteId = site.Id, Description = sku, Available = available,
             CreatedAt = DateTimeOffset.UtcNow,
         };
         db.Pools.Add(p);

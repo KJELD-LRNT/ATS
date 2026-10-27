@@ -1,0 +1,51 @@
+@* One custom field of an asset type as form inputs: a single input, or one per value for multi-value fields (two IMEIs). *@
+@using AssetTracker.Core.Domain
+@using AssetTracker.Core.Inventory
+@model AssetTracker.Web.Pages.Shared.FieldInputModel
+@{
+    var f = Model.Field;
+    var slots = Math.Max(1, f.MaxValues);
+    var options = f.Kind == FieldKind.Choice ? FieldValueRules.OptionList(f) : [];
+}
+@for (var i = 0; i < slots; i++)
+{
+    var id = $"fld-{f.Id}-{i}";
+    var value = i < Model.Values.Count ? Model.Values[i] : null;
+    var label = i == 0 ? f.Name : $"{f.Name} {i + 1}";
+    <div class="field">
+        <label for="@id">@label@if (f.IsSensitive) { <span class="optional"> (IT only)</span> }@if (!f.IsRequired || i > 0) { <span class="optional"> (optional)</span> }</label>
+        @switch (f.Kind)
+        {
+            case FieldKind.Choice:
+                <select id="@id" name="@Model.Name">
+                    <option value="">–</option>
+                    @* A stored value that is no longer an option stays selectable until it is changed. *@
+                    @if (!string.IsNullOrEmpty(value) && !options.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    {
+                        <option value="@value" selected>@value</option>
+                    }
+                    @foreach (var o in options)
+                    {
+                        <option value="@o" selected="@string.Equals(o, value, StringComparison.OrdinalIgnoreCase)">@o</option>
+                    }
+                </select>
+                break;
+            case FieldKind.Date:
+                <input id="@id" name="@Model.Name" type="date" value="@value" />
+                break;
+            case FieldKind.Number:
+                <input id="@id" name="@Model.Name" inputmode="decimal" value="@value" class="mono" />
+                break;
+            case FieldKind.PhoneNumber:
+                <input id="@id" name="@Model.Name" type="tel" value="@value" placeholder="+31 6 1234 5678" class="mono" />
+                if (i == 0) { <span class="hint">With country code (+ or 00).</span> }
+                break;
+            case FieldKind.Imei:
+                <input id="@id" name="@Model.Name" inputmode="numeric" value="@value" placeholder="15 digits" class="mono" autocomplete="off" />
+                break;
+            default:
+                <input id="@id" name="@Model.Name" value="@value" maxlength="@FieldValueRules.ValueMaxLength" autocomplete="off" />
+                break;
+        }
+    </div>
+}

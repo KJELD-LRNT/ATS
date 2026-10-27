@@ -22,7 +22,7 @@
             <h1 class="title-mono">@a.Tag</h1>
             @Ui.Pill(a.State)
         </div>
-        <p class="title-meta">@a.Type · @a.Description · at <strong>@a.Site?.Key – @a.Site?.Name</strong></p>
+        <p class="title-meta">@a.Type@(string.IsNullOrEmpty(a.Title) ? "" : $" · {a.Title}")@(a.Model is not null && !string.IsNullOrEmpty(a.Description) ? $" · {a.Description}" : "") · at <strong>@a.Site?.Key – @a.Site?.Name</strong></p>
     </div>
     @if (Model.CanEdit)
     {
@@ -75,16 +75,29 @@
                 <div><dt>State</dt><dd>@Ui.Label(a.State)@(a.RetiredAt is { } r ? $" (retired {r:yyyy-MM-dd})" : "")</dd></div>
                 <div><dt>Type</dt><dd>@a.Type</dd></div>
                 <div><dt>Site</dt><dd>@a.Site?.Key – @a.Site?.Name</dd></div>
-                <div><dt>Condition</dt><dd>@(string.IsNullOrEmpty(a.Condition) ? "—" : a.Condition)</dd></div>
-                <div class="span-all"><dt>Description</dt><dd>@a.Description</dd></div>
-                <div><dt>Serial number</dt><dd class="mono">@(string.IsNullOrEmpty(a.SerialNumber) ? "—" : a.SerialNumber)</dd></div>
-                @if (a.Type is AssetType.Phone or AssetType.PhoneNumber)
+                @if (a.Type?.UsesModel == true || a.Model is not null)
                 {
-                    <div><dt>Phone number</dt><dd class="mono">@a.PhoneNumber</dd></div>
+                    <div><dt>Vendor</dt><dd>@(a.Model?.Vendor?.Name ?? a.Vendor?.Name ?? "—")</dd></div>
+                    <div><dt>Model</dt><dd>@(a.Model?.Name ?? "—")</dd></div>
                 }
-                @if (a.Type == AssetType.Phone)
+                @if (a.Type?.UsesCondition == true || !string.IsNullOrEmpty(a.Condition))
                 {
-                    <div><dt>IMEI</dt><dd class="mono">@a.Imei</dd></div>
+                    <div><dt>Condition</dt><dd>@(string.IsNullOrEmpty(a.Condition) ? "—" : a.Condition)</dd></div>
+                }
+                @if (a.Type?.UsesDescription == true || !string.IsNullOrEmpty(a.Description))
+                {
+                    <div class="span-all"><dt>Description</dt><dd>@(string.IsNullOrEmpty(a.Description) ? "—" : a.Description)</dd></div>
+                }
+                @if (a.Type?.UsesSerialNumber == true || !string.IsNullOrEmpty(a.SerialNumber))
+                {
+                    <div><dt>Serial number</dt><dd class="mono">@(string.IsNullOrEmpty(a.SerialNumber) ? "—" : a.SerialNumber)</dd></div>
+                }
+                @foreach (var f in a.FieldDisplays().Where(f => !f.Field.IsSensitive || Model.CanEdit))
+                {
+                    <div>
+                        <dt>@f.Field.Name@(f.Field.IsSensitive ? " (IT only)" : "")</dt>
+                        <dd class="mono">@(f.Values.Count == 0 ? "—" : string.Join(", ", f.Values))</dd>
+                    </div>
                 }
                 <div><dt>Created</dt><dd>@a.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</dd></div>
                 <div><dt>Internal ID</dt><dd class="mono">#@a.Id</dd></div>

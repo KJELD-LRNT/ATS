@@ -16,7 +16,7 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
 {
     public class InputModel
     {
-        public AssetType Type { get; set; } = AssetType.Headset;
+        public int TypeId { get; set; }
         public string? Sku { get; set; }
         public int SiteId { get; set; }
         public string? Description { get; set; }
@@ -26,10 +26,17 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
 
     [BindProperty] public InputModel Input { get; set; } = new();
     public List<SelectListItem> Sites { get; private set; } = [];
+    public List<SelectListItem> Types { get; private set; } = [];
 
     [TempData] public string? Message { get; set; }
 
-    public async Task OnGetAsync(CancellationToken ct) => Sites = await InventoryUi.SiteOptionsAsync(db, ct: ct);
+    public Task OnGetAsync(CancellationToken ct) => LoadAsync(ct);
+
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        Sites = await InventoryUi.SiteOptionsAsync(db, ct: ct);
+        Types = await InventoryUi.TypeOptionsAsync(db, InventoryMode.Pooled, ct: ct);
+    }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
@@ -37,7 +44,7 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
         {
             try
             {
-                var pool = await pools.CreateAsync(new CreatePoolInput(Input.Type, Input.Sku ?? "", Input.SiteId,
+                var pool = await pools.CreateAsync(new CreatePoolInput(Input.TypeId, Input.Sku ?? "", Input.SiteId,
                     Input.Description ?? "", Input.InitialQuantity, Input.Reason), ct);
                 Message = $"Pool {pool.Sku} created.";
                 return RedirectToPage("Details", new { id = pool.Id });
@@ -47,7 +54,7 @@ public class CreateModel(PoolService pools, AppDbContext db) : PageModel
                 ModelState.AddModelError("", ex.Message);
             }
         }
-        Sites = await InventoryUi.SiteOptionsAsync(db, ct: ct);
+        await LoadAsync(ct);
         return Page();
     }
 }

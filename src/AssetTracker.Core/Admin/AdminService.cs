@@ -5,6 +5,7 @@ using AssetTracker.Core.Common;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Domain;
+using AssetTracker.Core.Inventory;
 using AssetTracker.Core.Security;
 using AssetTracker.Core.Time;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +54,7 @@ public partial class AdminService(
 
     /// <param name="timeZoneId">IANA or Windows timezone id; empty = the default timezone (<c>Clock:TimeZoneId</c>).</param>
     public async Task<Site> CreateSiteAsync(string key, string name, string? directoryValue, bool isActive,
-        string? timeZoneId = null, CancellationToken ct = default)
+        string? timeZoneId = null, string? tagCode = null, CancellationToken ct = default)
     {
         scope.EnsureAdmin();
         key = (key ?? "").Trim();
@@ -62,6 +63,8 @@ public partial class AdminService(
         name = RequireName(name);
         directoryValue = CleanDirectoryValue(directoryValue);
         timeZoneId = CleanTimeZoneId(timeZoneId);
+        tagCode = TagPattern.NormalizeSiteCode(tagCode);
+        await EnsureTagCodeFreeAsync(tagCode, null, ct);
 
         var keys = await db.Sites.Select(s => s.Key).ToListAsync(ct);
         if (keys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
@@ -73,11 +76,12 @@ public partial class AdminService(
         var site = new Site
         {
             Key = key, Name = name, DirectoryValue = directoryValue, IsActive = isActive, TimeZoneId = timeZoneId,
+            TagCode = tagCode,
         };
         db.Sites.Add(site);
         await db.SaveChangesAsync(ct);
         audit.Record("site.create", nameof(Site), site.Id, site.Id,
-            details: new { site.Key, site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId });
+            details: new { site.Key, site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId, site.TagCode });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return site;
@@ -86,9 +90,10 @@ public partial class AdminService(
     /// <summary>
     /// Updates name, AD mapping, active flag and timezone. The key is immutable once created.
     /// <paramref name="timeZoneId"/> empty/null = use the default timezone (<c>Clock:TimeZoneId</c>).
+    /// <paramref name="tagCode"/> is what the tag generator puts where a type's pattern says <c>{SITE}</c>; empty = none.
     /// </summary>
     public async Task<Site> UpdateSiteAsync(int id, string name, string? directoryValue, bool isActive,
-        string? timeZoneId = null, CancellationToken ct = default)
+        string? timeZoneId = null, string? tagCode = null, CancellationToken ct = default)
     {
         scope.EnsureAdmin();
         var site = await db.Sites.SingleOrDefaultAsync(s => s.Id == id, ct)
@@ -96,17 +101,29 @@ public partial class AdminService(
         name = RequireName(name);
         directoryValue = CleanDirectoryValue(directoryValue);
         timeZoneId = CleanTimeZoneId(timeZoneId);
+        tagCode = TagPattern.NormalizeSiteCode(tagCode);
         await EnsureDirectoryValueFreeAsync(directoryValue, id, ct);
+        await EnsureTagCodeFreeAsync(tagCode, id, ct);
 
-        var before = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId };
+        var before = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId, site.TagCode };
         site.Name = name;
         site.DirectoryValue = directoryValue;
         site.IsActive = isActive;
         site.TimeZoneId = timeZoneId;
+        site.TagCode = tagCode;
         audit.Record("site.update", nameof(Site), site.Id, site.Id,
-            details: new { before, after = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId } });
+            details: new { before, after = new { site.Name, site.DirectoryValue, site.IsActive, site.TimeZoneId, site.TagCode } });
         await db.SaveChangesAsync(ct);
         return site;
+    }
+
+    /// <summary>Two sites sharing a tag code would hand out look-alike tags, so a code belongs to one site.</summary>
+    private async Task EnsureTagCodeFreeAsync(string? tagCode, int? exceptSiteId, CancellationToken ct)
+    {
+        if (tagCode is null) return;
+        var codes = await db.Sites.Where(s => s.Id != exceptSiteId && s.TagCode != null).Select(s => s.TagCode!).ToListAsync(ct);
+        if (codes.Any(c => string.Equals(c, tagCode, StringComparison.OrdinalIgnoreCase)))
+            throw new ConflictException("site.tag_code_taken", $"Tag code '{tagCode}' is already used by another site.");
     }
 
     private static string RequireName(string name)

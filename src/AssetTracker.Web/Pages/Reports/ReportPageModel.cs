@@ -21,24 +21,27 @@ public abstract class ReportPageModel(AccessScope access, AppDbContext db) : Pag
 {
     [BindProperty(SupportsGet = true)] public string? Q { get; set; }
     [BindProperty(SupportsGet = true)] public int? SiteId { get; set; }
-    [BindProperty(SupportsGet = true)] public AssetType? Type { get; set; }
+    [BindProperty(SupportsGet = true, Name = "type")] public int? TypeId { get; set; }
     [BindProperty(SupportsGet = true)] public DateOnly? From { get; set; }
     [BindProperty(SupportsGet = true)] public DateOnly? To { get; set; }
     [BindProperty(SupportsGet = true, Name = "p")] public int PageNumber { get; set; } = 1;
 
     public List<SelectListItem> Sites { get; private set; } = [];
 
+    /// <summary>Every asset type (also inactive ones, whose items still show up in reports), tagged and pooled.</summary>
+    public List<SelectListItem> Types { get; private set; } = [];
+
     /// <summary>Label of the date range filter, or null when the report has none.</summary>
     public virtual string? DateRangeLabel => null;
 
     public virtual string SearchPlaceholder => "Holder, username, email, tag or SKU";
 
-    protected virtual ReportFilter Filter => new(Q, SiteId, Type, null, From, To, PageNumber);
+    protected virtual ReportFilter Filter => new(Q, SiteId, TypeId, null, From, To, PageNumber);
 
     /// <summary>Current filters as query-string values (paging excluded).</summary>
     public virtual Dictionary<string, object?> FilterValues => new()
     {
-        ["q"] = Q, ["siteId"] = SiteId, ["type"] = Type,
+        ["q"] = Q, ["siteId"] = SiteId, ["type"] = TypeId,
         ["from"] = From?.ToString("yyyy-MM-dd"), ["to"] = To?.ToString("yyyy-MM-dd"),
     };
 
@@ -53,8 +56,11 @@ public abstract class ReportPageModel(AccessScope access, AppDbContext db) : Pag
 
     protected PagerModel PagerFor<T>(PagedResult<T> r) => PagerModel.From(r, FilterValues);
 
-    protected async Task LoadSitesAsync(CancellationToken ct) =>
+    protected async Task LoadSitesAsync(CancellationToken ct)
+    {
         Sites = await InventoryUi.SiteOptionsAsync(db, await access.GetAsync(ct), ct);
+        Types = await InventoryUi.TypeOptionsAsync(db, includeInactive: true, ct: ct);
+    }
 
     protected FileContentResult Csv(CsvExport export) => File(export.Content, CsvExport.ContentType, export.FileName);
 }
