@@ -58,25 +58,36 @@ public class AssetService(AppDbContext db, AccessScope access, AuditWriter audit
         if (s.State is { } state) q = q.Where(a => a.State == state);
 
         var term = s.Query?.Trim();
-        if (!string.IsNullOrEmpty(term))
-        {
-            var pattern = Paging.ContainsPattern(term);
-            var digits = new string(term.Where(char.IsAsciiDigit).ToArray());
-            // Phone numbers and IMEIs are stored as digits, so match on the digits typed regardless of formatting.
-            var digitPattern = digits.Length >= 3 ? Paging.ContainsPattern(digits) : null;
-            q = q.Where(a =>
-                EF.Functions.Like(a.Tag, pattern, @"\") ||
-                EF.Functions.Like(a.Description, pattern, @"\") ||
-                (a.SerialNumber != null && EF.Functions.Like(a.SerialNumber, pattern, @"\")) ||
-                (a.Model != null && (EF.Functions.Like(a.Model.Name, pattern, @"\") || EF.Functions.Like(a.Model.Vendor!.Name, pattern, @"\"))) ||
-                (a.Vendor != null && EF.Functions.Like(a.Vendor.Name, pattern, @"\")) ||
-                a.Values.Any(v => (sensitive || !v.Field!.IsSensitive) &&
-                    (EF.Functions.Like(v.Value, pattern, @"\") ||
-                     (digitPattern != null && (v.Field!.Kind == FieldKind.Imei || v.Field.Kind == FieldKind.PhoneNumber) &&
-                      EF.Functions.Like(v.Value, digitPattern, @"\")))));
-        }
+        if (!string.IsNullOrEmpty(term)) q = MatchingTerm(q, term, sensitive);
 
         return await WithDetails(q).OrderBy(a => a.Tag).ToPageAsync(s.Page, s.PageSize, ct);
+    }
+
+    /// <summary>
+    /// Assets matching a typed search term: tag, description, serial number, vendor and model names and the value of any
+    /// custom field (phone numbers and IMEIs also by the digits typed, whatever the formatting). Sensitive field values
+    /// only count when <paramref name="includeSensitive"/> is set, so searching cannot reveal them. Shared by the asset
+    /// list and the check-out item finder.
+    /// </summary>
+    internal static IQueryable<IndividualAsset> MatchingTerm(IQueryable<IndividualAsset> q, string term, bool includeSensitive)
+    {
+        var pattern = Paging.ContainsPattern(term);
+        var digits = new string(term.Where(char.IsAsciiDigit).ToArray());
+        // Phone numbers and IMEIs are stored as digits, so a term that looks like a number ("+31 6 1234 5678", "35-999...")
+        // also matches on the digits typed, whatever the formatting. A tag such as "AMS-LT-001" does not: its "001" must not
+        // find every phone number containing it.
+        var looksLikeNumber = term.All(c => char.IsAsciiDigit(c) || c is ' ' or '+' or '-' or '(' or ')' or '.' or '/');
+        var digitPattern = looksLikeNumber && digits.Length >= 3 ? Paging.ContainsPattern(digits) : null;
+        return q.Where(a =>
+            EF.Functions.Like(a.Tag, pattern, @"\") ||
+            EF.Functions.Like(a.Description, pattern, @"\") ||
+            (a.SerialNumber != null && EF.Functions.Like(a.SerialNumber, pattern, @"\")) ||
+            (a.Model != null && (EF.Functions.Like(a.Model.Name, pattern, @"\") || EF.Functions.Like(a.Model.Vendor!.Name, pattern, @"\"))) ||
+            (a.Vendor != null && EF.Functions.Like(a.Vendor.Name, pattern, @"\")) ||
+            a.Values.Any(v => (includeSensitive || !v.Field!.IsSensitive) &&
+                (EF.Functions.Like(v.Value, pattern, @"\") ||
+                 (digitPattern != null && (v.Field!.Kind == FieldKind.Imei || v.Field.Kind == FieldKind.PhoneNumber) &&
+                  EF.Functions.Like(v.Value, digitPattern, @"\")))));
     }
 
     /// <summary>Returns the asset if visible to the current principal; otherwise <see cref="AccessDeniedException"/> (404).</summary>

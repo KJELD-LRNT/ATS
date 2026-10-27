@@ -3,8 +3,8 @@
 @{
     ViewData["Title"] = "Check out";
     var hasTarget = Model.TargetError is null && (Model.Asset is not null || Model.Pool is not null);
-    // Initial segment: pool when a pool is chosen (and no tag), otherwise tagged asset.
-    var poolMode = Model.Asset is null && string.IsNullOrEmpty(Model.Tag) && (Model.Pool is not null || Model.PoolId is not null);
+    // What the finder box shows: the chosen item's tag or SKU, else the text that was typed.
+    var itemText = Model.Asset?.Tag ?? Model.Pool?.Sku ?? Model.Tag;
     var itemSiteKey = Model.Asset?.Site?.Key ?? Model.Pool?.Site?.Key;
     var staleText ="The people directory snapshot is stale. Checkout is still allowed, but recently disabled accounts may still appear active. The stale state is recorded on the loan and in the audit log.";
 }
@@ -22,31 +22,38 @@
             <h2 id="find-h" class="visually-hidden">Find item and person</h2>
             <fieldset>
                 <legend><span class="step-number">1.</span> What is being lent?</legend>
-                <div class="segmented" role="radiogroup" aria-label="Inventory type" data-segmented hidden>
-                    <button type="button" role="radio" aria-checked="@(poolMode ? "false" : "true")" data-segment="tag">Tagged asset</button>
-                    <button type="button" role="radio" aria-checked="@(poolMode ? "true" : "false")" data-segment="pool">Pool (quantity)</button>
-                </div>
-                <div class="search-row" data-segment-panel="tag">
-                    <div class="field field--grow">
-                        <label for="f-tag">Asset tag</label>
-                        <input id="f-tag" name="tag" value="@(Model.Asset?.Tag ?? Model.Tag)" placeholder="Tagged asset, e.g. AMS-LT-012" class="mono" />
-                    </div>
-                </div>
-                <p class="hint" data-segment-or>or</p>
-                <div class="search-row" data-segment-panel="pool">
-                    <div class="field field--grow">
-                        <label for="f-pool">Pool</label>
-                        <select id="f-pool" name="poolId" asp-items="Model.Pools"><option value="">–</option></select>
+                <div class="search-row">
+                    <div class="field field--grow combo" data-item-lookup data-url="@Url.Page("Checkout", "Items")" data-min="@CheckoutModel.MinSearchLength">
+                        <label for="f-tag">Item</label>
+                        <input id="f-tag" name="tag" value="@itemText" type="search" placeholder="Tag, model, serial number, phone number or IMEI"
+                               autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="item-list" aria-describedby="item-hint" />
+                        @* Set by the finder when an item is picked (enabled only then, so without JavaScript just the text is searched). *@
+                        <input type="hidden" name="assetId" value="@Model.Asset?.Id" data-item-asset disabled />
+                        <input type="hidden" name="poolId" value="@Model.Pool?.Id" data-item-pool disabled />
+                        <ul id="item-list" class="combo-list" role="listbox" aria-label="Matching items" hidden></ul>
                     </div>
                     <div class="field field--auto">
-                        <label for="f-qty">Quantity</label>
-                        <div class="stepper stepper--sm" data-stepper>
-                            <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
-                            <input id="f-qty" name="quantity" type="number" min="1" value="@Model.Quantity" data-sync="quantity" />
-                            <button type="button" aria-label="Increase quantity" data-step="1">+</button>
-                        </div>
+                        <label for="f-type">Type</label>
+                        <select id="f-type" name="type" data-item-type>
+                            <option value="">All types</option>
+                            @foreach (var t in Model.Types)
+                            {
+                                <option value="@t.Value" selected="@(t.Value == Model.FilterType?.ToString())">@t.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field field--auto">
+                        <label for="f-site">Site</label>
+                        <select id="f-site" name="site" data-item-site>
+                            <option value="">All sites</option>
+                            @foreach (var s in Model.Sites)
+                            {
+                                <option value="@s.Value" selected="@(s.Value == Model.FilterSite?.ToString())">@s.Text</option>
+                            }
+                        </select>
                     </div>
                 </div>
+                <span class="hint" id="item-hint">Scan or type a tag and press Enter, or search by model, serial number, phone number or IMEI. Click the box with nothing typed to browse what is available; quantity items such as headsets are in the same list. Picking a person sets the site filter to theirs.</span>
             </fieldset>
             <fieldset>
                 <legend><span class="step-number">2.</span> Who receives it?</legend>
@@ -68,6 +75,41 @@
         @if (Model.TargetError is not null)
         {
             <div class="alert alert--error" role="alert">@Ui.Icon("error", 18, 2)<div class="alert-body">@Model.TargetError</div></div>
+        }
+        else if (Model.Matches.Count > 0)
+        {
+            <section class="card card--flush" aria-labelledby="matches-h">
+                <div class="card-header">
+                    <h2 id="matches-h">Several items match “@Model.Tag”</h2>
+                    <span class="card-note">Choose one to continue.</span>
+                </div>
+                <ul class="picker">
+                    @foreach (var m in Model.Matches)
+                    {
+                        <li>
+                            @if (m.CanCheckOut)
+                            {
+                                <a class="picker-option" asp-page="Checkout" asp-route-assetId="@(m.Kind == "asset" ? m.Id : null)" asp-route-poolId="@(m.Kind == "pool" ? m.Id : null)"
+                                   asp-route-who="@Model.Who" asp-route-holderId="@Model.HolderId" asp-route-type="@Model.FilterType" asp-route-site="@Model.FilterSite">
+                                    <span class="picker-text">
+                                        <span class="picker-name"><span class="mono">@m.Key</span> <span class="badge badge--info">@m.SiteKey</span> <span class="badge">@m.Status</span></span>
+                                        <span class="picker-meta">@string.Join(" · ", new[] { m.Title, m.Type, m.Description }.Where(x => !string.IsNullOrEmpty(x)))</span>
+                                    </span>
+                                </a>
+                            }
+                            else
+                            {
+                                <div class="picker-option picker-option--inactive" aria-disabled="true">
+                                    <span class="picker-text">
+                                        <span class="picker-name"><span class="mono">@m.Key</span> <span class="badge badge--info">@m.SiteKey</span> <span class="badge badge--muted">@m.Status@(m.Holder is null ? "" : $" to {m.Holder}")</span></span>
+                                        <span class="picker-meta">@string.Join(" · ", new[] { m.Title, m.Type, m.Description }.Where(x => !string.IsNullOrEmpty(x)))</span>
+                                    </span>
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            </section>
         }
         else if (hasTarget)
         {
@@ -167,7 +209,7 @@
                         <label for="qty">Quantity</label>
                         <div class="stepper" data-stepper>
                             <button type="button" aria-label="Decrease quantity" data-step="-1">−</button>
-                            <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required form="checkout-confirm" aria-describedby="qty-hint" data-sync="quantity" />
+                            <input id="qty" name="Input.Quantity" type="number" min="1" max="@p.Available" value="@Model.Quantity" required form="checkout-confirm" aria-describedby="qty-hint" />
                             <button type="button" aria-label="Increase quantity" data-step="1">+</button>
                         </div>
                         <span class="hint" id="qty-hint"><strong>@p.Available</strong> available · @p.Outstanding out · @p.OnHand on hand</span>

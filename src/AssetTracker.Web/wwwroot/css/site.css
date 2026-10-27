@@ -408,15 +408,6 @@ fieldset + fieldset { border-top: 1px solid var(--line-soft); padding-top: 22px;
 .inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .inline-form input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), .inline-form select { width: auto; min-width: 180px; flex: 1 1 180px; }
 
-/* ------------------------------------------------------------------ segmented control */
-.segmented { display: inline-flex; align-self: flex-start; background: var(--line-soft); border-radius: 8px; padding: 4px;
-    gap: 4px; }
-.segmented button { font-size: 14px; font-weight: 400; color: var(--ink-2); background: transparent; border: 0;
-    border-radius: var(--radius); padding: 0 16px; min-height: 38px; }
-.segmented button:hover { background: rgba(255, 255, 255, 0.6); color: var(--ink); }
-.segmented button[aria-checked="true"] { font-weight: 600; color: var(--ink); background: var(--surface);
-    box-shadow: 0 1px 2px rgba(20, 32, 43, 0.12); }
-
 /* ------------------------------------------------------------------ quantity stepper */
 .stepper { display: inline-flex; align-items: stretch; border: 2px solid var(--accent); border-radius: 8px; overflow: hidden;
     background: var(--surface); align-self: flex-start; }
@@ -466,6 +457,9 @@ tr.detail-row:hover td { background: transparent; }
     cursor: pointer; }
 .combo-option:hover, .combo-option[aria-selected="true"] { background: var(--accent-tint); }
 .combo-option[aria-selected="true"] { outline: 2px solid var(--accent-ring); outline-offset: -2px; }
+.combo-option--disabled { color: var(--ink-3); cursor: not-allowed; }
+.combo-option--disabled:hover { background: transparent; }
+.combo-option--disabled .combo-name { font-weight: 500; }
 .combo-name { font-weight: 600; }
 .combo-meta { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
 .combo-empty { padding: 12px; color: var(--ink-3); font-size: 14px; }

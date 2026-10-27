@@ -25,7 +25,16 @@ public sealed record ReturnResult(Loan Loan, LoanEvent Event, bool FullyReturned
 
 /// <summary>A person row for the IT-only holder picker.</summary>
 public sealed record PersonOption(int Id, string DisplayName, string Username, string? Email, bool IsActive,
-    string? SiteKey, bool CanReceiveNewLoan, string? SiteName = null, string? JobTitle = null);
+    string? SiteKey, bool CanReceiveNewLoan, string? SiteName = null, string? JobTitle = null, int? SiteId = null);
+
+/// <summary>
+/// An item the check-out finder offers: a tagged asset (<see cref="Kind"/> "asset", <see cref="Key"/> its tag) or a
+/// quantity pool ("pool", its SKU). <see cref="CanCheckOut"/> is false for an asset that is checked out or unavailable
+/// (<see cref="Holder"/> names who has it) and for a pool with nothing available (<see cref="Available"/> is the count).
+/// </summary>
+public sealed record ItemOption(
+    string Kind, int Id, string Key, string Type, int TypeId, string? Title, string? Description,
+    int SiteId, string SiteKey, string SiteName, bool CanCheckOut, string Status, string? Holder = null, int? Available = null);
 
 /// <summary>
 /// Checkout and return of tagged assets and pool quantities (WP2.1). IT only. Each operation runs in one explicit
@@ -59,14 +68,91 @@ public class LendingService(
             .Select(p => new
             {
                 p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.JobTitle,
-                SiteKey = p.Site != null ? p.Site.Key : null, SiteName = p.Site != null ? p.Site.Name : null,
+                SiteKey = p.Site != null ? p.Site.Key : null, SiteName = p.Site != null ? p.Site.Name : null, p.SiteId,
             })
             .ToListAsync(ct);
         return people
             .Select(p => new PersonOption(p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.SiteKey,
-                p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle))
+                p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle, p.SiteId))
             .Where(p => !eligibleOnly || p.CanReceiveNewLoan)
             .Take(Math.Clamp(take, 1, 100)).ToList();
+    }
+
+    /// <summary>
+    /// IT-only finder for the check-out page: tagged assets and quantity pools in one list. A term matches like the asset
+    /// search (tag, model, vendor, serial number, description, phone numbers, IMEIs ...) and pools by SKU, description and
+    /// type. Without a term only items that can be lent are listed (the "what is on the shelf" view); with one, items
+    /// that cannot be lent are listed too, after the ones that can, so IT sees why. An exact tag or SKU comes first.
+    /// Retired assets are never offered. Results are limited to <paramref name="take"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<ItemOption>> SearchItemsAsync(string? term, int? typeId = null, int? siteId = null,
+        int take = 10, CancellationToken ct = default)
+    {
+        access.EnsureIt();
+        take = Math.Clamp(take, 1, 50);
+        var t = term?.Trim();
+        var browse = string.IsNullOrEmpty(t);
+        var code = Normalization.Code(t);
+
+        var assets = db.Assets.AsNoTracking().Where(a => a.State != AssetState.Retired);
+        var pools = db.Pools.AsNoTracking();
+        if (typeId is { } type)
+        {
+            assets = assets.Where(a => a.TypeId == type);
+            pools = pools.Where(p => p.TypeId == type);
+        }
+        if (siteId is { } site)
+        {
+            assets = assets.Where(a => a.SiteId == site);
+            pools = pools.Where(p => p.SiteId == site);
+        }
+        if (browse)
+        {
+            assets = assets.Where(a => a.State == AssetState.Available);
+            pools = pools.Where(p => p.Available > 0);
+        }
+        else
+        {
+            assets = AssetService.MatchingTerm(assets, t!, access.CanSeeSensitiveFields);
+            var pattern = Paging.ContainsPattern(t!);
+            pools = pools.Where(p => EF.Functions.Like(p.Sku, pattern, @"\") ||
+                                     EF.Functions.Like(p.Description, pattern, @"\") ||
+                                     EF.Functions.Like(p.Type!.Name, pattern, @"\"));
+        }
+
+        var assetRows = await assets
+            .OrderBy(a => a.Tag == code ? 0 : 1).ThenBy(a => a.State == AssetState.Available ? 0 : 1).ThenBy(a => a.Tag)
+            .Take(take)
+            .Select(a => new
+            {
+                a.Id, a.Tag, a.TypeId, Type = a.Type!.Name, a.Description, a.State, a.SiteId,
+                SiteKey = a.Site!.Key, SiteName = a.Site.Name,
+                Title = a.Model != null ? a.Model.Vendor!.Name + " " + a.Model.Name : (a.Vendor != null ? a.Vendor.Name : null),
+                Holder = db.Loans.Where(l => l.AssetId == a.Id && l.ClosedAt == null).Select(l => l.HolderNameSnapshot).FirstOrDefault(),
+            }).ToListAsync(ct);
+        var poolRows = await pools
+            .OrderBy(p => p.Sku == code ? 0 : 1).ThenBy(p => p.Available > 0 ? 0 : 1).ThenBy(p => p.Sku)
+            .Take(take)
+            .Select(p => new
+            {
+                p.Id, p.Sku, p.TypeId, Type = p.Type!.Name, p.Description, p.Available, p.SiteId,
+                SiteKey = p.Site!.Key, SiteName = p.Site.Name,
+            }).ToListAsync(ct);
+
+        var items = assetRows.Select(a => new ItemOption("asset", a.Id, a.Tag, a.Type, a.TypeId, a.Title,
+                string.IsNullOrWhiteSpace(a.Description) ? null : a.Description, a.SiteId, a.SiteKey, a.SiteName,
+                a.State == AssetState.Available, a.State == AssetState.CheckedOut ? "Checked out" : a.State.ToString(),
+                a.State == AssetState.CheckedOut ? a.Holder : null))
+            .Concat(poolRows.Select(p => new ItemOption("pool", p.Id, p.Sku, p.Type, p.TypeId, null,
+                string.IsNullOrWhiteSpace(p.Description) ? null : p.Description, p.SiteId, p.SiteKey, p.SiteName,
+                p.Available > 0, p.Available > 0 ? $"{p.Available} available" : "None available", Available: p.Available)));
+
+        return items
+            .OrderBy(i => string.Equals(i.Key, code, StringComparison.Ordinal) ? 0 : 1)
+            .ThenBy(i => i.CanCheckOut ? 0 : 1)
+            .ThenBy(i => i.Kind == "asset" ? 0 : 1)
+            .ThenBy(i => i.Key, StringComparer.Ordinal)
+            .Take(take).ToList();
     }
 
     /// <summary>IT-only lookup of one person (any state) for pickers; null when unknown.</summary>
@@ -77,11 +163,11 @@ public class LendingService(
             .Select(x => new
             {
                 x.Id, x.DisplayName, x.Username, x.Email, x.IsActive, x.JobTitle,
-                SiteKey = x.Site != null ? x.Site.Key : null, SiteName = x.Site != null ? x.Site.Name : null,
+                SiteKey = x.Site != null ? x.Site.Key : null, SiteName = x.Site != null ? x.Site.Name : null, x.SiteId,
             })
             .FirstOrDefaultAsync(ct);
         return p is null ? null : new PersonOption(p.Id, p.DisplayName, p.Username, p.Email, p.IsActive, p.SiteKey,
-            p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle);
+            p.IsActive && EmailAddresses.IsValid(p.Email), p.SiteName, p.JobTitle, p.SiteId);
     }
 
     /// <summary>Whether the directory snapshot is currently stale (for the checkout warning banner).</summary>
