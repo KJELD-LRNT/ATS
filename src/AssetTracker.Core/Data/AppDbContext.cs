@@ -27,7 +27,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
     public DbSet<Floor> Floors => Set<Floor>();
     public DbSet<Workspot> Workspots => Set<Workspot>();
-    public DbSet<FloorTeam> FloorTeams => Set<FloorTeam>();
+    public DbSet<FloorZone> FloorZones => Set<FloorZone>();
     public DbSet<WorkspotAssignment> WorkspotAssignments => Set<WorkspotAssignment>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<NotificationOutbox> Outbox => Set<NotificationOutbox>();
@@ -205,16 +205,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.TableId).HasMaxLength(100);
             e.HasIndex(x => new { x.FloorId, x.ElementId }).IsUnique();
             e.HasIndex(x => new { x.FloorId, x.Label });
-            e.HasIndex(x => x.TeamId);
+            e.HasIndex(x => x.ZoneId);
             e.HasOne(x => x.Floor).WithMany(f => f.Workspots).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Team).WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Zone).WithMany().HasForeignKey(x => x.ZoneId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        b.Entity<FloorTeam>(e =>
+        b.Entity<FloorZone>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(100);
             e.HasIndex(x => new { x.FloorId, x.Name }).IsUnique();
-            e.HasOne(x => x.Floor).WithMany(f => f.Teams).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Floor).WithMany(f => f.Zones).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<WorkspotAssignment>(e =>

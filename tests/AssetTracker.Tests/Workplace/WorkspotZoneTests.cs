@@ -7,15 +7,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetTracker.Tests.Workplace;
 
-public class WorkspotTeamTests : IClassFixture<AppFactory>
+public class WorkspotZoneTests : IClassFixture<AppFactory>
 {
     private readonly AppFactory _f;
-    public WorkspotTeamTests(AppFactory f) => _f = f;
+    public WorkspotZoneTests(AppFactory f) => _f = f;
 
-    private Task<T> As<T>(TestUser user, Func<WorkspotService, TeamService, FloorService, Task<T>> action) =>
-        _f.RunAsAsync(user, sp => action(sp.GetRequiredService<WorkspotService>(), sp.GetRequiredService<TeamService>(), sp.GetRequiredService<FloorService>()));
+    private Task<T> As<T>(TestUser user, Func<WorkspotService, ZoneService, FloorService, Task<T>> action) =>
+        _f.RunAsAsync(user, sp => action(sp.GetRequiredService<WorkspotService>(), sp.GetRequiredService<ZoneService>(), sp.GetRequiredService<FloorService>()));
 
-    private Task<T> AsIt<T>(Func<WorkspotService, TeamService, FloorService, Task<T>> action) => As(TestUser.It, action);
+    private Task<T> AsIt<T>(Func<WorkspotService, ZoneService, FloorService, Task<T>> action) => As(TestUser.It, action);
 
     private async Task<(Floor Floor, List<Workspot> Spots)> NewFloorAsync(string siteKey, int seats = 6, string name = "Floor")
     {
@@ -59,7 +59,7 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task Switching_a_seat_off_takes_it_out_of_its_team_and_back_on_does_not_rejoin()
+    public async Task Switching_a_seat_off_takes_it_out_of_its_zone_and_back_on_does_not_rejoin()
     {
         var (floor, spots) = await NewFloorAsync("WS05");
         await AsIt((w, t, f) => t.CreateAsync("Ops", [spots[0].Id, spots[1].Id]));
@@ -67,35 +67,35 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
         Assert.Equal(1, changed);
         var after = await ReloadAsync(floor.Id);
         Assert.False(after[0].IsActive);
-        Assert.Null(after[0].TeamId);
-        Assert.NotNull(after[1].TeamId);
+        Assert.Null(after[0].ZoneId);
+        Assert.NotNull(after[1].ZoneId);
         Assert.Equal(1, await AsIt((w, t, f) => w.SetActiveAsync([spots[0].Id], true)));
-        Assert.Null((await ReloadAsync(floor.Id))[0].TeamId);
+        Assert.Null((await ReloadAsync(floor.Id))[0].ZoneId);
         Assert.Equal(0, await AsIt((w, t, f) => w.SetActiveAsync([spots[0].Id], true))); // nothing to do
     }
 
-    // ---- teams -----------------------------------------------------------------------------------------------
+    // ---- zones -----------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task A_team_groups_seats_gets_the_next_free_colour_and_audits()
+    public async Task A_zone_groups_seats_gets_the_next_free_colour_and_audits()
     {
         var (floor, spots) = await NewFloorAsync("WS06", seats: 6);
         var a = await AsIt((w, t, f) => t.CreateAsync("Finance", spots.Take(2).Select(s => s.Id).ToList()));
         var b = await AsIt((w, t, f) => t.CreateAsync("Sales", spots.Skip(2).Take(2).Select(s => s.Id).ToList()));
         Assert.Equal(0, a.ColorIndex);
         Assert.Equal(1, b.ColorIndex);
-        Assert.Equal(2, (await ReloadAsync(floor.Id)).Count(s => s.TeamId == a.Id));
-        Assert.True(await _f.WithDbAsync(db => db.AuditEvents.AnyAsync(e => e.Action == "team.create" && e.EntityId == a.Id.ToString())));
+        Assert.Equal(2, (await ReloadAsync(floor.Id)).Count(s => s.ZoneId == a.Id));
+        Assert.True(await _f.WithDbAsync(db => db.AuditEvents.AnyAsync(e => e.Action == "zone.create" && e.EntityId == a.Id.ToString())));
 
-        // a seat is in one team only: grouping it again moves it
+        // a seat is in one zone only: grouping it again moves it
         var c = await AsIt((w, t, f) => t.CreateAsync("Moved", [spots[0].Id]));
         var reloaded = await ReloadAsync(floor.Id);
-        Assert.Equal(c.Id, reloaded[0].TeamId);
-        Assert.Equal(a.Id, reloaded[1].TeamId);
+        Assert.Equal(c.Id, reloaded[0].ZoneId);
+        Assert.Equal(a.Id, reloaded[1].ZoneId);
     }
 
     [Fact]
-    public async Task Team_names_are_unique_per_floor_and_checked()
+    public async Task Zone_names_are_unique_per_floor_and_checked()
     {
         var (floor, spots) = await NewFloorAsync("WS07");
         await AsIt((w, t, f) => t.CreateAsync("Finance", [spots[0].Id]));
@@ -109,30 +109,30 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task A_team_can_be_renamed_recoloured_extended_emptied_and_deleted()
+    public async Task A_zone_can_be_renamed_recoloured_extended_emptied_and_deleted()
     {
         var (floor, spots) = await NewFloorAsync("WS09", seats: 5);
-        var team = await AsIt((w, t, f) => t.CreateAsync("Alpha", [spots[0].Id, spots[1].Id]));
-        await AsIt(async (w, t, f) => { await t.RenameAsync(team.Id, "Beta"); return 0; });
-        await AsIt(async (w, t, f) => { await t.SetColorAsync(team.Id, 5); return 0; });
-        Assert.Equal(1, await AsIt((w, t, f) => t.AddAsync(team.Id, [spots[1].Id, spots[2].Id]))); // spot 1 was already in
-        var stored = await _f.WithDbAsync(db => db.FloorTeams.AsNoTracking().SingleAsync(x => x.Id == team.Id));
+        var zone = await AsIt((w, t, f) => t.CreateAsync("Alpha", [spots[0].Id, spots[1].Id]));
+        await AsIt(async (w, t, f) => { await t.RenameAsync(zone.Id, "Beta"); return 0; });
+        await AsIt(async (w, t, f) => { await t.SetColorAsync(zone.Id, 5); return 0; });
+        Assert.Equal(1, await AsIt((w, t, f) => t.AddAsync(zone.Id, [spots[1].Id, spots[2].Id]))); // spot 1 was already in
+        var stored = await _f.WithDbAsync(db => db.FloorZones.AsNoTracking().SingleAsync(x => x.Id == zone.Id));
         Assert.Equal("Beta", stored.Name);
         Assert.Equal(5, stored.ColorIndex);
-        Assert.Equal(3, (await ReloadAsync(floor.Id)).Count(s => s.TeamId == team.Id));
+        Assert.Equal(3, (await ReloadAsync(floor.Id)).Count(s => s.ZoneId == zone.Id));
 
         Assert.Equal(2, await AsIt((w, t, f) => t.RemoveAsync([spots[0].Id, spots[1].Id, spots[4].Id])));
-        Assert.Single(await ReloadAsync(floor.Id), s => s.TeamId == team.Id);
+        Assert.Single(await ReloadAsync(floor.Id), s => s.ZoneId == zone.Id);
 
-        await AsIt(async (w, t, f) => { await t.DeleteAsync(team.Id); return 0; });
-        Assert.All(await ReloadAsync(floor.Id), s => Assert.Null(s.TeamId));
-        Assert.Empty(await _f.WithDbAsync(db => db.FloorTeams.Where(x => x.FloorId == floor.Id).ToListAsync()));
-        var actions = await _f.WithDbAsync(db => db.AuditEvents.Where(e => e.EntityType == nameof(FloorTeam) && e.EntityId == team.Id.ToString()).Select(e => e.Action).ToListAsync());
-        Assert.Contains("team.rename", actions);
-        Assert.Contains("team.color", actions);
-        Assert.Contains("team.add", actions);
-        Assert.Contains("team.delete", actions);
-        await Assert.ThrowsAsync<DomainException>(() => AsIt(async (w, t, f) => { await t.SetColorAsync(team.Id, 1); return 0; }));
+        await AsIt(async (w, t, f) => { await t.DeleteAsync(zone.Id); return 0; });
+        Assert.All(await ReloadAsync(floor.Id), s => Assert.Null(s.ZoneId));
+        Assert.Empty(await _f.WithDbAsync(db => db.FloorZones.Where(x => x.FloorId == floor.Id).ToListAsync()));
+        var actions = await _f.WithDbAsync(db => db.AuditEvents.Where(e => e.EntityType == nameof(FloorZone) && e.EntityId == zone.Id.ToString()).Select(e => e.Action).ToListAsync());
+        Assert.Contains("zone.rename", actions);
+        Assert.Contains("zone.color", actions);
+        Assert.Contains("zone.add", actions);
+        Assert.Contains("zone.delete", actions);
+        await Assert.ThrowsAsync<DomainException>(() => AsIt(async (w, t, f) => { await t.SetColorAsync(zone.Id, 1); return 0; }));
     }
 
     [Fact]
@@ -141,17 +141,17 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
         var (floorA, a) = await NewFloorAsync("WS10");
         var (floorB, b) = await NewFloorAsync("WS11");
         await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.CreateAsync("Mixed", [a[0].Id, b[0].Id])));
-        var team = await AsIt((w, t, f) => t.CreateAsync("A team", [a[0].Id]));
-        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.AddAsync(team.Id, [b[0].Id])));
+        var zone = await AsIt((w, t, f) => t.CreateAsync("A zone", [a[0].Id]));
+        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.AddAsync(zone.Id, [b[0].Id])));
         await AsIt((w, t, f) => w.SetActiveAsync([a[1].Id], false));
-        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.AddAsync(team.Id, [a[1].Id])));
+        await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.AddAsync(zone.Id, [a[1].Id])));
         await Assert.ThrowsAsync<DomainException>(() => AsIt((w, t, f) => t.CreateAsync("Ghost", [987654])));
     }
 
     // ---- find and focus --------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Find_returns_rooms_and_teams_across_floors_within_the_principals_scope_but_not_seat_ids()
+    public async Task Find_returns_rooms_and_zones_across_floors_within_the_principals_scope_but_not_seat_ids()
     {
         var manager = new TestUser(@"CORP\mgr.ws12", "S-1-5-21-1000-1000-1000-3512", TestGroups.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
@@ -167,7 +167,7 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
         await AsIt((w, t, f) => t.CreateAsync("Zebra herd", spots1.Select(s => s.Id).ToList()));
 
         var it = await AsIt((w, t, f) => w.FindAsync("zebra"));
-        Assert.Contains(it, h => h.Kind == "team" && h.Title == "Zebra herd" && h.Seats == 3);
+        Assert.Contains(it, h => h.Kind == "zone" && h.Title == "Zebra herd" && h.Seats == 3);
         Assert.Contains(it, h => h.Kind == "room" && h.FloorId == f1.Id && h.Title == "Zebra room (Q9)" && h.Seats == 3);
         Assert.Contains(it, h => h.Kind == "room" && h.FloorId == f2.Id);
 
@@ -184,14 +184,14 @@ public class WorkspotTeamTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task Focus_resolves_a_seat_a_room_or_a_team_to_element_ids()
+    public async Task Focus_resolves_a_seat_a_room_or_a_zone_to_element_ids()
     {
         var (floor, spots) = await NewFloorAsync("WS14", seats: 4);
-        var team = await AsIt((w, t, f) => t.CreateAsync("Focus team", [spots[0].Id, spots[2].Id]));
+        var zone = await AsIt((w, t, f) => t.CreateAsync("Focus zone", [spots[0].Id, spots[2].Id]));
         Assert.Equal([spots[1].ElementId], await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"ws:{spots[1].Id}")));
         Assert.Equal(2, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"ws:{spots[1].Id},{spots[3].Id},x"))).Count);
         Assert.Equal(4, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, "room:R1"))).Count);
-        Assert.Equal(2, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"team:{team.Id}"))).Count);
+        Assert.Equal(2, (await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, $"zone:{zone.Id}"))).Count);
         Assert.Empty(await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, "nonsense")));
         Assert.Empty(await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, "ws:abc")));
         Assert.Empty(await AsIt((w, t, f) => w.ElementIdsForFocusAsync(floor.Id, null)));

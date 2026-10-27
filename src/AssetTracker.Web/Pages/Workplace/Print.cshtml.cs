@@ -15,7 +15,7 @@ namespace AssetTracker.Web.Pages.Workplace;
 [Authorize(Policy = Policies.WorkplaceRead)]
 public class PrintModel(FloorService floors, AssignmentService assignments, ICurrentUser user) : PageModel
 {
-    public sealed record DeskRow(string? Team, string? Room, string? Person, bool PersonLeft, string? Desktop, int Screens, string? Note);
+    public sealed record DeskRow(string? Zone, string? Room, string? Person, bool PersonLeft, string? Desktop, int Screens, string? Note);
 
     public FloorView View { get; private set; } = null!;
     public string Svg { get; private set; } = "";
@@ -24,7 +24,7 @@ public class PrintModel(FloorService floors, AssignmentService assignments, ICur
     public string PrintedBy => user.Name;
     public DateTimeOffset PrintedAt { get; } = DateTimeOffset.Now;
 
-    /// <summary>What is printed, as the page asked for it ("Selected seats", "Team Finance"...).</summary>
+    /// <summary>What is printed, as the page asked for it ("Selected seats", "Zone Finance"...).</summary>
     [BindProperty(SupportsGet = true)] public string? What { get; set; }
 
     /// <summary>Open the print dialog as soon as the page is ready.</summary>
@@ -42,25 +42,25 @@ public class PrintModel(FloorService floors, AssignmentService assignments, ICur
         if (What is { Length: > 80 }) What = What[..80];
 
         var states = await assignments.StatesAsync(view.Spots, ct);
-        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Teams, states, PrintArea);
+        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Zones, states, PrintArea);
 
         var status = await assignments.StatusAsync(view.Spots, ct);
         var flags = status.Flags.ToLookup(f => f.WorkspotId);
         var centers = FloorplanRenderer.Centers(view.Floor, view.Spots);
-        var teamNames = view.Teams.ToDictionary(t => t.Id, t => t.Name);
-        string? TeamOf(Workspot s) => s.TeamId is { } t && teamNames.TryGetValue(t, out var n) ? n : null;
+        var zoneNames = view.Zones.ToDictionary(t => t.Id, t => t.Name);
+        string? ZoneOf(Workspot s) => s.ZoneId is { } t && zoneNames.TryGetValue(t, out var n) ? n : null;
         Rows = view.Spots
             .Where(s => (s.IsActive && s.IsDesk) || states.ContainsKey(s.Id))
             .Where(s => PrintArea is not { } a || (centers.TryGetValue(s.Id, out var c) && a.Contains(c.X, c.Y)))
-            // By team and room; within a room the drawing's order (its seat ids), which is never printed.
-            .OrderBy(s => TeamOf(s) is null).ThenBy(s => TeamOf(s), StringComparer.OrdinalIgnoreCase)
+            // By zone and room; within a room the drawing's order (its seat ids), which is never printed.
+            .OrderBy(s => ZoneOf(s) is null).ThenBy(s => ZoneOf(s), StringComparer.OrdinalIgnoreCase)
             .ThenBy(s => s.RoomName ?? s.RoomId, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
             .Select(s =>
             {
                 states.TryGetValue(s.Id, out var st);
                 var note = flags[s.Id].Any() ? string.Join(" ", flags[s.Id].Select(f => f.Text))
                     : st?.Person is null && s.IsActive && s.IsDesk ? "Free" : null;
-                return new DeskRow(TeamOf(s), s.RoomName ?? s.RoomId, st?.Person, st?.PersonLeft == true, st?.Desktop, st?.Screens ?? 0, note);
+                return new DeskRow(ZoneOf(s), s.RoomName ?? s.RoomId, st?.Person, st?.PersonLeft == true, st?.Desktop, st?.Screens ?? 0, note);
             })
             .ToList();
         return Page();

@@ -320,7 +320,7 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("Floors");
                 });
 
-            modelBuilder.Entity("AssetTracker.Core.Domain.FloorTeam", b =>
+            modelBuilder.Entity("AssetTracker.Core.Domain.FloorZone", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -347,7 +347,7 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.HasIndex("FloorId", "Name")
                         .IsUnique();
 
-                    b.ToTable("FloorTeams");
+                    b.ToTable("FloorZones");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>
@@ -1066,12 +1066,12 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int?>("TeamId")
+                    b.Property<int?>("ZoneId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TeamId");
+                    b.HasIndex("ZoneId");
 
                     b.HasIndex("FloorId", "ElementId")
                         .IsUnique();
@@ -1206,10 +1206,10 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Site");
                 });
 
-            modelBuilder.Entity("AssetTracker.Core.Domain.FloorTeam", b =>
+            modelBuilder.Entity("AssetTracker.Core.Domain.FloorZone", b =>
                 {
                     b.HasOne("AssetTracker.Core.Domain.Floor", "Floor")
-                        .WithMany("Teams")
+                        .WithMany("Zones")
                         .HasForeignKey("FloorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -1384,14 +1384,14 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("AssetTracker.Core.Domain.FloorTeam", "Team")
+                    b.HasOne("AssetTracker.Core.Domain.FloorZone", "Zone")
                         .WithMany()
-                        .HasForeignKey("TeamId")
+                        .HasForeignKey("ZoneId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Floor");
 
-                    b.Navigation("Team");
+                    b.Navigation("Zone");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.WorkspotAssignment", b =>
@@ -1426,9 +1426,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
                 {
-                    b.Navigation("Teams");
-
                     b.Navigation("Workspots");
+
+                    b.Navigation("Zones");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>

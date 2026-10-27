@@ -440,14 +440,14 @@ document.querySelectorAll("[data-find-lookup]").forEach(function (root) {
 })();
 
 // ---------------------------------------------------------------------------------------------------------------
-// Workplace: find a seat, room, team, person or desktop (any floor). Picking a result highlights it when it is on the floor that is
-// open, otherwise opens its floor with the seats highlighted (?focus=ws:ID | room:ID | team:ID).
+// Workplace: find a seat, room, zone, person or desktop (any floor). Picking a result highlights it when it is on the floor that is
+// open, otherwise opens its floor with the seats highlighted (?focus=ws:ID | room:ID | zone:ID).
 (function () {
     Array.prototype.forEach.call(document.querySelectorAll("[data-workplace-find]"), function (root) {
         var input = root.querySelector("input[role=combobox]");
         var url = root.getAttribute("data-url");
         var floorUrl = root.getAttribute("data-floor-url");
-        var KINDS = { room: "Room", team: "Team", person: "Person", asset: "Desktop / screen" };
+        var KINDS = { room: "Room", zone: "Zone", team: "Zone", person: "Person", asset: "Desktop / screen" };
 
         var combo = createCombo({
             input: input, list: root.querySelector("[role=listbox]"), idPrefix: input.id + "-option-", min: 2,
@@ -521,7 +521,7 @@ function seatSpacing(svg) {
 }
 
 // Workplace floor map: pan (drag), zoom (wheel, pinch, buttons), select seats (click, Shift-click, table or room click,
-// Shift-drag or "Select area"), highlight search results, teams, free desks and seats to check, print what you see or a
+// Shift-drag or "Select area"), highlight search results, zones, free desks and seats to check, print what you see or a
 // part, and (IT and facility) drag people, desktops and screens onto desks. A drop is posted with fetch and the map is
 // swapped for a fresh one without losing the zoom. Without JavaScript the map is a static picture.
 (function () {
@@ -636,8 +636,8 @@ function seatSpacing(svg) {
 
     function show(selector, on) { all(selector).forEach(function (el) { el.hidden = !on; }); }
 
-    function teamName(id) {
-        var el = root.querySelector('[data-team-id="' + esc(id) + '"] .wp-team-name');
+    function zoneName(id) {
+        var el = root.querySelector('[data-zone-id="' + esc(id) + '"] .wp-zone-name');
         return el ? el.textContent : "";
     }
 
@@ -646,7 +646,7 @@ function seatSpacing(svg) {
         show('[data-when="none"]', s.length === 0 && e.length === 0);
         show('[data-when="ws"]', s.length > 0);
         show('[data-when="one"]', s.length === 1);
-        show('[data-when="teamed"]', s.some(function (x) { return x.hasAttribute("data-team"); }));
+        show('[data-when="zoned"]', s.some(function (x) { return x.hasAttribute("data-zone"); }));
         show('[data-when="on"]', s.some(function (x) { return !x.classList.contains("fp-ws-off"); }));
         show('[data-when="off"]', s.some(function (x) { return x.classList.contains("fp-ws-off"); }));
         show('[data-when="el"]', e.length > 0);
@@ -670,13 +670,13 @@ function seatSpacing(svg) {
         }
         var elSummary = root.querySelector("[data-el-summary]");
         if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
-        syncTeamForm(s);
+        syncZoneForm(s);
 
         if (s.length === 1) {
             var one = s[0];
             var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
             fact("room", roomOf(one));
-            fact("team", one.hasAttribute("data-team") ? teamName(one.getAttribute("data-team")) : "");
+            fact("zone", one.hasAttribute("data-zone") ? zoneName(one.getAttribute("data-zone")) : "");
             loadSpot(one);
         }
     }
@@ -703,31 +703,31 @@ function seatSpacing(svg) {
         if (rooms.length === 1) text += " in " + rooms[0];
         else if (rooms.length > 1) text += " in " + rooms.length + " rooms";
         var free = s.filter(function (x) { return x.classList.contains("fp-free"); }).length;
-        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team"); }));
+        var zones = distinct(s.map(function (x) { return x.getAttribute("data-zone"); }));
         var parts = [];
         if (free) parts.push(free + " free desk" + (free === 1 ? "" : "s"));
-        if (teams.length === 1) parts.push(s.every(function (x) { return x.getAttribute("data-team") === teams[0]; }) ? "team " + teamName(teams[0]) : "partly team " + teamName(teams[0]));
-        else if (teams.length > 1) parts.push(teams.length + " teams");
+        if (zones.length === 1) parts.push(s.every(function (x) { return x.getAttribute("data-zone") === zones[0]; }) ? "zone " + zoneName(zones[0]) : "partly zone " + zoneName(zones[0]));
+        else if (zones.length > 1) parts.push(zones.length + " zones");
         return text.replace(/,$/, "") + (parts.length ? " · " + parts.join(", ") : "") + ".";
     }
 
-    // The team box starts at the team the selected seats share; "New team…" when they have none or several.
-    var teamForm = root.querySelector("[data-team-form]");
-    function syncTeamNew() {
-        if (!teamForm) return;
-        var isNew = teamForm.querySelector("[data-team-select]").value === "new";
-        teamForm.querySelector("[data-team-new]").hidden = !isNew;
-        teamForm.querySelector("[data-team-new] input").required = isNew;
+    // The zone box starts at the zone the selected seats share; "New zone…" when they have none or several.
+    var zoneForm = root.querySelector("[data-zone-form]");
+    function syncZoneNew() {
+        if (!zoneForm) return;
+        var isNew = zoneForm.querySelector("[data-zone-select]").value === "new";
+        zoneForm.querySelector("[data-zone-new]").hidden = !isNew;
+        zoneForm.querySelector("[data-zone-new] input").required = isNew;
     }
-    function syncTeamForm(s) {
-        if (!teamForm || s.length === 0) return;
-        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team") || "-"; }));
-        var select = teamForm.querySelector("[data-team-select]");
-        select.value = teams.length === 1 && teams[0] !== "-" ? teams[0] : "new";
-        teamForm.querySelector("[data-team-submit]").textContent = s.length === 1 ? "Set team" : "Set team for " + s.length + " seats";
-        syncTeamNew();
+    function syncZoneForm(s) {
+        if (!zoneForm || s.length === 0) return;
+        var zones = distinct(s.map(function (x) { return x.getAttribute("data-zone") || "-"; }));
+        var select = zoneForm.querySelector("[data-zone-select]");
+        select.value = zones.length === 1 && zones[0] !== "-" ? zones[0] : "new";
+        zoneForm.querySelector("[data-zone-submit]").textContent = s.length === 1 ? "Set zone" : "Set zone for " + s.length + " seats";
+        syncZoneNew();
     }
-    if (teamForm) teamForm.querySelector("[data-team-select]").addEventListener("change", syncTeamNew);
+    if (zoneForm) zoneForm.querySelector("[data-zone-select]").addEventListener("change", syncZoneNew);
 
     // ---- what sits at the selected seat -------------------------------------------------------------------------
 
@@ -1020,7 +1020,7 @@ function seatSpacing(svg) {
         var kind = spec.slice(0, i), value = spec.slice(i + 1), q = null;
         if (kind === "ws") q = value.split(",").map(function (v) { return '[data-ws="' + esc(v) + '"]'; }).join(",");
         else if (kind === "room") q = '[data-ws][data-room="' + esc(value) + '"]';
-        else if (kind === "team") q = '[data-ws][data-team="' + esc(value) + '"]';
+        else if (kind === "zone" || kind === "team") q = '[data-ws][data-zone="' + esc(value) + '"]'; // team: = old links
         if (q) focusElements(all(q, svg));
     }
 
@@ -1038,8 +1038,8 @@ function seatSpacing(svg) {
         if (spot) { focusSpec("ws:" + spot.getAttribute("data-show-spot")); return; }
         var group = e.target.closest("[data-show-seats]");
         if (group) { focusSpec("ws:" + group.getAttribute("data-show-seats")); return; }
-        var team = e.target.closest("[data-show-team]");
-        if (team) { focusSpec("team:" + team.getAttribute("data-show-team")); return; }
+        var zone = e.target.closest("[data-show-zone]");
+        if (zone) { focusSpec("zone:" + zone.getAttribute("data-show-zone")); return; }
         var hl = e.target.closest("[data-highlight]");
         if (hl) {
             var cls = "hl-" + hl.getAttribute("data-highlight");
@@ -1052,7 +1052,7 @@ function seatSpacing(svg) {
 
     all("[data-layer]").forEach(function (box) {
         box.addEventListener("change", function () {
-            if (box.getAttribute("data-layer") === "teams") canvas.classList.toggle("hide-teams", !box.checked);
+            if (box.getAttribute("data-layer") === "zones") canvas.classList.toggle("hide-zones", !box.checked);
             else { namesOn = box.checked; layoutLabels(svg, canvas, namesOn ? null : false); }
         });
     });

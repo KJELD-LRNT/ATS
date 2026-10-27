@@ -101,7 +101,7 @@ public class AccessScope(AppDbContext db, ICurrentUser user)
         if (!user.IsAdmin) throw new Common.AccessDeniedException();
     }
 
-    /// <summary>Whether the principal may change floor plans, workspots and teams: IT or facility.</summary>
+    /// <summary>Whether the principal may change floor plans, workspots and zones: IT or facility.</summary>
     public bool CanEditWorkplace => user.IsIt || user.IsFacility;
 
     public void EnsureWorkplaceEditor()

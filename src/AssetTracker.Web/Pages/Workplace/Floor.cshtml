@@ -12,7 +12,7 @@
 <header class="page-header">
     <div class="page-heading">
         <h1>@floor.Name @if (!floor.IsActive) { <span class="badge badge--muted">Archived</span> }</h1>
-        <p class="page-subtitle"><span class="mono">@Model.View.SiteKey</span> – @Model.View.SiteName · @Model.Status.Desks desks · @Model.View.Teams.Count team(s) · drawing imported @floor.ImportedAt.ToString("yyyy-MM-dd")</p>
+        <p class="page-subtitle"><span class="mono">@Model.View.SiteKey</span> – @Model.View.SiteName · @Model.Status.Desks desks · @Model.View.Zones.Count zone(s) · drawing imported @floor.ImportedAt.ToString("yyyy-MM-dd")</p>
     </div>
     <div class="page-actions">
         <a class="btn" asp-page="Index">All floors</a>
@@ -44,7 +44,7 @@
         <div class="wp-toolbar">
             <div class="wp-find">@await Html.PartialAsync("_FindBox", "wp-q")</div>
             <div class="wp-tools" role="group" aria-label="Map tools">
-                <label class="check wp-toggle"><input type="checkbox" data-layer="teams" checked /> Teams</label>
+                <label class="check wp-toggle"><input type="checkbox" data-layer="zones" checked /> Zones</label>
                 <label class="check wp-toggle"><input type="checkbox" data-layer="names" checked /> Names</label>
                 <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
                 <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
@@ -112,7 +112,7 @@
             <p class="wp-sel-summary" data-sel-summary></p>
             <dl class="wp-facts" data-when="one" hidden>
                 <dt>Room</dt><dd data-fact="room"></dd>
-                <dt>Team</dt><dd data-fact="team"></dd>
+                <dt>Zone</dt><dd data-fact="zone"></dd>
             </dl>
             <ul class="wp-selected" data-sel-list></ul>
 
@@ -127,22 +127,22 @@
 
             @if (Model.CanEdit)
             {
-                <form method="post" asp-page-handler="SetTeam" asp-route-id="@floor.Id" class="stack wp-form wp-team-set" data-team-form>
+                <form method="post" asp-page-handler="SetZone" asp-route-id="@floor.Id" class="stack wp-form wp-zone-set" data-zone-form>
                     <input type="hidden" name="ids" data-ids="ws" />
                     <div class="field">
-                        <label for="wp-team">Team</label>
-                        <select id="wp-team" name="team" data-team-select>
-                            @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
-                            <option value="new">New team…</option>
-                            <option value="none">No team</option>
+                        <label for="wp-zone">Zone</label>
+                        <select id="wp-zone" name="zone" data-zone-select>
+                            @foreach (var t in Model.View.Zones) { <option value="@t.Id">@t.Name</option> }
+                            <option value="new">New zone…</option>
+                            <option value="none">No zone</option>
                         </select>
                     </div>
-                    <div class="field" data-team-new>
-                        <label for="wp-team-name">Name of the new team</label>
-                        <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="e.g. Finance" />
+                    <div class="field" data-zone-new>
+                        <label for="wp-zone-name">Name of the new zone</label>
+                        <input id="wp-zone-name" name="name" maxlength="@ZoneService.NameMax" placeholder="e.g. Finance" />
                     </div>
-                    <button type="submit" class="btn--primary btn--sm" data-team-submit>Set team</button>
-                    <p class="hint">Click a table to give the whole table a team. To split a table, click one seat and Shift-click the others (or Shift-drag over them), then give those seats their team.</p>
+                    <button type="submit" class="btn--primary btn--sm" data-zone-submit>Set zone</button>
+                    <p class="hint">Click a table to give the whole table a zone. To split a table, click one seat and Shift-click the others (or Shift-drag over them), then give those seats their zone.</p>
                 </form>
 
                 <details class="wp-more">
@@ -183,37 +183,37 @@
             </section>
         }
 
-        <section class="card wp-box" aria-labelledby="wp-teams-h">
-            <h2 id="wp-teams-h">Teams</h2>
-            @if (Model.View.Teams.Count == 0)
+        <section class="card wp-box" aria-labelledby="wp-zones-h">
+            <h2 id="wp-zones-h">Zones</h2>
+            @if (Model.View.Zones.Count == 0)
             {
-                <p class="muted">No teams on this floor. Click a table (or select seats) and choose a team; teams are only a drawing on the map and can be renamed at any time.</p>
+                <p class="muted">No zones on this floor. Click a table (or select seats) and choose a zone; zones are only a drawing on the map and can be renamed at any time.</p>
             }
             else
             {
-                <ul class="wp-teams">
-                    @foreach (var t in Model.View.Teams)
+                <ul class="wp-zones">
+                    @foreach (var t in Model.View.Zones)
                     {
-                        <li data-team-id="@t.Id">
-                            <button type="button" class="wp-team-show" data-show-team="@t.Id" title="Show on the map">
-                                <span class="wp-swatch fp-team-@t.ColorIndex" aria-hidden="true"></span>
-                                <span class="wp-team-name">@t.Name</span>
-                                <span class="muted">@(Model.TeamSeats.GetValueOrDefault(t.Id)) seats</span>
+                        <li data-zone-id="@t.Id">
+                            <button type="button" class="wp-zone-show" data-show-zone="@t.Id" title="Show on the map">
+                                <span class="wp-swatch zc-@t.ColorIndex" aria-hidden="true"></span>
+                                <span class="wp-zone-name">@t.Name</span>
+                                <span class="muted">@(Model.ZoneSeats.GetValueOrDefault(t.Id)) seats</span>
                             </button>
                             @if (Model.CanEdit)
                             {
-                                <details class="wp-team-edit">
+                                <details class="wp-zone-edit">
                                     <summary>Edit</summary>
-                                    <form method="post" asp-page-handler="TeamRename" asp-route-id="@floor.Id" class="stack wp-form">
-                                        <input type="hidden" name="teamId" value="@t.Id" />
+                                    <form method="post" asp-page-handler="ZoneRename" asp-route-id="@floor.Id" class="stack wp-form">
+                                        <input type="hidden" name="zoneId" value="@t.Id" />
                                         <div class="field">
                                             <label for="wp-rn-@t.Id">Name</label>
-                                            <input id="wp-rn-@t.Id" name="name" value="@t.Name" maxlength="@TeamService.NameMax" required />
+                                            <input id="wp-rn-@t.Id" name="name" value="@t.Name" maxlength="@ZoneService.NameMax" required />
                                         </div>
                                         <button type="submit" class="btn--sm">Rename</button>
                                     </form>
-                                    <form method="post" asp-page-handler="TeamColor" asp-route-id="@floor.Id" class="stack wp-form">
-                                        <input type="hidden" name="teamId" value="@t.Id" />
+                                    <form method="post" asp-page-handler="ZoneColor" asp-route-id="@floor.Id" class="stack wp-form">
+                                        <input type="hidden" name="zoneId" value="@t.Id" />
                                         <div class="field">
                                             <label for="wp-co-@t.Id">Colour</label>
                                             <select id="wp-co-@t.Id" name="color">
@@ -222,9 +222,9 @@
                                         </div>
                                         <button type="submit" class="btn--sm">Change colour</button>
                                     </form>
-                                    <form method="post" asp-page-handler="TeamDelete" asp-route-id="@floor.Id" class="wp-form" data-confirm="Delete team '@t.Name'? Its workspots stay on the floor.">
-                                        <input type="hidden" name="teamId" value="@t.Id" />
-                                        <button type="submit" class="btn--sm btn--danger">Delete team</button>
+                                    <form method="post" asp-page-handler="ZoneDelete" asp-route-id="@floor.Id" class="wp-form" data-confirm="Delete zone '@t.Name'? Its workspots stay on the floor.">
+                                        <input type="hidden" name="zoneId" value="@t.Id" />
+                                        <button type="submit" class="btn--sm btn--danger">Delete zone</button>
                                     </form>
                                 </details>
                             }

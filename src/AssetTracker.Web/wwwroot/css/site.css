@@ -779,23 +779,23 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .wp-facts dd { margin: 0; overflow-wrap: anywhere; }
 .wp-selected { margin: 0 0 8px; padding-left: 18px; color: var(--ink-2); font-size: 14px; }
 .wp-sel-summary { font-weight: 600; margin: 0 0 6px; }
-.wp-team-set { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
-.wp-team-set .hint { margin: 0; }
-.wp-teams { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.wp-team-show { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: 0; padding: 6px 4px;
+.wp-zone-set { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.wp-zone-set .hint { margin: 0; }
+.wp-zones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wp-zone-show { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: 0; padding: 6px 4px;
     border-radius: var(--radius); cursor: pointer; font: inherit; color: inherit; }
-.wp-team-show:hover { background: var(--ground); }
-.wp-team-name { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
+.wp-zone-show:hover { background: var(--ground); }
+.wp-zone-name { flex: 1; font-weight: 600; overflow-wrap: anywhere; }
 .wp-swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid rgba(0, 0, 0, 0.15); }
-.wp-team-edit { margin: 0 0 6px 26px; }
-.wp-team-edit summary { cursor: pointer; color: var(--accent-hover); font-size: 14px; }
+.wp-zone-edit { margin: 0 0 6px 26px; }
+.wp-zone-edit summary { cursor: pointer; color: var(--accent-hover); font-size: 14px; }
 .wp-summary { width: 100%; }
 .wp-summary th, .wp-summary td { padding: 3px 0; text-align: left; font-weight: 400; }
 .wp-summary th { font-weight: 600; }
 .wp-summary td.num { text-align: right; }
 
 /* Seats, markers and labels inside the drawing (specificity beats the drawing's scoped rules on purpose).
-   A free desk is a white seat with a green ring, a taken desk is filled (in its team's colour) with a person icon, a desktop
+   A free desk is a white seat with a green ring, a taken desk is filled (in its zone's colour) with a person icon, a desktop
    and screens are small dark and teal badges outside the seat, a seat to check has a red dashed ring.
    A seat drawn as a group (a chair of several shapes) passes its colours to its shapes, so any drawing works. */
 .floorplan .fp-ws { cursor: pointer; }
@@ -805,15 +805,15 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .floorplan :is(.fp-ws.fp-nodesk, g.fp-ws.fp-nodesk > :not(text, title)) { fill: #CBD2DA; stroke: none; }
 .floorplan .fp-ws.fp-ws-off { opacity: 0.3; }
 .floorplan :is(.fp-ws.fp-occ.fp-left, g.fp-ws.fp-occ.fp-left > :not(text, title)) { fill: #9A3412; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-0, g.fp-ws.fp-occ.fp-team-0 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-0, g.fp-ws.fp-occ.fp-team-0 > :not(text, title)) { fill: #C2410C; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-1, g.fp-ws.fp-occ.fp-team-1 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-1, g.fp-ws.fp-occ.fp-team-1 > :not(text, title)) { fill: #15803D; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-2, g.fp-ws.fp-occ.fp-team-2 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-2, g.fp-ws.fp-occ.fp-team-2 > :not(text, title)) { fill: #7E22CE; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-3, g.fp-ws.fp-occ.fp-team-3 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-3, g.fp-ws.fp-occ.fp-team-3 > :not(text, title)) { fill: #B91C1C; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-4, g.fp-ws.fp-occ.fp-team-4 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-4, g.fp-ws.fp-occ.fp-team-4 > :not(text, title)) { fill: #0F766E; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-5, g.fp-ws.fp-occ.fp-team-5 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-5, g.fp-ws.fp-occ.fp-team-5 > :not(text, title)) { fill: #A16207; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-6, g.fp-ws.fp-occ.fp-team-6 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-6, g.fp-ws.fp-occ.fp-team-6 > :not(text, title)) { fill: #BE185D; }
-.wp-canvas:not(.hide-teams) .floorplan :is(.fp-ws.fp-occ.fp-team-7, g.fp-ws.fp-occ.fp-team-7 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.fp-team-7, g.fp-ws.fp-occ.fp-team-7 > :not(text, title)) { fill: #1E3A8A; }
-.wp-canvas.hide-teams .floorplan .fp-teamlayer { display: none; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-0, g.fp-ws.fp-occ.zc-0 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-0, g.fp-ws.fp-occ.zc-0 > :not(text, title)) { fill: #C2410C; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-1, g.fp-ws.fp-occ.zc-1 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-1, g.fp-ws.fp-occ.zc-1 > :not(text, title)) { fill: #15803D; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-2, g.fp-ws.fp-occ.zc-2 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-2, g.fp-ws.fp-occ.zc-2 > :not(text, title)) { fill: #7E22CE; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-3, g.fp-ws.fp-occ.zc-3 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-3, g.fp-ws.fp-occ.zc-3 > :not(text, title)) { fill: #B91C1C; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-4, g.fp-ws.fp-occ.zc-4 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-4, g.fp-ws.fp-occ.zc-4 > :not(text, title)) { fill: #0F766E; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-5, g.fp-ws.fp-occ.zc-5 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-5, g.fp-ws.fp-occ.zc-5 > :not(text, title)) { fill: #A16207; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-6, g.fp-ws.fp-occ.zc-6 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-6, g.fp-ws.fp-occ.zc-6 > :not(text, title)) { fill: #BE185D; }
+.wp-canvas:not(.hide-zones) .floorplan :is(.fp-ws.fp-occ.zc-7, g.fp-ws.fp-occ.zc-7 > :not(text, title)), .print-map .floorplan :is(.fp-ws.fp-occ.zc-7, g.fp-ws.fp-occ.zc-7 > :not(text, title)) { fill: #1E3A8A; }
+.wp-canvas.hide-zones .floorplan .zone-layer { display: none; }
 .floorplan .fp-i-person, .floorplan .fp-i-badge { fill: #FFFFFF; }
 .floorplan .fp-badge { stroke: #FFFFFF; stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .floorplan .fp-badge-desktop { fill: #334155; }
@@ -836,17 +836,17 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .wp-canvas.hl-free .floorplan .fp-ws:not(.fp-free), .wp-canvas.hl-free .floorplan .fp-marks,
 .wp-canvas.hl-flag .floorplan .fp-ws:not(.fp-flag), .wp-canvas.hl-flag .floorplan .fp-mark:not(.fp-mark-flag) { opacity: 0.2; }
 .wp-canvas.hl-free .floorplan :is(.fp-ws.fp-free, g.fp-ws.fp-free > :not(text, title)) { fill: #BBF7D0; stroke-width: 3px; }
-.floorplan .fp-team-outline { stroke-width: 1.2px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; fill: none; }
-.floorplan .fp-team-label { font-weight: 600; stroke: none; }
-.floorplan .fp-team-halo { fill: #FFFFFF; stroke: #FFFFFF; stroke-width: 2px; stroke-linejoin: round; opacity: 0.85; font-weight: 600; }
-.floorplan .fp-team-outline.fp-team-0 { stroke: #C2410C; } .floorplan .fp-team-label.fp-team-0, .wp-swatch.fp-team-0 { fill: #C2410C; background: #C2410C; }
-.floorplan .fp-team-outline.fp-team-1 { stroke: #15803D; } .floorplan .fp-team-label.fp-team-1, .wp-swatch.fp-team-1 { fill: #15803D; background: #15803D; }
-.floorplan .fp-team-outline.fp-team-2 { stroke: #7E22CE; } .floorplan .fp-team-label.fp-team-2, .wp-swatch.fp-team-2 { fill: #7E22CE; background: #7E22CE; }
-.floorplan .fp-team-outline.fp-team-3 { stroke: #B91C1C; } .floorplan .fp-team-label.fp-team-3, .wp-swatch.fp-team-3 { fill: #B91C1C; background: #B91C1C; }
-.floorplan .fp-team-outline.fp-team-4 { stroke: #0F766E; } .floorplan .fp-team-label.fp-team-4, .wp-swatch.fp-team-4 { fill: #0F766E; background: #0F766E; }
-.floorplan .fp-team-outline.fp-team-5 { stroke: #A16207; } .floorplan .fp-team-label.fp-team-5, .wp-swatch.fp-team-5 { fill: #A16207; background: #A16207; }
-.floorplan .fp-team-outline.fp-team-6 { stroke: #BE185D; } .floorplan .fp-team-label.fp-team-6, .wp-swatch.fp-team-6 { fill: #BE185D; background: #BE185D; }
-.floorplan .fp-team-outline.fp-team-7 { stroke: #1E3A8A; } .floorplan .fp-team-label.fp-team-7, .wp-swatch.fp-team-7 { fill: #1E3A8A; background: #1E3A8A; }
+.floorplan .zone-outline { stroke-width: 1.2px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; fill: none; }
+.floorplan .zone-label { font-weight: 600; stroke: none; }
+.floorplan .zone-halo { fill: #FFFFFF; stroke: #FFFFFF; stroke-width: 2px; stroke-linejoin: round; opacity: 0.85; font-weight: 600; }
+.floorplan .zone-outline.zc-0 { stroke: #C2410C; } .floorplan .zone-label.zc-0, .wp-swatch.zc-0 { fill: #C2410C; background: #C2410C; }
+.floorplan .zone-outline.zc-1 { stroke: #15803D; } .floorplan .zone-label.zc-1, .wp-swatch.zc-1 { fill: #15803D; background: #15803D; }
+.floorplan .zone-outline.zc-2 { stroke: #7E22CE; } .floorplan .zone-label.zc-2, .wp-swatch.zc-2 { fill: #7E22CE; background: #7E22CE; }
+.floorplan .zone-outline.zc-3 { stroke: #B91C1C; } .floorplan .zone-label.zc-3, .wp-swatch.zc-3 { fill: #B91C1C; background: #B91C1C; }
+.floorplan .zone-outline.zc-4 { stroke: #0F766E; } .floorplan .zone-label.zc-4, .wp-swatch.zc-4 { fill: #0F766E; background: #0F766E; }
+.floorplan .zone-outline.zc-5 { stroke: #A16207; } .floorplan .zone-label.zc-5, .wp-swatch.zc-5 { fill: #A16207; background: #A16207; }
+.floorplan .zone-outline.zc-6 { stroke: #BE185D; } .floorplan .zone-label.zc-6, .wp-swatch.zc-6 { fill: #BE185D; background: #BE185D; }
+.floorplan .zone-outline.zc-7 { stroke: #1E3A8A; } .floorplan .zone-label.zc-7, .wp-swatch.zc-7 { fill: #1E3A8A; background: #1E3A8A; }
 
 /* Legend (floor page and print page): the same symbols as on the map. */
 .wp-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
