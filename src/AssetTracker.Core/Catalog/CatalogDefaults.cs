@@ -19,11 +19,11 @@ public static class CatalogDefaults
 
         // Rows are inserted one at a time and take the identity values 1, 2, 3 ... of an empty table (explicit ids would
         // need IDENTITY_INSERT on SQL Server), which is what the BuiltIn constants promise.
-        async Task AddType(int expectedId, string name, InventoryMode mode, bool standardFields)
+        async Task AddType(int expectedId, string name, InventoryMode mode, bool standardFields, WorkspotRole role = WorkspotRole.None)
         {
             var type = new AssetType
             {
-                Name = name, Mode = mode,
+                Name = name, Mode = mode, WorkspotRole = role,
                 UsesModel = standardFields, UsesDescription = standardFields, UsesSerialNumber = standardFields,
                 UsesCondition = standardFields,
             };
@@ -47,13 +47,14 @@ public static class CatalogDefaults
                 throw new InvalidOperationException($"Default field {name} got id {field.Id}, expected {expectedId}: the table was not empty.");
         }
 
-        await AddType(BuiltIn.Desktop, "Desktop", InventoryMode.Tagged, true);
+        await AddType(BuiltIn.Desktop, "Desktop", InventoryMode.Tagged, true, WorkspotRole.Desktop);
         await AddType(BuiltIn.Laptop, "Laptop", InventoryMode.Tagged, true);
         await AddType(BuiltIn.Phone, "Phone", InventoryMode.Tagged, true);
         await AddType(BuiltIn.PhoneNumber, "Phone number", InventoryMode.Tagged, false);
         await AddType(BuiltIn.Peripheral, "Peripheral", InventoryMode.Pooled, false);
         await AddType(BuiltIn.Webcam, "Webcam", InventoryMode.Pooled, false);
         await AddType(BuiltIn.Headset, "Headset", InventoryMode.Pooled, false);
+        await AddType(BuiltIn.Screen, "Screen", InventoryMode.Tagged, true, WorkspotRole.Screen);
 
         // A dual-SIM phone has two IMEIs.
         await AddField(BuiltIn.PhoneImeiField, BuiltIn.Phone, "IMEI", FieldKind.Imei, 10, unique: true, max: 2);

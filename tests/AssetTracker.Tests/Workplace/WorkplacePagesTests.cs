@@ -108,12 +108,12 @@ public class WorkplacePagesTests : IClassFixture<AppFactory>
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/Workplace/Replace/{own.Id}")).StatusCode);
 
         var ownHtml = await client.GetStringAsync($"/Workplace/Floor/{own.Id}");
-        Assert.DoesNotContain("Group as team", ownHtml);
+        Assert.DoesNotContain("Set team", ownHtml);
         Assert.DoesNotContain("Replace drawing", ownHtml);
 
         // a manager has no form on the page (so no antiforgery token); a forged post is refused and changes nothing
-        var forged = await client.PostAsync($"/Workplace/Floor/{own.Id}?handler=Team", new FormUrlEncodedContent(new Dictionary<string, string>
-            { ["name"] = "Sneaky", ["ids"] = "1" }));
+        var forged = await client.PostAsync($"/Workplace/Floor/{own.Id}?handler=SetTeam", new FormUrlEncodedContent(new Dictionary<string, string>
+            { ["team"] = "new", ["name"] = "Sneaky", ["ids"] = "1" }));
         Assert.True(forged.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Forbidden);
         Assert.False(await _f.WithDbAsync(db => db.FloorTeams.AnyAsync(t => t.Name == "Sneaky")));
     }
@@ -168,44 +168,57 @@ public class WorkplacePagesTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task The_floor_page_handlers_group_rename_and_ungroup_seats_mark_shapes_and_archive()
+    public async Task The_floor_page_gives_a_table_a_team_splits_it_between_teams_and_archives()
     {
         var (_, floor, spots) = await SeedFloorAsync("WP08", seats: 4);
         var client = _f.CreateClientAs(TestUser.It);
         var url = $"/Workplace/Floor/{floor.Id}";
+        var table = string.Join(',', spots.Select(s => s.Id));
 
-        var create = await FormHelper.PostFormAsync(client, url, url + "?handler=Team",
-            ("name", "Page team"), ("ids", $"{spots[0].Id},{spots[1].Id}"));
+        // the whole table becomes a new team; the redirect selects those seats again
+        var create = await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam", ("team", "new"), ("name", "Page team"), ("ids", table));
         Assert.Equal(HttpStatusCode.Redirect, create.StatusCode);
+        Assert.Contains("focus=ws%3A" + table, create.Headers.Location?.OriginalString);
         var team = await _f.WithDbAsync(db => db.FloorTeams.AsNoTracking().SingleAsync(t => t.FloorId == floor.Id));
-        Assert.Contains("Page team", await client.GetStringAsync(url));
+        var html = await client.GetStringAsync(url);
+        Assert.Contains("Page team", html);
+        Assert.Contains("Set team", html);
+        Assert.Contains($"data-focus=\"{string.Join(',', spots.Select(s => s.ElementId))}\"", await client.GetStringAsync(url + "?focus=ws:" + table));
+
+        // split the table: two of its seats go to a second team, one gets no team
+        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam",
+            ("team", "new"), ("name", "Second team"), ("ids", $"{spots[2].Id},{spots[3].Id}"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam",
+            ("team", "none"), ("ids", spots[0].Id.ToString()))).StatusCode);
+        var second = await _f.WithDbAsync(db => db.FloorTeams.AsNoTracking().SingleAsync(t => t.Name == "Second team"));
+        // and one seat back to the first team
+        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam",
+            ("team", team.Id.ToString()), ("ids", spots[3].Id.ToString()))).StatusCode);
 
         Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=TeamRename",
             ("teamId", team.Id.ToString()), ("name", "Renamed team"))).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=TeamColor",
             ("teamId", team.Id.ToString()), ("color", "4"))).StatusCode);
-        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=Label",
-            ("workspotId", spots[2].Id.ToString()), ("label", "Corner desk"))).StatusCode);
-        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=TeamAdd",
-            ("teamId", team.Id.ToString()), ("ids", spots[2].Id.ToString()))).StatusCode);
-        Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=TeamRemove",
-            ("ids", spots[0].Id.ToString()))).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=Retire",
-            ("ids", spots[3].Id.ToString()))).StatusCode);
+            ("ids", spots[0].Id.ToString()))).StatusCode);
 
         var after = await _f.WithDbAsync(db => db.Workspots.AsNoTracking().Where(w => w.FloorId == floor.Id).OrderBy(w => w.ElementId).ToListAsync());
-        Assert.Null(after[0].TeamId);
-        Assert.Equal(team.Id, after[1].TeamId);
-        Assert.Equal(team.Id, after[2].TeamId);
-        Assert.Equal("Corner desk", after[2].Label);
-        Assert.False(after[3].IsActive);
+        Assert.Equal([null, team.Id, second.Id, team.Id], after.Select(w => w.TeamId).ToArray());
+        Assert.False(after[0].IsActive);
         var stored = await _f.WithDbAsync(db => db.FloorTeams.AsNoTracking().SingleAsync(t => t.Id == team.Id));
         Assert.Equal(("Renamed team", 4), (stored.Name, stored.ColorIndex));
 
-        // a rule violation re-renders the page with the message and a 4xx status
-        var dup = await FormHelper.PostFormAsync(client, url, url + "?handler=Team", ("name", "renamed team"), ("ids", spots[0].Id.ToString()));
+        // the split table is drawn with an outline for each team
+        var map = await client.GetStringAsync(url + "?handler=Map");
+        Assert.Contains($"class=\"fp-team-outline fp-team-4\"", map);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(map, "class=\"fp-team-outline ").Count);
+
+        // a rule violation re-renders the page with the message and a 4xx status; so does no choice
+        var dup = await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam", ("team", "new"), ("name", "renamed team"), ("ids", spots[1].Id.ToString()));
         Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
         Assert.Contains("already has a team", await dup.Content.ReadAsStringAsync());
+        var none = await FormHelper.PostFormAsync(client, url, url + "?handler=SetTeam", ("ids", spots[1].Id.ToString()));
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
 
         Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=TeamDelete", ("teamId", team.Id.ToString()))).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await FormHelper.PostFormAsync(client, url, url + "?handler=Archive")).StatusCode);
@@ -222,14 +235,14 @@ public class WorkplacePagesTests : IClassFixture<AppFactory>
         var url = $"/Workplace/Floor/{floor.Id}";
         Assert.Contains("does not declare its seats", await client.GetStringAsync(url));
 
-        var res = await FormHelper.PostFormAsync(client, url, url + "?handler=Mark", ("ids", "fp-e2,fp-e3"), ("prefix", "W-"));
+        var res = await FormHelper.PostFormAsync(client, url, url + "?handler=Mark", ("ids", "fp-e2,fp-e3"));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
-        var labels = await _f.WithDbAsync(db => db.Workspots.Where(w => w.FloorId == floor.Id).OrderBy(w => w.Id).Select(w => w.Label).ToListAsync());
-        Assert.Equal(["W-1", "W-2"], labels);
+        Assert.Equal(2, await _f.WithDbAsync(db => db.Workspots.CountAsync(w => w.FloorId == floor.Id)));
         var html = await client.GetStringAsync(url);
         Assert.DoesNotContain("does not declare its seats", html);
         Assert.Contains("fp-ws-manual", html);
     }
+
 
     [Fact]
     public async Task Replacing_the_drawing_through_the_page_reports_what_changed()

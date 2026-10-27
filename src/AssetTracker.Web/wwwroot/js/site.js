@@ -441,14 +441,14 @@ function createCombo(o) {
 })();
 
 // ---------------------------------------------------------------------------------------------------------------
-// Workplace: find a workspot, room or team (any floor). Picking a result highlights it when it is on the floor that is
+// Workplace: find a seat, room, team, person or desktop (any floor). Picking a result highlights it when it is on the floor that is
 // open, otherwise opens its floor with the seats highlighted (?focus=ws:ID | room:ID | team:ID).
 (function () {
     Array.prototype.forEach.call(document.querySelectorAll("[data-workplace-find]"), function (root) {
         var input = root.querySelector("input[role=combobox]");
         var url = root.getAttribute("data-url");
         var floorUrl = root.getAttribute("data-floor-url");
-        var KINDS = { workspot: "Seat", room: "Room", team: "Team", person: "Person", asset: "Asset", pool: "Pool" };
+        var KINDS = { room: "Room", team: "Team", person: "Person", asset: "Desktop / screen" };
 
         var combo = createCombo({
             input: input, list: root.querySelector("[role=listbox]"), idPrefix: input.id + "-option-", min: 2,
@@ -477,9 +477,54 @@ function createCombo(o) {
     });
 })();
 
+// Workplace labels (name and desktop tag next to a seat) are drawn in "screen pixels": each label group is scaled so one
+// of its units is one pixel at the current zoom, and labels are only shown once desks are far enough apart for them to
+// fit (or always, on the print page). `force`: true = always, false = never, null = when they fit.
+function layoutLabels(svg, host, force) {
+    var ctm = svg.getScreenCTM();
+    if (!ctm || !ctm.a) return;
+    if (svg.wpSpacing === undefined) svg.wpSpacing = seatSpacing(svg);
+    var visible = force === true || (force !== false && svg.wpSpacing * ctm.a >= 58);
+    host.classList.toggle("show-labels", visible);
+    if (!visible) return;
+    var k = (1 / ctm.a).toFixed(5);
+    Array.prototype.forEach.call(svg.querySelectorAll(".fp-label"), function (g) {
+        g.setAttribute("transform", "translate(" + g.getAttribute("data-ax") + " " + g.getAttribute("data-ay") + ") scale(" + k + ")");
+    });
+}
+
+// The box of an element in the drawing's own coordinates (its viewBox space), whatever transforms the drawing puts on
+// it or its groups: measured on screen and mapped back, so any shape or nesting works.
+function userBox(svg, el) {
+    var r = el.getBoundingClientRect();
+    var m = svg.getScreenCTM().inverse();
+    var p = svg.createSVGPoint();
+    p.x = r.left; p.y = r.top;
+    var a = p.matrixTransform(m);
+    p.x = r.right; p.y = r.bottom;
+    var b = p.matrixTransform(m);
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+}
+
+// Typical distance between neighbouring desks (median of nearest neighbours, sampled), in drawing units.
+function seatSpacing(svg) {
+    var pts = Array.prototype.slice.call(svg.querySelectorAll("[data-ws][data-desk]"), 0, 400).map(function (el) {
+        var b = userBox(svg, el);
+        return [b.x + b.w / 2, b.y + b.h / 2];
+    });
+    if (pts.length < 2) return 1e9;
+    var near = pts.map(function (p, i) {
+        var best = Infinity;
+        pts.forEach(function (q, j) { if (i !== j) best = Math.min(best, Math.hypot(p[0] - q[0], p[1] - q[1])); });
+        return best;
+    }).sort(function (a, b) { return a - b; });
+    return near[Math.floor(near.length / 2)] || 1e9;
+}
+
 // Workplace floor map: pan (drag), zoom (wheel, pinch, buttons), select seats (click, Shift-click, table or room click,
-// Shift-drag or "Select area"), highlight search results and teams. The selection fills the hidden fields of the forms
-// in the side panel; the server does everything else. Without JavaScript the map is a static picture.
+// Shift-drag or "Select area"), highlight search results, teams, free desks and seats to check, print what you see or a
+// part, and (IT and facility) drag people, desktops and screens onto desks. A drop is posted with fetch and the map is
+// swapped for a fresh one without losing the zoom. Without JavaScript the map is a static picture.
 (function () {
     var root = document.querySelector("[data-floor-map]");
     if (!root) return;
@@ -494,17 +539,29 @@ function createCombo(o) {
     var SHAPES = { rect: 1, circle: 1, ellipse: 1, path: 1, polygon: 1, polyline: 1, g: 1 };
     var declared = !!svg.querySelector("[data-kind=seat]");
     var areaMode = false;
+    var printMode = false;
+    var namesOn = true;
     var selected = []; // elements, in the order they were selected
+    var labelFrame = 0;
+
+    function scheduleLabels() {
+        if (labelFrame) return;
+        labelFrame = requestAnimationFrame(function () {
+            labelFrame = 0;
+            layoutLabels(svg, canvas, namesOn ? null : false);
+        });
+    }
 
     function setView(x, y, w) {
-        w = Math.max(home.w / 60, Math.min(home.w * 1.5, w));
+        w = Math.max(home.w / 80, Math.min(home.w * 1.5, w));
         view = { x: x, y: y, w: w, h: w * home.h / home.w };
         svg.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
+        scheduleLabels();
     }
 
     function zoomAt(factor, cx, cy) {
         var w = view.w / factor;
-        var k = Math.max(home.w / 60, Math.min(home.w * 1.5, w)) / view.w;
+        var k = Math.max(home.w / 80, Math.min(home.w * 1.5, w)) / view.w;
         setView(cx - (cx - view.x) * k, cy - (cy - view.y) * k, view.w * k);
     }
 
@@ -516,6 +573,27 @@ function createCombo(o) {
     }
 
     function centre() { return { x: view.x + view.w / 2, y: view.y + view.h / 2 }; }
+
+    function all(selector, scope) { return Array.prototype.slice.call((scope || root).querySelectorAll(selector)); }
+
+    function esc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/"/g, '\\"'); }
+
+    // ---- messages ----------------------------------------------------------------------------------------------
+
+    var toast = document.createElement("div");
+    toast.className = "wp-toast";
+    toast.setAttribute("role", "status");
+    toast.hidden = true;
+    document.body.appendChild(toast);
+    var toastTimer = null;
+
+    function say(text, bad) {
+        toast.textContent = text;
+        toast.classList.toggle("wp-toast--bad", !!bad);
+        toast.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.hidden = true; }, bad ? 6000 : 3000);
+    }
 
     // ---- selection -------------------------------------------------------------------------------------------
 
@@ -538,8 +616,6 @@ function createCombo(o) {
         updatePanel();
     }
 
-    function esc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/"/g, '\\"'); }
-
     // What a click on `target` selects: a seat, the seats of a table or room, or (plain drawings) a shape to mark.
     function resolve(target) {
         if (!target || !svg.contains(target)) return [];
@@ -559,9 +635,7 @@ function createCombo(o) {
     function seats() { return selected.filter(function (el) { return el.hasAttribute("data-ws"); }); }
     function shapes() { return selected.filter(function (el) { return !el.hasAttribute("data-ws"); }); }
 
-    function show(selector, on) {
-        Array.prototype.forEach.call(root.querySelectorAll(selector), function (el) { el.hidden = !on; });
-    }
+    function show(selector, on) { all(selector).forEach(function (el) { el.hidden = !on; }); }
 
     function teamName(id) {
         var el = root.querySelector('[data-team-id="' + esc(id) + '"] .wp-team-name');
@@ -577,49 +651,356 @@ function createCombo(o) {
         show('[data-when="on"]', s.some(function (x) { return !x.classList.contains("fp-ws-off"); }));
         show('[data-when="off"]', s.some(function (x) { return x.classList.contains("fp-ws-off"); }));
         show('[data-when="el"]', e.length > 0);
+        var printSel = root.querySelector('[data-print="selection"]');
+        if (printSel) printSel.disabled = selected.length === 0;
 
-        Array.prototype.forEach.call(root.querySelectorAll('[data-ids="ws"]'), function (f) {
-            f.value = s.map(function (x) { return x.getAttribute("data-ws"); }).join(",");
-        });
-        Array.prototype.forEach.call(root.querySelectorAll('[data-ids="el"]'), function (f) {
-            f.value = e.map(function (x) { return x.id; }).join(",");
-        });
+        all('[data-ids="ws"]').forEach(function (f) { f.value = s.map(function (x) { return x.getAttribute("data-ws"); }).join(","); });
+        all('[data-ids="el"]').forEach(function (f) { f.value = e.map(function (x) { return x.id; }).join(","); });
 
         var summary = root.querySelector("[data-sel-summary]");
-        if (summary) summary.textContent = s.length === 1 ? "1 workspot selected." : s.length + " workspots selected.";
+        if (summary) summary.textContent = s.length === 1 ? "" : describe(s);
         var list = root.querySelector("[data-sel-list]");
         if (list) {
             list.textContent = "";
             if (s.length > 1) s.slice(0, 12).forEach(function (x) {
                 var li = document.createElement("li");
-                li.textContent = x.getAttribute("data-label") || x.id;
+                li.textContent = seatText(x);
                 list.appendChild(li);
             });
             if (s.length > 12) { var more = document.createElement("li"); more.textContent = "… and " + (s.length - 12) + " more"; list.appendChild(more); }
         }
         var elSummary = root.querySelector("[data-el-summary]");
         if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
+        syncTeamForm(s);
 
         if (s.length === 1) {
             var one = s[0];
             var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
-            fact("label", one.getAttribute("data-label"));
-            var room = one.getAttribute("data-room");
-            fact("room", one.getAttribute("data-room-name") ? one.getAttribute("data-room-name") + " (" + room + ")" : room);
-            fact("table", one.getAttribute("data-table"));
+            fact("room", roomOf(one));
             fact("team", one.hasAttribute("data-team") ? teamName(one.getAttribute("data-team")) : "");
-            var idField = root.querySelector("[data-ws-id]");
-            if (idField) idField.value = one.getAttribute("data-ws");
-            var labelField = root.querySelector("[data-ws-label]");
-            if (labelField) labelField.value = one.getAttribute("data-label") || "";
             loadSpot(one);
         }
     }
 
+    function roomOf(seat) { return seat.getAttribute("data-room-name") || seat.getAttribute("data-room") || ""; }
+
+    // A seat has no name of its own: it is who sits there, its desktop, or what kind of seat it is.
+    function seatText(seat) {
+        return seat.getAttribute("data-person") || seat.getAttribute("data-desktop") ||
+            (seat.classList.contains("fp-ws-off") ? "Switched-off seat" : seat.hasAttribute("data-desk") ? "Free desk" : "Seat, not a desk");
+    }
+
+    function distinct(list) { return list.filter(function (v, i) { return v && list.indexOf(v) === i; }); }
+
+    // "A whole table in Finance · 6 seats, 2 free desks", "3 of the 8 seats of a table in Sales", "14 seats in 2 rooms".
+    function describe(s) {
+        var tables = distinct(s.map(function (x) { return x.getAttribute("data-table"); }));
+        var rooms = distinct(s.map(roomOf));
+        var text = s.length + " seats";
+        if (tables.length === 1 && s.every(function (x) { return x.getAttribute("data-table") === tables[0]; })) {
+            var total = svg.querySelectorAll('[data-ws][data-table="' + esc(tables[0]) + '"]').length;
+            text = total === s.length ? "A whole table, " + s.length + " seats," : s.length + " of the " + total + " seats of a table";
+        }
+        if (rooms.length === 1) text += " in " + rooms[0];
+        else if (rooms.length > 1) text += " in " + rooms.length + " rooms";
+        var free = s.filter(function (x) { return x.classList.contains("fp-free"); }).length;
+        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team"); }));
+        var parts = [];
+        if (free) parts.push(free + " free desk" + (free === 1 ? "" : "s"));
+        if (teams.length === 1) parts.push(s.every(function (x) { return x.getAttribute("data-team") === teams[0]; }) ? "team " + teamName(teams[0]) : "partly team " + teamName(teams[0]));
+        else if (teams.length > 1) parts.push(teams.length + " teams");
+        return text.replace(/,$/, "") + (parts.length ? " · " + parts.join(", ") : "") + ".";
+    }
+
+    // The team box starts at the team the selected seats share; "New team…" when they have none or several.
+    var teamForm = root.querySelector("[data-team-form]");
+    function syncTeamNew() {
+        if (!teamForm) return;
+        var isNew = teamForm.querySelector("[data-team-select]").value === "new";
+        teamForm.querySelector("[data-team-new]").hidden = !isNew;
+        teamForm.querySelector("[data-team-new] input").required = isNew;
+    }
+    function syncTeamForm(s) {
+        if (!teamForm || s.length === 0) return;
+        var teams = distinct(s.map(function (x) { return x.getAttribute("data-team") || "-"; }));
+        var select = teamForm.querySelector("[data-team-select]");
+        select.value = teams.length === 1 && teams[0] !== "-" ? teams[0] : "new";
+        teamForm.querySelector("[data-team-submit]").textContent = s.length === 1 ? "Set team" : "Set team for " + s.length + " seats";
+        syncTeamNew();
+    }
+    if (teamForm) teamForm.querySelector("[data-team-select]").addEventListener("change", syncTeamNew);
+
+    // ---- what sits at the selected seat -------------------------------------------------------------------------
+
+    var spotHolder = root.querySelector("[data-spot-url]");
+    var spotToken = 0;
+    var assignForm = document.getElementById("wp-assign-form");
+    var releaseForm = document.getElementById("wp-release-form");
+
+    function node(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+    }
+
+    function item(kind, title, meta, drag, assignmentId, workspotId) {
+        var li = node("li", "wp-item");
+        if (drag && editable) {
+            li.setAttribute("data-drag-kind", kind);
+            li.setAttribute("data-drag-id", String(drag));
+            li.setAttribute("data-drag-title", title);
+            li.title = "Drag onto another desk to move";
+        }
+        var icon = node("span", "wp-pal-icon wp-pal-icon--" + kind);
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = kind === "person" ? "P" : kind === "desktop" ? "D" : "S";
+        li.appendChild(icon);
+        var text = node("span", "wp-item-text");
+        text.appendChild(node("strong", null, title));
+        if (meta) text.appendChild(node("span", "muted", meta));
+        li.appendChild(text);
+        if (assignmentId && releaseForm) {
+            var b = node("button", "btn--sm", "Release");
+            b.type = "button";
+            b.setAttribute("data-release", String(assignmentId));
+            b.setAttribute("aria-label", "Release " + title);
+            b.addEventListener("click", function () { release(assignmentId, workspotId); });
+            li.appendChild(b);
+        }
+        return li;
+    }
+
+    function empty(text) { return node("li", "wp-item wp-item-empty", text); }
+
+    function renderSpot(d) {
+        root.querySelector("[data-spot-status]").hidden = true;
+        root.querySelector("[data-spot-body]").hidden = false;
+        var kind = !d.isActive ? "Switched-off seat" : d.isDesk ? "Desk" : "Seat, not a desk: nobody is placed here";
+        root.querySelector("[data-spot-kind]").textContent = kind + (d.place ? " · " + d.place : "") + ".";
+        var items = root.querySelector("[data-spot-items]");
+        items.textContent = "";
+        if (d.person) {
+            items.appendChild(item("person", d.person.name, [d.person.isActive ? null : "No longer works here", d.person.jobTitle, d.person.siteKey].filter(Boolean).join(" · "),
+                d.person.personId, d.person.assignmentId, d.workspotId));
+        } else if (d.isDesk) {
+            items.appendChild(empty("Nobody sits here: free desk."));
+        }
+        if (d.desktop) items.appendChild(item("desktop", d.desktop.tag, ["Desktop", d.desktop.model].filter(Boolean).join(" · "), d.desktop.assetId, d.desktop.assignmentId, d.workspotId));
+        else if (d.isDesk) items.appendChild(empty("No desktop."));
+        d.screens.forEach(function (sc) { items.appendChild(item("screen", sc.tag, ["Screen", sc.model].filter(Boolean).join(" · "), sc.assetId, sc.assignmentId, d.workspotId)); });
+        if (d.isDesk && d.screens.length === 0) items.appendChild(empty("No screen."));
+        var flags = root.querySelector("[data-spot-flags]");
+        flags.textContent = "";
+        d.flags.forEach(function (f) { flags.appendChild(node("li", null, f)); });
+    }
+
+    function loadSpot(seat) {
+        if (!spotHolder) return;
+        var status = root.querySelector("[data-spot-status]");
+        var token = ++spotToken;
+        status.hidden = false;
+        status.textContent = "Loading…";
+        root.querySelector("[data-spot-body]").hidden = true;
+        fetch(spotHolder.getAttribute("data-spot-url") + "&workspotId=" + encodeURIComponent(seat.getAttribute("data-ws")), {
+            headers: { Accept: "application/json" }, credentials: "same-origin"
+        }).then(function (res) {
+            if (!res.ok) throw new Error("spot failed");
+            return res.json();
+        }).then(function (d) {
+            if (token === spotToken) renderSpot(d);
+        }).catch(function () {
+            if (token === spotToken) status.textContent = "Could not load what is at this seat.";
+        });
+    }
+
+    // ---- placing and releasing (fetch, then swap in the fresh map) ----------------------------------------------
+
+    function post(form, values) {
+        Object.keys(values).forEach(function (k) {
+            var f = form.querySelector('[name="' + k + '"]');
+            if (f) f.value = String(values[k]);
+        });
+        return fetch(form.getAttribute("action"), {
+            method: "POST", body: new FormData(form), credentials: "same-origin", headers: { Accept: "application/json" }
+        }).then(function (res) {
+            return res.json().catch(function () { return { message: "Something went wrong (" + res.status + ")." }; })
+                .then(function (body) { if (!res.ok) throw new Error(body.message || "Not possible."); return body; });
+        });
+    }
+
+    function place(seat, kind, id) {
+        if (!assignForm) return;
+        var ws = seat.getAttribute("data-ws");
+        post(assignForm, { workspotId: ws, kind: kind, targetId: id })
+            .then(function (body) { say(body.message); refresh(ws); })
+            .catch(function (err) { say(err.message, true); });
+    }
+
+    function release(assignmentId, workspotId) {
+        post(releaseForm, { assignmentId: assignmentId, workspotId: workspotId })
+            .then(function (body) { say(body.message); refresh(String(workspotId)); })
+            .catch(function (err) { say(err.message, true); });
+    }
+
+    function refresh(selectWs) {
+        var keep = seats().map(function (x) { return x.getAttribute("data-ws"); });
+        if (selectWs && keep.indexOf(selectWs) < 0) keep = [selectWs];
+        var get = function (url) { return fetch(url, { credentials: "same-origin" }).then(function (r) { if (!r.ok) throw new Error(); return r.text(); }); };
+        Promise.all([get(root.getAttribute("data-map-url")), get(root.getAttribute("data-status-url"))]).then(function (parts) {
+            var holder = document.createElement("div");
+            holder.innerHTML = parts[0].trim();
+            var fresh = holder.querySelector("svg");
+            if (fresh) {
+                fresh.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
+                canvas.replaceChild(fresh, svg);
+                svg = fresh;
+            }
+            var host = root.querySelector("[data-status-host]");
+            if (host) host.innerHTML = parts[1];
+            syncHighlightButtons();
+            selected = [];
+            setSelection(keep.map(function (id) { return svg.querySelector('[data-ws="' + esc(id) + '"]'); }).filter(Boolean));
+            layoutLabels(svg, canvas, namesOn ? null : false);
+            if (palette) palette.reload();
+        }).catch(function () { window.location.reload(); });
+    }
+
+    // ---- the drag-and-drop list ---------------------------------------------------------------------------------
+
+    var palette = null;
+    var palRoot = root.querySelector("[data-palette]");
+    if (palRoot) {
+        var palKind = "person";
+        var palInput = palRoot.querySelector("[data-palette-q]");
+        var palList = palRoot.querySelector("[data-palette-list]");
+        var palTimer = null, palToken = 0;
+        var PAL_EMPTY = { person: "Everyone is placed.", desktop: "No desktops left to place.", screen: "No screens left to place." };
+
+        var load = function () {
+            var token = ++palToken;
+            var q = palInput.value.trim();
+            fetch(palRoot.getAttribute("data-palette-url") + "&kind=" + palKind + "&q=" + encodeURIComponent(q), {
+                headers: { Accept: "application/json" }, credentials: "same-origin"
+            }).then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (rows) {
+                if (token !== palToken) return;
+                palList.textContent = "";
+                if (rows.length === 0) palList.appendChild(node("li", "wp-pal-empty", q ? "Nothing found that is not placed yet." : PAL_EMPTY[palKind]));
+                rows.forEach(function (r) {
+                    var li = node("li");
+                    var b = node("button", "wp-pal-item");
+                    b.type = "button";
+                    b.setAttribute("data-drag-kind", r.kind);
+                    b.setAttribute("data-drag-id", String(r.id));
+                    b.setAttribute("data-drag-title", r.title);
+                    var icon = node("span", "wp-pal-icon wp-pal-icon--" + r.kind, r.kind === "person" ? "P" : r.kind === "desktop" ? "D" : "S");
+                    icon.setAttribute("aria-hidden", "true");
+                    b.appendChild(icon);
+                    var text = node("span", "wp-pal-text");
+                    text.appendChild(node("strong", null, r.title));
+                    var meta = [r.subtitle, r.siteKey].filter(Boolean).join(" · ");
+                    if (meta) text.appendChild(node("span", null, meta));
+                    b.appendChild(text);
+                    li.appendChild(b);
+                    palList.appendChild(li);
+                });
+            }).catch(function () { if (token === palToken) palList.textContent = ""; });
+        };
+        palette = { reload: load };
+
+        all("[data-palette-kind]", palRoot).forEach(function (tab) {
+            tab.addEventListener("click", function () {
+                palKind = tab.getAttribute("data-palette-kind");
+                all("[data-palette-kind]", palRoot).forEach(function (t) { t.setAttribute("aria-pressed", t === tab ? "true" : "false"); });
+                load();
+            });
+        });
+        palInput.addEventListener("input", function () { clearTimeout(palTimer); palTimer = setTimeout(load, 200); });
+        // A click (or Enter) on an entry places it at the selected desk.
+        palList.addEventListener("click", function (e) {
+            var b = e.target.closest("[data-drag-kind]");
+            if (!b) return;
+            var s = seats();
+            if (s.length !== 1 || !s[0].hasAttribute("data-desk")) {
+                say("Drag the entry onto a desk, or select one desk first and then click the entry.", true);
+                return;
+            }
+            place(s[0], b.getAttribute("data-drag-kind"), b.getAttribute("data-drag-id"));
+        });
+        load();
+    }
+
+    // Dragging an entry (from the list, or a person, desktop or screen at the selected seat) onto a desk. Pointer events,
+    // so it works with a mouse, a pen and a finger alike.
+    var drag = null;
+    var ghost = null;
+    var dropTarget = null;
+
+    function seatAt(x, y) {
+        var el = document.elementFromPoint(x, y);
+        if (!el || !svg.contains(el)) return null;
+        return el.closest("[data-ws]");
+    }
+
+    function setDropTarget(seat) {
+        if (dropTarget === seat) return;
+        if (dropTarget) dropTarget.classList.remove("is-drop");
+        dropTarget = seat;
+        if (dropTarget) dropTarget.classList.add("is-drop");
+    }
+
+    root.addEventListener("pointerdown", function (e) {
+        if (!editable || (e.button !== undefined && e.button !== 0)) return;
+        var it = e.target.closest("[data-drag-kind]");
+        if (!it || e.target.closest("[data-release]")) return;
+        drag = { kind: it.getAttribute("data-drag-kind"), id: it.getAttribute("data-drag-id"), title: it.getAttribute("data-drag-title"),
+            x: e.clientX, y: e.clientY, pointerId: e.pointerId, started: false };
+    });
+
+    document.addEventListener("pointermove", function (e) {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        if (!drag.started) {
+            if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+            drag.started = true;
+            ghost = node("div", "wp-ghost", drag.title);
+            document.body.appendChild(ghost);
+            canvas.classList.add("is-dropping");
+        }
+        e.preventDefault();
+        ghost.style.left = (e.clientX + 14) + "px";
+        ghost.style.top = (e.clientY + 10) + "px";
+        var seat = seatAt(e.clientX, e.clientY);
+        setDropTarget(seat && seat.hasAttribute("data-desk") ? seat : null);
+    });
+
+    function endDrag(e, cancelled) {
+        if (!drag || (e && e.pointerId !== drag.pointerId)) return;
+        var d = drag;
+        drag = null;
+        if (ghost) { ghost.remove(); ghost = null; }
+        canvas.classList.remove("is-dropping");
+        var target = dropTarget;
+        setDropTarget(null);
+        if (!d.started || cancelled) return;
+        if (target) place(target, d.kind, d.id);
+        else if (e && seatAt(e.clientX, e.clientY)) say("That seat is not a desk.", true);
+    }
+
+    document.addEventListener("pointerup", function (e) { endDrag(e, false); });
+    document.addEventListener("pointercancel", function (e) { endDrag(e, true); });
+
     // ---- highlight and zoom ----------------------------------------------------------------------------------
 
-    function clearHits() {
-        Array.prototype.forEach.call(svg.querySelectorAll(".is-hit"), function (el) { el.classList.remove("is-hit"); });
+    function clearHits() { all(".is-hit", svg).forEach(function (el) { el.classList.remove("is-hit"); }); }
+
+    function boundsOf(list) {
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        list.forEach(function (el) {
+            var b = userBox(svg, el);
+            minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
+        });
+        return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
 
     function focusElements(list) {
@@ -627,35 +1008,87 @@ function createCombo(o) {
         if (list.length === 0) return;
         list.forEach(function (el) { el.classList.add("is-hit"); });
         setSelection(list);
-        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        list.forEach(function (el) {
-            var b = el.getBBox();
-            minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
-            maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
-        });
-        var w = Math.max((maxX - minX) * 2.2, home.w / 8);
-        var h = Math.max((maxY - minY) * 2.2, home.h / 8);
+        var b = boundsOf(list);
+        var w = Math.max(b.w * 2.2, home.w / 8);
+        var h = Math.max(b.h * 2.2, home.h / 8);
         w = Math.max(w, h * home.w / home.h);
-        setView((minX + maxX) / 2 - w / 2, (minY + maxY) / 2 - w * home.h / home.w / 2, w);
+        setView(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - w * home.h / home.w / 2, w);
     }
 
     function focusSpec(spec) {
         var i = spec.indexOf(":");
         if (i < 0) return;
         var kind = spec.slice(0, i), value = spec.slice(i + 1), q = null;
-        if (kind === "ws") q = '[data-ws="' + esc(value) + '"]';
+        if (kind === "ws") q = value.split(",").map(function (v) { return '[data-ws="' + esc(v) + '"]'; }).join(",");
         else if (kind === "room") q = '[data-ws][data-room="' + esc(value) + '"]';
         else if (kind === "team") q = '[data-ws][data-team="' + esc(value) + '"]';
-        if (q) focusElements(Array.prototype.slice.call(svg.querySelectorAll(q)));
+        if (q) focusElements(all(q, svg));
     }
 
     root.addEventListener("workplace:focus", function (e) { focusSpec(String(e.detail)); });
 
-    Array.prototype.forEach.call(root.querySelectorAll("[data-show-team]"), function (b) {
-        b.addEventListener("click", function () { focusSpec("team:" + b.getAttribute("data-show-team")); });
+    function syncHighlightButtons() {
+        all("[data-highlight]").forEach(function (b) {
+            b.setAttribute("aria-pressed", canvas.classList.contains("hl-" + b.getAttribute("data-highlight")) ? "true" : "false");
+        });
+    }
+
+    // Buttons in the side panel (some of it is swapped in after a drop, so the clicks are delegated).
+    root.addEventListener("click", function (e) {
+        var spot = e.target.closest("[data-show-spot]");
+        if (spot) { focusSpec("ws:" + spot.getAttribute("data-show-spot")); return; }
+        var group = e.target.closest("[data-show-seats]");
+        if (group) { focusSpec("ws:" + group.getAttribute("data-show-seats")); return; }
+        var team = e.target.closest("[data-show-team]");
+        if (team) { focusSpec("team:" + team.getAttribute("data-show-team")); return; }
+        var hl = e.target.closest("[data-highlight]");
+        if (hl) {
+            var cls = "hl-" + hl.getAttribute("data-highlight");
+            var on = !canvas.classList.contains(cls);
+            canvas.classList.remove("hl-free", "hl-flag");
+            canvas.classList.toggle(cls, on);
+            syncHighlightButtons();
+        }
     });
 
-    // ---- pointer handling: pan, pinch, click, area -----------------------------------------------------------
+    all("[data-layer]").forEach(function (box) {
+        box.addEventListener("change", function () {
+            if (box.getAttribute("data-layer") === "teams") canvas.classList.toggle("hide-teams", !box.checked);
+            else { namesOn = box.checked; layoutLabels(svg, canvas, namesOn ? null : false); }
+        });
+    });
+
+    // ---- printing (the browser's print dialog makes the PDF) ----------------------------------------------------
+
+    function openPrint(area, what) {
+        var url = root.getAttribute("data-print-url") + "?auto=true";
+        if (area) url += "&area=" + [area.x, area.y, area.w, area.h].map(function (v) { return v.toFixed(1); }).join(",");
+        if (what) url += "&what=" + encodeURIComponent(what);
+        window.open(url, "_blank");
+        var menu = root.querySelector(".wp-print");
+        if (menu) menu.open = false;
+    }
+
+    all("[data-print]").forEach(function (b) {
+        b.addEventListener("click", function () {
+            var what = b.getAttribute("data-print");
+            if (what === "view") openPrint(view, "Part of the floor, as it was on screen");
+            else if (what === "floor") openPrint(null, null);
+            else if (what === "selection" && selected.length) {
+                var bb = boundsOf(selected);
+                var pad = Math.max(bb.w, bb.h) * 0.25 + home.w / 100;
+                openPrint({ x: bb.x - pad, y: bb.y - pad, w: bb.w + 2 * pad, h: bb.h + 2 * pad }, "Selected seats");
+            } else if (what === "area") {
+                printMode = true;
+                canvas.classList.add("is-print-area");
+                var menu = root.querySelector(".wp-print");
+                if (menu) menu.open = false;
+                say("Drag a rectangle on the map around the part to print.");
+            }
+        });
+    });
+
+    // ---- pointer handling on the map: pan, pinch, click, area -------------------------------------------------
 
     var band = document.createElement("div");
     band.className = "wp-band";
@@ -679,7 +1112,7 @@ function createCombo(o) {
             return;
         }
         gesture = {
-            type: (areaMode || e.shiftKey) ? "box" : "pan", target: e.target, startX: e.clientX, startY: e.clientY,
+            type: (printMode || areaMode || e.shiftKey) ? "box" : "pan", print: printMode, target: e.target, startX: e.clientX, startY: e.clientY,
             start: userPoint(e.clientX, e.clientY), moved: false, shift: e.shiftKey || e.ctrlKey || e.metaKey
         };
     });
@@ -691,7 +1124,7 @@ function createCombo(o) {
         if (gesture.type === "pinch" && count() >= 2) {
             var ids = Object.keys(pointers), a = pointers[ids[0]], b = pointers[ids[1]];
             var factor = Math.hypot(a.x - b.x, a.y - b.y) / gesture.dist;
-            var w = Math.max(home.w / 60, Math.min(home.w * 1.5, gesture.view.w / factor));
+            var w = Math.max(home.w / 80, Math.min(home.w * 1.5, gesture.view.w / factor));
             var k = w / gesture.view.w;
             setView(gesture.mid.x - (gesture.mid.x - gesture.view.x) * k, gesture.mid.y - (gesture.mid.y - gesture.view.y) * k, w);
             return;
@@ -704,10 +1137,9 @@ function createCombo(o) {
             setView(view.x + gesture.start.x - now.x, view.y + gesture.start.y - now.y, view.w);
         } else if (gesture.type === "box") {
             var r = canvas.getBoundingClientRect();
-            var x1 = Math.min(gesture.startX, e.clientX) - r.left + canvas.scrollLeft, y1 = Math.min(gesture.startY, e.clientY) - r.top + canvas.scrollTop;
             band.hidden = false;
-            band.style.left = x1 + "px";
-            band.style.top = y1 + "px";
+            band.style.left = (Math.min(gesture.startX, e.clientX) - r.left) + "px";
+            band.style.top = (Math.min(gesture.startY, e.clientY) - r.top) + "px";
             band.style.width = Math.abs(e.clientX - gesture.startX) + "px";
             band.style.height = Math.abs(e.clientY - gesture.startY) + "px";
         }
@@ -729,15 +1161,21 @@ function createCombo(o) {
         band.hidden = true;
         if (g.type === "pinch") return;
         if (g.type === "box" && g.moved) {
+            if (g.print) {
+                var end = userPoint(e.clientX, e.clientY);
+                printMode = false;
+                canvas.classList.remove("is-print-area");
+                openPrint({ x: Math.min(g.start.x, end.x), y: Math.min(g.start.y, end.y), w: Math.abs(end.x - g.start.x), h: Math.abs(end.y - g.start.y) },
+                    "Part of the floor");
+                return;
+            }
             var box = {
                 left: Math.min(g.startX, e.clientX), right: Math.max(g.startX, e.clientX),
                 top: Math.min(g.startY, e.clientY), bottom: Math.max(g.startY, e.clientY)
             };
-            var found = Array.prototype.slice.call(svg.querySelectorAll("[data-ws]")).filter(function (el) { return inside(box, el, false); });
-            if (!declared && editable && found.length === 0) {
-                found = Array.prototype.slice.call(svg.querySelectorAll("rect[id],circle[id],ellipse[id],path[id],polygon[id]"))
-                    .filter(function (el) { return inside(box, el, true); });
-            }
+            var found = all("[data-ws]", svg).filter(function (el) { return inside(box, el, false); });
+            if (!declared && editable && found.length === 0)
+                found = all("rect[id],circle[id],ellipse[id],path[id],polygon[id]", svg).filter(function (el) { return inside(box, el, true); });
             if (g.shift) toggle(found); else setSelection(found);
             return;
         }
@@ -762,10 +1200,15 @@ function createCombo(o) {
         if (e.key === "+" || e.key === "=") zoomAt(1.3, c.x, c.y);
         else if (e.key === "-") zoomAt(1 / 1.3, c.x, c.y);
         else if (e.key === "0") setView(home.x, home.y, home.w);
-        else if (e.key === "Escape") { setSelection([]); clearHits(); }
+        else if (e.key === "Escape") {
+            setSelection([]);
+            clearHits();
+            printMode = false;
+            canvas.classList.remove("is-print-area");
+        }
     });
 
-    Array.prototype.forEach.call(root.querySelectorAll("[data-zoom]"), function (b) {
+    all("[data-zoom]").forEach(function (b) {
         b.addEventListener("click", function () {
             var c = centre(), what = b.getAttribute("data-zoom");
             if (what === "in") zoomAt(1.4, c.x, c.y);
@@ -781,167 +1224,30 @@ function createCombo(o) {
         canvas.classList.toggle("is-area", areaMode);
     });
 
-    // ---- what sits at the selected workspot, and placing things there ----------------------------------------
-
-    var spotHolder = root.querySelector("[data-spot-url]");
-    var spotToken = 0;
-    var releaseForm = document.getElementById("wp-release-form");
-    var assignForm = document.getElementById("wp-assign-form");
-    var place = root.querySelector("[data-place]");
-    var pending = null;
-
-    function node(tag, cls, text) {
-        var n = document.createElement(tag);
-        if (cls) n.className = cls;
-        if (text !== undefined) n.textContent = text;
-        return n;
-    }
-
-    function releaseButton(assignmentId, workspotId, label) {
-        if (!releaseForm) return null;
-        var b = node("button", "btn--sm", "Release");
-        b.type = "button";
-        b.setAttribute("aria-label", "Release " + label);
-        b.addEventListener("click", function () {
-            releaseForm.querySelector("[data-release=assignmentId]").value = String(assignmentId);
-            releaseForm.querySelector("[data-release=workspotId]").value = String(workspotId);
-            releaseForm.submit();
-        });
-        return b;
-    }
-
-    function renderSpot(d) {
-        root.querySelector("[data-spot-status]").hidden = true;
-        root.querySelector("[data-spot-body]").hidden = false;
-
-        var person = root.querySelector("[data-spot-person]");
-        person.textContent = "";
-        var row = node("div", "wp-item");
-        if (d.person) {
-            var text = node("span", "wp-item-text");
-            var name = node("strong", null, d.person.name);
-            text.appendChild(name);
-            if (!d.person.isActive) text.appendChild(node("span", "badge badge--muted", "Left"));
-            text.appendChild(node("span", "muted", [d.person.username, d.person.jobTitle, d.person.siteKey].filter(Boolean).join(" · ")));
-            row.appendChild(text);
-            var rb = releaseButton(d.person.assignmentId, d.workspotId, d.person.name);
-            if (rb) row.appendChild(rb);
-        } else {
-            row.appendChild(node("span", "muted", "Nobody sits here."));
-        }
-        person.appendChild(row);
-
-        function fill(listSelector, items, describe) {
-            var ul = root.querySelector(listSelector);
-            ul.textContent = "";
-            items.forEach(function (it) {
-                var li = node("li", "wp-item");
-                var t = node("span", "wp-item-text");
-                var parts = describe(it);
-                t.appendChild(node("strong", null, parts[0]));
-                t.appendChild(node("span", "muted", parts[1]));
-                li.appendChild(t);
-                var b = releaseButton(it.assignmentId, d.workspotId, parts[0]);
-                if (b) li.appendChild(b);
-                ul.appendChild(li);
-            });
-        }
-        fill("[data-spot-assets]", d.assets, function (a) {
-            return [a.tag, [a.type, a.model, a.description, a.state === "Available" || a.state === "CheckedOut" ? "" : a.state].filter(Boolean).join(" · ")];
-        });
-        fill("[data-spot-pools]", d.pools, function (p) { return [p.quantity + " × " + p.sku, [p.type, p.description].filter(Boolean).join(" · ")]; });
-
-        var hints = root.querySelector("[data-spot-hints]");
-        hints.textContent = "";
-        d.hints.forEach(function (h) { hints.appendChild(node("li", null, h)); });
-    }
-
-    function loadSpot(seat) {
-        if (!spotHolder) return;
-        var status = root.querySelector("[data-spot-status]");
-        var token = ++spotToken;
-        status.hidden = false;
-        status.textContent = "Loading…";
-        root.querySelector("[data-spot-body]").hidden = true;
-        if (place) {
-            place.querySelector("input[role=combobox]").value = "";
-            place.querySelector("[data-place-qty]").hidden = true;
-            pending = null;
-        }
-        fetch(spotHolder.getAttribute("data-spot-url") + "&workspotId=" + encodeURIComponent(seat.getAttribute("data-ws")), {
-            headers: { Accept: "application/json" }, credentials: "same-origin"
-        }).then(function (res) {
-            if (!res.ok) throw new Error("spot failed");
-            return res.json();
-        }).then(function (d) {
-            if (token === spotToken) renderSpot(d);
-        }).catch(function () {
-            if (token === spotToken) status.textContent = "Could not load what is at this workspot.";
-        });
-    }
-
-    function submitAssign(kind, id, quantity) {
-        var one = seats()[0];
-        if (!assignForm || !one) return;
-        assignForm.querySelector("[data-assign=workspotId]").value = one.getAttribute("data-ws");
-        assignForm.querySelector("[data-assign=kind]").value = kind;
-        assignForm.querySelector("[data-assign=targetId]").value = String(id);
-        assignForm.querySelector("[data-assign=quantity]").value = String(quantity || 1);
-        assignForm.submit();
-    }
-
-    if (place) {
-        var pInput = place.querySelector("input[role=combobox]");
-        var qtyBox = place.querySelector("[data-place-qty]");
-        var BADGE = { person: "Person", asset: "Asset", pool: "Pool" };
-        var pcombo = createCombo({
-            input: pInput, list: place.querySelector("[role=listbox]"), idPrefix: "wp-place-option-", min: 2,
-            emptyText: "No matching people, assets or pools.",
-            url: function (q) { return place.getAttribute("data-place-url") + "&q=" + encodeURIComponent(q); },
-            pickable: function (row) { return !row.reason; },
-            render: function (row, option) {
-                var text = pcombo.make("span", "picker-text");
-                var name = pcombo.make("span", "combo-name");
-                name.appendChild(document.createTextNode(row.title + " "));
-                name.appendChild(pcombo.make("span", "badge badge--info", BADGE[row.kind] || row.kind));
-                text.appendChild(name);
-                var meta = [row.subtitle, row.place ? "now at " + row.place : "", row.reason].filter(Boolean).join(" · ");
-                text.appendChild(pcombo.make("span", "combo-meta", meta));
-                option.appendChild(text);
-            },
-            choose: function (row) {
-                if (row.kind === "pool") {
-                    pending = row;
-                    qtyBox.hidden = false;
-                    place.querySelector("[data-place-pool]").textContent = row.title;
-                    pInput.value = row.title;
-                    place.querySelector("#wp-qty").focus();
-                    return;
-                }
-                if (row.place && !window.confirm(row.title + " is now at " + row.place + ". Move it here?")) return;
-                submitAssign(row.kind, row.id, 1);
-            }
-        });
-        var confirmQty = place.querySelector("[data-place-confirm]");
-        if (confirmQty) confirmQty.addEventListener("click", function () {
-            if (pending) submitAssign("pool", pending.id, Number(place.querySelector("#wp-qty").value) || 1);
-        });
-    }
-
-    var viewSelect = root.querySelector("[data-view]");
-    if (viewSelect) viewSelect.addEventListener("change", function () {
-        var occupancy = viewSelect.value === "occupancy";
-        canvas.classList.toggle("view-occupancy", occupancy);
-        Array.prototype.forEach.call(root.querySelectorAll('[data-legend="occupancy"]'), function (l) { l.hidden = !occupancy; });
-    });
-
-    Array.prototype.forEach.call(root.querySelectorAll("[data-show-spot]"), function (b) {
-        b.addEventListener("click", function () { focusSpec("ws:" + b.getAttribute("data-show-spot")); });
-    });
-
+    window.addEventListener("resize", scheduleLabels);
     root.classList.add("is-live");
     updatePanel();
+    layoutLabels(svg, canvas, null);
     var initial = (root.getAttribute("data-focus") || "").split(",").filter(Boolean)
         .map(function (id) { return svg.getElementById(id); }).filter(Boolean);
     if (initial.length) focusElements(initial);
+})();
+
+// Floor plan print page: names and tags are always shown at a readable size; the print dialog opens by itself when the
+// floor page asked for it, or with the button. "Save as PDF" in that dialog makes the PDF.
+(function () {
+    var sheet = document.querySelector("[data-print-sheet]");
+    if (!sheet) return;
+    var map = sheet.querySelector("[data-print-map]");
+    var svg = map && map.querySelector("svg");
+    function layout() { if (svg) layoutLabels(svg, map, true); }
+    layout();
+    window.addEventListener("resize", layout);
+    window.addEventListener("beforeprint", layout);
+    var button = document.querySelector("[data-print-now]");
+    if (button) button.addEventListener("click", function () { window.print(); });
+    if (sheet.getAttribute("data-autoprint") === "true") {
+        var go = function () { setTimeout(function () { layout(); window.print(); }, 300); };
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(go); else go();
+    }
 })();

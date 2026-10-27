@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Common;
@@ -21,19 +20,18 @@ public sealed record FloorView(Floor Floor, string SiteKey, string SiteName, IRe
 /// <param name="Added">New seats.</param>
 /// <param name="Reactivated">Seats that had been deactivated and are in the drawing again.</param>
 /// <param name="Deactivated">Seats whose element is no longer in the drawing (kept, switched off).</param>
-public sealed record ImportResult(Floor Floor, int Added, int Reactivated, int Deactivated);
+/// <param name="Moved">Seats found again by their seat id or position because their element changed.</param>
+/// <param name="Orphaned">People, desktops and screens left on seats that are no longer in the drawing (they are flagged).</param>
+public sealed record ImportResult(Floor Floor, int Added, int Reactivated, int Deactivated, int Moved = 0, int Orphaned = 0);
 
 /// <summary>
 /// Floor plans: importing a drawing for a site, replacing it with a revised one, renaming and archiving. Everyone who
 /// can look at the Workplace sees the floors of their sites (IT and facility all, managers their granted sites);
 /// changing needs IT or facility. Every change is audited.
 /// </summary>
-public partial class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit, ICurrentUser user, IClock clock)
+public class FloorService(AppDbContext db, AccessScope scope, AuditWriter audit, ICurrentUser user, IClock clock)
 {
     public const int NameMax = 100;
-
-    [GeneratedRegex(@"\sid=""([^""]+)""")]
-    private static partial Regex IdAttribute();
 
     public async Task<IReadOnlyList<FloorSummary>> ListAsync(CancellationToken ct = default)
     {
@@ -104,9 +102,11 @@ public partial class FloorService(AppDbContext db, AccessScope scope, AuditWrite
     }
 
     /// <summary>
-    /// Replaces the drawing with a revised one. Seats are matched on their element id: new ones are added, ones that
-    /// are in the drawing again are switched back on, and ones whose element is gone are switched off (never deleted).
-    /// Labels and teams stay as they are.
+    /// Replaces the drawing with a revised one. Seats are found again by element id, the drawing's seat id or position
+    /// (<see cref="SeatMatcher"/>), so a re-made drawing keeps teams, placements and desk settings; new seats are added,
+    /// seats that are back are switched on, seats that are gone are switched off (never deleted; whoever was placed there
+    /// is flagged). Rooms and tables are read again; a seat whose room changed type is a desk or not by its new type, unless
+    /// something is placed at it.
     /// </summary>
     public async Task<ImportResult> ReplaceDrawingAsync(int floorId, string svgXml, CancellationToken ct = default)
     {
@@ -114,40 +114,46 @@ public partial class FloorService(AppDbContext db, AccessScope scope, AuditWrite
         var floor = await db.Floors.Include(f => f.Workspots).SingleOrDefaultAsync(f => f.Id == floorId, ct)
                     ?? throw new DomainException("floor.not-found", "Floor not found.");
         var parsed = FloorplanImporter.Parse(svgXml);
-        var ids = IdAttribute().Matches(parsed.Svg).Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)).ToHashSet(StringComparer.Ordinal);
         var now = clock.UtcNow;
-
-        var byElement = floor.Workspots.ToDictionary(w => w.ElementId, StringComparer.Ordinal);
+        var pairs = SeatMatcher.Match(floor.Workspots, floor.Svg, floor.ViewBox, parsed.Spots, parsed.Svg, parsed.ViewBox);
+        var placed = (await db.WorkspotAssignments.Where(a => a.Workspot!.FloorId == floorId && a.ReleasedAt == null)
+            .Select(a => a.WorkspotId).ToListAsync(ct)).ToHashSet();
         var labels = new HashSet<string>(floor.Workspots.Select(w => w.Label), StringComparer.OrdinalIgnoreCase);
-        int added = 0, reactivated = 0, deactivated = 0;
+        var found = new HashSet<int>();
+        int added = 0, reactivated = 0, deactivated = 0, moved = 0;
 
-        foreach (var s in parsed.Spots)
+        foreach (var pair in pairs)
         {
-            if (byElement.TryGetValue(s.ElementId, out var spot))
+            if (pair.Spot is not { } spot)
             {
-                spot.RoomId = s.RoomId; spot.RoomName = s.RoomName; spot.RoomType = s.RoomType; spot.TableId = s.TableId;
-            }
-            else
-            {
-                var created = NewSpot(s, UniqueLabel(s.Label, labels), now);
-                floor.Workspots.Add(created);
-                byElement[s.ElementId] = created;
+                floor.Workspots.Add(NewSpot(pair.Parsed!, UniqueLabel(pair.Parsed!.Label, labels), now));
                 added++;
+                continue;
             }
+            found.Add(spot.Id);
+            if (pair.Moved) moved++;
+            spot.ElementId = pair.ElementId;
+            if (!spot.IsActive) { spot.IsActive = true; reactivated++; }
+            if (pair.Parsed is not { } s) continue;
+            if (s.Label != spot.Label && labels.Remove(spot.Label)) spot.Label = UniqueLabel(s.Label, labels);
+            if (!string.Equals(s.RoomType, spot.RoomType, StringComparison.OrdinalIgnoreCase) && !placed.Contains(spot.Id))
+                spot.IsDesk = Workspot.IsDeskRoomType(s.RoomType);
+            spot.RoomId = s.RoomId; spot.RoomName = s.RoomName; spot.RoomType = s.RoomType; spot.TableId = s.TableId;
         }
-        foreach (var spot in floor.Workspots)
+        var orphaned = 0;
+        foreach (var spot in floor.Workspots.Where(w => w.Id != 0 && !found.Contains(w.Id) && w.IsActive))
         {
-            var present = ids.Contains(spot.ElementId);
-            if (present && !spot.IsActive) { spot.IsActive = true; reactivated++; }
-            else if (!present && spot.IsActive) { spot.IsActive = false; deactivated++; }
+            spot.IsActive = false; // its team stays, for when a later drawing brings the seat back
+            deactivated++;
+            if (placed.Contains(spot.Id)) orphaned++;
         }
 
         floor.Svg = parsed.Svg; floor.Css = parsed.Css; floor.ViewBox = parsed.ViewBox;
         floor.Version++; floor.ImportedAt = now; floor.ImportedBy = user.Name;
         audit.Record("floor.replace", nameof(Floor), floor.Id, floor.SiteId,
-            details: new { floor.Name, floor.Version, Added = added, Reactivated = reactivated, Deactivated = deactivated });
+            details: new { floor.Name, floor.Version, Added = added, Reactivated = reactivated, Deactivated = deactivated, Moved = moved, Orphaned = orphaned });
         await db.SaveChangesAsync(ct);
-        return new ImportResult(floor, added, reactivated, deactivated);
+        return new ImportResult(floor, added, reactivated, deactivated, moved, orphaned);
     }
 
     public async Task RenameAsync(int floorId, string name, CancellationToken ct = default)
@@ -188,7 +194,7 @@ public partial class FloorService(AppDbContext db, AccessScope scope, AuditWrite
     private static Workspot NewSpot(ParsedSpot s, string label, DateTimeOffset now) => new()
     {
         ElementId = s.ElementId, Label = label, RoomId = s.RoomId, RoomName = s.RoomName, RoomType = s.RoomType,
-        TableId = s.TableId, IsActive = true, CreatedAt = now,
+        TableId = s.TableId, IsActive = true, IsDesk = Workspot.IsDeskRoomType(s.RoomType), CreatedAt = now,
     };
 
     /// <summary>The label, or "label (2)", "label (3)"... when it is taken.</summary>

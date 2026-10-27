@@ -12,7 +12,7 @@
 <header class="page-header">
     <div class="page-heading">
         <h1>@floor.Name @if (!floor.IsActive) { <span class="badge badge--muted">Archived</span> }</h1>
-        <p class="page-subtitle"><span class="mono">@Model.View.SiteKey</span> – @Model.View.SiteName · @spotsTotal workspots · @Model.View.Teams.Count team(s) · drawing imported @floor.ImportedAt.ToString("yyyy-MM-dd")</p>
+        <p class="page-subtitle"><span class="mono">@Model.View.SiteKey</span> – @Model.View.SiteName · @Model.Status.Desks desks · @Model.View.Teams.Count team(s) · drawing imported @floor.ImportedAt.ToString("yyyy-MM-dd")</p>
     </div>
     <div class="page-actions">
         <a class="btn" asp-page="Index">All floors</a>
@@ -31,36 +31,77 @@
     <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
 <div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
+<div class="alert alert--error" role="alert" data-drop-error hidden><div class="alert-body" data-drop-error-text></div></div>
 @if (Model.CanEdit && !Model.HasDeclaredSeats && spotsTotal == 0)
 {
     <div class="alert alert--info" role="status"><div class="alert-body">This drawing does not declare its seats. Click the shapes that are seats (Shift-click adds, or Shift-drag an area), then use <strong>Mark as workspots</strong>.</div></div>
 }
 
-<div class="wp" data-floor-map data-floor-id="@floor.Id" data-editable="@(Model.CanEdit ? "true" : "false")" data-focus="@string.Join(',', Model.FocusIds)">
+<div class="wp" data-floor-map data-floor-id="@floor.Id" data-editable="@(Model.CanEdit ? "true" : "false")" data-focus="@string.Join(',', Model.FocusIds)"
+     data-map-url="@Url.Page("Floor", "Map", new { id = floor.Id })" data-status-url="@Url.Page("Floor", "Status", new { id = floor.Id })"
+     data-print-url="@Url.Page("Print", new { id = floor.Id })">
     <section class="wp-stage card" aria-label="Floor plan">
         <div class="wp-toolbar">
             <div class="wp-find">@await Html.PartialAsync("_FindBox", "wp-q")</div>
-            <div class="wp-view">
-                <label for="wp-view">Show</label>
-                <select id="wp-view" data-view>
-                    <option value="teams">Teams</option>
-                    <option value="occupancy">Occupancy</option>
-                </select>
-            </div>
             <div class="wp-tools" role="group" aria-label="Map tools">
+                <label class="check wp-toggle"><input type="checkbox" data-layer="teams" checked /> Teams</label>
+                <label class="check wp-toggle"><input type="checkbox" data-layer="names" checked /> Names</label>
                 <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
                 <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
                 <button type="button" data-zoom="fit">Fit</button>
                 <button type="button" data-area aria-pressed="false" title="Drag on the map to select an area (or hold Shift)">Select area</button>
+                <details class="wp-print">
+                    <summary class="btn">@Ui.Icon("download", 16, 2) Print / PDF</summary>
+                    <div class="wp-print-menu" role="group" aria-label="Print">
+                        <button type="button" data-print="view">What you see now</button>
+                        <button type="button" data-print="selection" disabled>The selected seats</button>
+                        <button type="button" data-print="area">Draw an area…</button>
+                        <button type="button" data-print="floor">The whole floor</button>
+                        <span class="hint">Opens a print page; choose <em>Save as PDF</em> in the print dialog.</span>
+                    </div>
+                </details>
             </div>
         </div>
-        <div class="wp-canvas" data-canvas tabindex="0" aria-label="Floor plan of @floor.Name. Use the search box to find a workspot, or zoom and click.">
-            @Html.Raw(Model.Svg)
+        <div class="wp-canvas" data-canvas tabindex="0" aria-label="Floor plan of @floor.Name. Use the search box to find a seat, person or desktop, or zoom and click.">
+            @await Html.PartialAsync("_FloorMap", Model.Svg)
         </div>
-        <p class="hint wp-hint">Scroll to zoom, drag to move. Click a seat to select it; Shift-click adds more, a table or room selects its seats.</p>
+        @await Html.PartialAsync("_Legend")
+        <p class="hint wp-hint">Scroll to zoom, drag to move; names and desktop tags appear once you zoom in. Click a seat to select it; Shift-click adds more, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
     </section>
 
-    <aside class="wp-panel" aria-label="Selection and teams">
+    <aside class="wp-panel" aria-label="Status, placing and selection">
+        <div data-status-host>
+            @await Html.PartialAsync("_FloorStatus", Model)
+        </div>
+
+        @if (Model.CanEdit)
+        {
+            <section class="card wp-box wp-palette" aria-labelledby="wp-pal-h" data-palette data-palette-url="@Url.Page("Floor", "Palette", new { id = floor.Id })">
+                <h2 id="wp-pal-h">Place on the map</h2>
+                <div class="wp-tabs" role="group" aria-label="What to place">
+                    <button type="button" data-palette-kind="person" aria-pressed="true">People</button>
+                    <button type="button" data-palette-kind="desktop" aria-pressed="false">Desktops</button>
+                    <button type="button" data-palette-kind="screen" aria-pressed="false">Screens</button>
+                </div>
+                <div class="searchbox">
+                    @Ui.Icon("search", 16, 2)
+                    <label for="wp-pal-q" class="visually-hidden">Search the list</label>
+                    <input id="wp-pal-q" type="search" autocomplete="off" placeholder="Search name, tag or model" data-palette-q />
+                </div>
+                <p class="hint">Not placed yet@(" ")<span data-palette-scope>at @Model.View.SiteKey</span>. Drag onto a desk, or select a desk and click an entry.</p>
+                <ul class="wp-palette-list" data-palette-list aria-live="polite"></ul>
+            </section>
+            <form id="wp-assign-form" method="post" asp-page-handler="Assign" asp-route-id="@floor.Id" hidden>
+                <input type="hidden" name="workspotId" data-assign="workspotId" />
+                <input type="hidden" name="kind" data-assign="kind" />
+                <input type="hidden" name="targetId" data-assign="targetId" />
+            </form>
+            <form id="wp-release-form" method="post" asp-page-handler="Release" asp-route-id="@floor.Id" hidden>
+                <input type="hidden" name="assignmentId" data-release="assignmentId" />
+                <input type="hidden" name="workspotId" data-release="workspotId" />
+            </form>
+        }
+
         <section class="card wp-box" data-when="none" aria-labelledby="wp-sel-h">
             <h2 id="wp-sel-h">Selection</h2>
             <p class="muted">Nothing selected. Click a seat, a table or a room on the map.</p>
@@ -68,101 +109,65 @@
 
         <section class="card wp-box" data-when="ws" hidden aria-labelledby="wp-sel2-h">
             <h2 id="wp-sel2-h">Selection</h2>
-            <p data-sel-summary></p>
+            <p class="wp-sel-summary" data-sel-summary></p>
             <dl class="wp-facts" data-when="one" hidden>
-                <dt>Label</dt><dd data-fact="label"></dd>
                 <dt>Room</dt><dd data-fact="room"></dd>
-                <dt>Table</dt><dd data-fact="table"></dd>
                 <dt>Team</dt><dd data-fact="team"></dd>
             </dl>
             <ul class="wp-selected" data-sel-list></ul>
 
             <div class="wp-spot" data-when="one" hidden data-spot-url="@Url.Page("Floor", "Spot", new { id = floor.Id })">
-                <h3>At this workspot</h3>
                 <p class="muted" data-spot-status>Loading…</p>
                 <div data-spot-body hidden>
-                    <div data-spot-person></div>
-                    <ul class="wp-items" data-spot-assets></ul>
-                    <ul class="wp-items" data-spot-pools></ul>
-                    <ul class="wp-hints" data-spot-hints></ul>
+                    <p class="wp-spot-kind" data-spot-kind></p>
+                    <ul class="wp-items" data-spot-items></ul>
+                    <ul class="wp-flags wp-flags--spot" data-spot-flags></ul>
                 </div>
             </div>
 
             @if (Model.CanEdit)
             {
-                <div class="field combo wp-place" data-when="one" hidden data-place data-place-url="@Url.Page("Floor", "Place", new { id = floor.Id })">
-                    <label for="wp-place-q">Place a person, asset or pool here</label>
-                    <div class="searchbox">
-                        @Ui.Icon("search", 16, 2)
-                        <input id="wp-place-q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list" aria-expanded="false"
-                               aria-controls="wp-place-list" placeholder="Name, tag or SKU" />
-                    </div>
-                    <ul id="wp-place-list" class="combo-list" role="listbox" aria-label="People, assets and pools" hidden></ul>
-                    <div class="wp-qty" data-place-qty hidden>
-                        <label for="wp-qty">Units of <strong data-place-pool></strong></label>
-                        <input id="wp-qty" type="number" min="1" max="@AssignmentService.QuantityMax" value="1" />
-                        <button type="button" class="btn--primary btn--sm" data-place-confirm>Place units</button>
-                    </div>
-                </div>
-                <form id="wp-assign-form" method="post" asp-page-handler="Assign" asp-route-id="@floor.Id" hidden>
-                    <input type="hidden" name="workspotId" data-assign="workspotId" />
-                    <input type="hidden" name="kind" data-assign="kind" />
-                    <input type="hidden" name="targetId" data-assign="targetId" />
-                    <input type="hidden" name="quantity" data-assign="quantity" value="1" />
-                </form>
-                <form id="wp-release-form" method="post" asp-page-handler="Release" asp-route-id="@floor.Id" hidden>
-                    <input type="hidden" name="assignmentId" data-release="assignmentId" />
-                    <input type="hidden" name="workspotId" data-release="workspotId" />
-                </form>
-            }
-
-            @if (Model.CanEdit)
-            {
-                <form method="post" asp-page-handler="Label" asp-route-id="@floor.Id" class="stack wp-form" data-when="one" hidden>
-                    <input type="hidden" name="workspotId" data-ws-id />
-                    <div class="field">
-                        <label for="wp-label">Label</label>
-                        <input id="wp-label" name="label" maxlength="@WorkspotService.LabelMax" data-ws-label required />
-                    </div>
-                    <button type="submit" class="btn--sm">Save label</button>
-                </form>
-
-                <form method="post" asp-page-handler="Team" asp-route-id="@floor.Id" class="stack wp-form" data-needs="ws">
+                <form method="post" asp-page-handler="SetTeam" asp-route-id="@floor.Id" class="stack wp-form wp-team-set" data-team-form>
                     <input type="hidden" name="ids" data-ids="ws" />
                     <div class="field">
-                        <label for="wp-team-name">Group as team</label>
-                        <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="Team name" required />
+                        <label for="wp-team">Team</label>
+                        <select id="wp-team" name="team" data-team-select>
+                            @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
+                            <option value="new">New team…</option>
+                            <option value="none">No team</option>
+                        </select>
                     </div>
-                    <button type="submit" class="btn--primary btn--sm">Group as team</button>
+                    <div class="field" data-team-new>
+                        <label for="wp-team-name">Name of the new team</label>
+                        <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="e.g. Finance" />
+                    </div>
+                    <button type="submit" class="btn--primary btn--sm" data-team-submit>Set team</button>
+                    <p class="hint">Click a table to give the whole table a team. To split a table, click one seat and Shift-click the others (or Shift-drag over them), then give those seats their team.</p>
                 </form>
 
-                @if (Model.View.Teams.Count > 0)
-                {
-                    <form method="post" asp-page-handler="TeamAdd" asp-route-id="@floor.Id" class="stack wp-form" data-needs="ws">
-                        <input type="hidden" name="ids" data-ids="ws" />
-                        <div class="field">
-                            <label for="wp-team-add">Add to an existing team</label>
-                            <select id="wp-team-add" name="teamId">
-                                @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
-                            </select>
-                        </div>
-                        <button type="submit" class="btn--sm">Add to team</button>
-                    </form>
-                }
-
-                <form method="post" asp-page-handler="TeamRemove" asp-route-id="@floor.Id" class="wp-form" data-when="teamed" hidden>
-                    <input type="hidden" name="ids" data-ids="ws" />
-                    <button type="submit" class="btn--sm">Take out of team</button>
-                </form>
-
-                <form method="post" asp-page-handler="Retire" asp-route-id="@floor.Id" class="wp-form" data-when="on" hidden>
-                    <input type="hidden" name="ids" data-ids="ws" />
-                    <button type="submit" class="btn--sm btn--danger">Switch off</button>
-                </form>
-                <form method="post" asp-page-handler="Restore" asp-route-id="@floor.Id" class="wp-form" data-when="off" hidden>
-                    <input type="hidden" name="ids" data-ids="ws" />
-                    <button type="submit" class="btn--sm">Switch on</button>
-                </form>
+                <details class="wp-more">
+                    <summary>Seat settings</summary>
+                    <div class="wp-form-row">
+                        <form method="post" asp-page-handler="Desk" asp-route-id="@floor.Id" class="wp-form">
+                            <input type="hidden" name="ids" data-ids="ws" />
+                            <input type="hidden" name="desk" value="true" />
+                            <button type="submit" class="btn--sm" title="People can be given these seats; empty ones count as free">Make desk</button>
+                        </form>
+                        <form method="post" asp-page-handler="Desk" asp-route-id="@floor.Id" class="wp-form">
+                            <input type="hidden" name="ids" data-ids="ws" />
+                            <input type="hidden" name="desk" value="false" />
+                            <button type="submit" class="btn--sm" title="A canteen chair or meeting room seat: never free, nobody is placed there">Not a desk</button>
+                        </form>
+                        <form method="post" asp-page-handler="Retire" asp-route-id="@floor.Id" class="wp-form" data-when="on" hidden>
+                            <input type="hidden" name="ids" data-ids="ws" />
+                            <button type="submit" class="btn--sm btn--danger">Switch off</button>
+                        </form>
+                        <form method="post" asp-page-handler="Restore" asp-route-id="@floor.Id" class="wp-form" data-when="off" hidden>
+                            <input type="hidden" name="ids" data-ids="ws" />
+                            <button type="submit" class="btn--sm">Switch on</button>
+                        </form>
+                    </div>
+                </details>
             }
         </section>
 
@@ -173,36 +178,8 @@
                 <p data-el-summary></p>
                 <form method="post" asp-page-handler="Mark" asp-route-id="@floor.Id" class="stack wp-form">
                     <input type="hidden" name="ids" data-ids="el" />
-                    <div class="field">
-                        <label for="wp-prefix">Label prefix (optional)</label>
-                        <input id="wp-prefix" name="prefix" maxlength="40" placeholder="D-" />
-                        <span class="hint">With a prefix the seats are numbered D-1, D-2, … in the order you clicked them.</span>
-                    </div>
                     <button type="submit" class="btn--primary btn--sm">Mark as workspots</button>
                 </form>
-            </section>
-        }
-
-        <section class="card wp-box" data-legend="occupancy" hidden aria-label="Legend">
-            <h2>Occupancy</h2>
-            <ul class="wp-legend">
-                <li><span class="wp-swatch wp-sw-occ" aria-hidden="true"></span> Someone sits here</li>
-                <li><span class="wp-swatch wp-sw-itm" aria-hidden="true"></span> Items placed, nobody sits here</li>
-                <li><span class="wp-swatch wp-sw-left" aria-hidden="true"></span> The person has left</li>
-                <li><span class="wp-swatch wp-sw-free" aria-hidden="true"></span> Free</li>
-            </ul>
-        </section>
-
-        @if (Model.Hints.Count > 0)
-        {
-            <section class="card wp-box" aria-labelledby="wp-hints-h">
-                <h2 id="wp-hints-h">To check <span class="badge badge--warning">@Model.Hints.Count</span></h2>
-                <ul class="wp-hints">
-                    @foreach (var h in Model.Hints)
-                    {
-                        <li><button type="button" class="wp-hint-show" data-show-spot="@h.WorkspotId"><strong>@h.Label</strong> @h.Text</button></li>
-                    }
-                </ul>
             </section>
         }
 
@@ -210,7 +187,7 @@
             <h2 id="wp-teams-h">Teams</h2>
             @if (Model.View.Teams.Count == 0)
             {
-                <p class="muted">No teams on this floor. Select seats and group them as a team; teams are only a drawing on the map and can be renamed at any time.</p>
+                <p class="muted">No teams on this floor. Click a table (or select seats) and choose a team; teams are only a drawing on the map and can be renamed at any time.</p>
             }
             else
             {
@@ -255,23 +232,6 @@
                     }
                 </ul>
             }
-        </section>
-
-        <section class="card wp-box" aria-labelledby="wp-sum-h">
-            <h2 id="wp-sum-h">Summary</h2>
-            <table class="wp-summary">
-                <tbody>
-                    <tr><th scope="row">Workspots</th><td class="num">@spotsTotal</td></tr>
-                    @foreach (var (type, count) in Model.RoomTypes)
-                    {
-                        <tr><td class="muted">@(type == "" ? "Not in a room" : char.ToUpperInvariant(type[0]) + type[1..])</td><td class="num">@count</td></tr>
-                    }
-                    <tr><th scope="row">In a team</th><td class="num">@Model.TeamSeats.Values.Sum()</td></tr>
-                    <tr><th scope="row">Seated</th><td class="num">@Model.Seated</td></tr>
-                    <tr><td class="muted">Free</td><td class="num">@Model.FreeSeats</td></tr>
-                    <tr><td class="muted">Items placed</td><td class="num">@Model.ItemsPlaced</td></tr>
-                </tbody>
-            </table>
         </section>
     </aside>
 </div>

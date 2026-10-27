@@ -202,6 +202,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Property<bool>("UsesSerialNumber")
                         .HasColumnType("bit");
 
+                    b.Property<int>("WorkspotRole")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
@@ -1039,6 +1042,9 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsDesk")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1094,13 +1100,10 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
                     b.Property<int?>("PersonId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("PoolId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
                         .HasColumnType("int");
 
                     b.Property<DateTimeOffset?>("ReleasedAt")
@@ -1125,25 +1128,21 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasDatabaseName("UX_WorkspotAssignments_OpenPerson")
                         .HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL");
 
-                    b.HasIndex("PoolId");
-
                     b.HasIndex("WorkspotId")
                         .IsUnique()
                         .HasDatabaseName("UX_WorkspotAssignments_OpenSeatPerson")
                         .HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL");
 
-                    b.HasIndex("WorkspotId", "PoolId")
+                    b.HasIndex("WorkspotId", "Kind")
                         .IsUnique()
-                        .HasDatabaseName("UX_WorkspotAssignments_OpenPool")
-                        .HasFilter("[PoolId] IS NOT NULL AND [ReleasedAt] IS NULL");
+                        .HasDatabaseName("UX_WorkspotAssignments_OpenSeatDesktop")
+                        .HasFilter("[Kind] = 2 AND [ReleasedAt] IS NULL");
 
                     b.HasIndex("WorkspotId", "ReleasedAt");
 
                     b.ToTable("WorkspotAssignments", t =>
                         {
-                            t.HasCheckConstraint("CK_WorkspotAssignment_OneKind", "([PersonId] IS NOT NULL AND [AssetId] IS NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NOT NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NULL AND [PoolId] IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_WorkspotAssignment_Quantity", "[Quantity] > 0");
+                            t.HasCheckConstraint("CK_WorkspotAssignment_Kind", "([Kind] = 1 AND [PersonId] IS NOT NULL AND [AssetId] IS NULL) OR ([Kind] IN (2, 3) AND [PersonId] IS NULL AND [AssetId] IS NOT NULL)");
                         });
                 });
 
@@ -1407,11 +1406,6 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .HasForeignKey("PersonId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("AssetTracker.Core.Domain.Pool", "Pool")
-                        .WithMany()
-                        .HasForeignKey("PoolId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("AssetTracker.Core.Domain.Workspot", "Workspot")
                         .WithMany()
                         .HasForeignKey("WorkspotId")
@@ -1421,8 +1415,6 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Asset");
 
                     b.Navigation("Person");
-
-                    b.Navigation("Pool");
 
                     b.Navigation("Workspot");
                 });

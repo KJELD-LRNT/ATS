@@ -1,0 +1,51 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Workplace.PrintModel
+@{
+    Layout = "_PrintLayout";
+    var floor = Model.View.Floor;
+    ViewData["Title"] = $"{floor.Name} - {Model.View.SiteKey} (print)";
+    var taken = Model.Rows.Count(r => r.Person is not null);
+    var free = Model.Rows.Count(r => r.Note == "Free");
+}
+@section Head {
+    <link rel="stylesheet" href="@Url.Page("Floor", "Css", new { id = floor.Id, v = floor.Version })" />
+}
+<div class="print-bar">
+    <button type="button" class="btn--primary" data-print-now>Print / Save as PDF</button>
+    <a class="btn" asp-page="Floor" asp-route-id="@floor.Id">Back to the floor</a>
+    <span class="hint">In the print dialog choose <strong>Save as PDF</strong> as the printer, landscape.</span>
+</div>
+
+<article class="print-sheet" data-print-sheet data-autoprint="@(Model.Auto ? "true" : "false")">
+    <header class="print-head">
+        <h1>@floor.Name <span class="print-site">@Model.View.SiteKey – @Model.View.SiteName</span></h1>
+        <p>@(Model.What ?? (Model.PrintArea is null ? "Whole floor" : "Part of the floor")) · @taken taken, @free free · printed @Model.PrintedAt.ToString("yyyy-MM-dd HH:mm") by @Model.PrintedBy</p>
+    </header>
+    <div class="print-map" data-print-map>
+        @Html.Raw(Model.Svg)
+    </div>
+    @await Html.PartialAsync("_Legend")
+
+    @if (Model.List && Model.Rows.Count > 0)
+    {
+        <section class="print-list" aria-labelledby="print-list-h">
+            <h2 id="print-list-h">Desks @(Model.PrintArea is null ? "on this floor" : "in this part")</h2>
+            <table>
+                <thead><tr><th scope="col">Team</th><th scope="col">Room</th><th scope="col">Person</th><th scope="col">Desktop</th><th scope="col" class="num">Screens</th><th scope="col">Note</th></tr></thead>
+                <tbody>
+                @foreach (var r in Model.Rows)
+                {
+                    <tr>
+                        <td>@r.Team</td>
+                        <td>@r.Room</td>
+                        <td>@r.Person@if (r.PersonLeft) { <span class="badge badge--muted">Left</span> }</td>
+                        <td class="mono">@r.Desktop</td>
+                        <td class="num">@(r.Screens == 0 ? "" : r.Screens.ToString())</td>
+                        <td>@r.Note</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </section>
+    }
+</article>

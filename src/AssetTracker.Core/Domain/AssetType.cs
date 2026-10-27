@@ -10,6 +10,19 @@ public enum InventoryMode
     Pooled = 2,
 }
 
+/// <summary>What an asset of a type is at a workspot on a floor plan. Only desktops and screens are placed at seats.</summary>
+public enum WorkspotRole
+{
+    /// <summary>Not placed on floor plans.</summary>
+    None = 0,
+
+    /// <summary>The computer at a desk (one per seat).</summary>
+    Desktop = 1,
+
+    /// <summary>A screen at a desk (any number per seat).</summary>
+    Screen = 2,
+}
+
 /// <summary>
 /// Admin-defined kind of inventory (laptop, phone, phone number, headset ...). Decides how items are tracked, which
 /// standard fields their form shows, how their tags are generated and which custom fields they carry
@@ -35,6 +48,9 @@ public class AssetType
     /// <summary>Tag generator pattern (see <c>TagPattern</c>), e.g. <c>{SITE}D{000}OMA</c>. Null = tags are typed by hand.</summary>
     public string? TagPattern { get; set; }
 
+    /// <summary>Whether assets of this (tagged) type are placed at seats on floor plans, and as what.</summary>
+    public WorkspotRole WorkspotRole { get; set; }
+
     public List<AssetFieldDefinition> Fields { get; set; } = [];
 
     // Rendering a type (mail, lists, reports) shows its name.
@@ -55,6 +71,12 @@ public static class BuiltIn
     public const int Peripheral = 5;
     public const int Webcam = 6;
     public const int Headset = 7;
+
+    /// <summary>
+    /// Screens placed at desks on floor plans. Added later than the others: SQL Server gets it from the <c>FloorPlanDesks</c>
+    /// migration, inserted by name, so its id can differ there; code finds it by <see cref="WorkspotRole.Screen"/>.
+    /// </summary>
+    public const int Screen = 8;
 
     public const int PhoneImeiField = 1;
     public const int PhonePhoneNumberField = 2;

@@ -49,7 +49,7 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
             Assert.Equal(146, await db.People.CountAsync(p => p.IsActive));
             Assert.Equal(2, await db.People.CountAsync(p => p.SiteId == null));
 
-            Assert.Equal(42, await db.Assets.CountAsync());
+            Assert.Equal(52, await db.Assets.CountAsync()); // 42, a spare AMS desktop and 9 screens
             Assert.Equal(2, await db.Assets.CountAsync(a => a.State == AssetState.Retired));
             Assert.Equal(1, await db.Assets.CountAsync(a => a.State == AssetState.Unavailable));
             var imeis = await db.FieldValues.Where(v => v.Field!.Kind == FieldKind.Imei).Select(v => v.Value).ToListAsync();

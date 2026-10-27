@@ -11,7 +11,7 @@ namespace AssetTracker.Core.Catalog;
 /// <param name="TagPattern">See <see cref="Inventory.TagPattern"/>; blank = tags are typed by hand.</param>
 public sealed record TypeInput(
     string Name, InventoryMode Mode, bool UsesModel = true, bool UsesDescription = true, bool UsesSerialNumber = true,
-    bool UsesCondition = true, string? TagPattern = null, bool IsActive = true);
+    bool UsesCondition = true, string? TagPattern = null, bool IsActive = true, WorkspotRole? WorkspotRole = null);
 
 /// <param name="Options">Choice fields: the allowed values, one per line.</param>
 public sealed record FieldInput(
@@ -103,6 +103,7 @@ public class CatalogService(AppDbContext db, AccessScope access, AuditWriter aud
             // Pools carry only an SKU and a description: no tags, models or fields.
             type.UsesModel = type.UsesDescription = type.UsesSerialNumber = type.UsesCondition = false;
             type.TagPattern = null;
+            type.WorkspotRole = WorkspotRole.None;
             return;
         }
         type.UsesModel = input.UsesModel;
@@ -110,6 +111,12 @@ public class CatalogService(AppDbContext db, AccessScope access, AuditWriter aud
         type.UsesSerialNumber = input.UsesSerialNumber;
         type.UsesCondition = input.UsesCondition;
         type.TagPattern = TagPattern.Validate(input.TagPattern);
+        // Null keeps what the type has (callers that do not know about floor plans leave it alone).
+        if (input.WorkspotRole is { } role)
+        {
+            if (!Enum.IsDefined(role)) throw new DomainException("type.workspot_role", "Unknown floor plan role.");
+            type.WorkspotRole = role;
+        }
     }
 
     // ---- Custom fields -------------------------------------------------------------------------------------
@@ -356,6 +363,7 @@ public class CatalogService(AppDbContext db, AccessScope access, AuditWriter aud
     private static object Snapshot(AssetType t) => new
     {
         t.Name, Mode = t.Mode.ToString(), t.IsActive, t.UsesModel, t.UsesDescription, t.UsesSerialNumber, t.UsesCondition, t.TagPattern,
+        WorkspotRole = t.WorkspotRole.ToString(),
     };
 
     private static object Snapshot(AssetType type, AssetFieldDefinition f) => new
