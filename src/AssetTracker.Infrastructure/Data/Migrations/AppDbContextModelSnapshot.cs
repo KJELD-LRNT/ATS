@@ -263,6 +263,90 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("AuditEvents");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Css")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("ImportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ImportedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SiteId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Svg")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ViewBox")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Floors");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.FloorTeam", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ColorIndex")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("FloorId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FloorId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("FloorTeams");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>
                 {
                     b.Property<int>("Id")
@@ -710,6 +794,43 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.RoleAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("GrantedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("PrincipalDirectoryId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PrincipalName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Role", "PrincipalDirectoryId")
+                        .IsUnique();
+
+                    b.ToTable("RoleAssignments");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.Site", b =>
                 {
                     b.Property<int>("Id")
@@ -896,6 +1017,64 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("Vendors");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.Workspot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ElementId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("FloorId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RoomId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RoomName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("RoomType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TableId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("FloorId", "ElementId")
+                        .IsUnique();
+
+                    b.HasIndex("FloorId", "Label");
+
+                    b.ToTable("Workspots");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldDefinition", b =>
                 {
                     b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
@@ -943,6 +1122,28 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Type");
 
                     b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.Site", "Site")
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.FloorTeam", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.Floor", "Floor")
+                        .WithMany("Teams")
+                        .HasForeignKey("FloorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Floor");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>
@@ -1104,9 +1305,34 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.Workspot", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.Floor", "Floor")
+                        .WithMany("Workspots")
+                        .HasForeignKey("FloorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.FloorTeam", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Floor");
+
+                    b.Navigation("Team");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AssetType", b =>
                 {
                     b.Navigation("Fields");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
+                {
+                    b.Navigation("Teams");
+
+                    b.Navigation("Workspots");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.IndividualAsset", b =>

@@ -1,0 +1,63 @@
+@page
+@model AssetTracker.Web.Pages.Workplace.IndexModel
+@{
+    ViewData["Title"] = "Workplace";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Workplace</h1>
+        <p class="page-subtitle">Floor plans with their workspots. Find a seat, a room or a team on any floor.</p>
+    </div>
+    @if (Model.CanEdit)
+    {
+        <div class="page-actions">
+            <a class="btn btn--primary" asp-page="Import">@Ui.Icon("plus", 16, 2.2) Import floor plan</a>
+        </div>
+    }
+</header>
+
+@if (Model.Floors.Count > 0)
+{
+    <section class="card find" aria-labelledby="wp-find-h">
+        <h2 id="wp-find-h" class="visually-hidden">Find on the map</h2>
+        @await Html.PartialAsync("_FindBox", "wp-q")
+    </section>
+}
+
+@if (Model.Floors.Count == 0)
+{
+    <section class="card"><div class="empty-state">
+        <strong>No floor plans yet.</strong>
+        @if (Model.CanEdit)
+        {
+            <span>Import an SVG drawing of a floor to start. Seats in the drawing become workspots.</span>
+        }
+        else
+        {
+            <span>There are no floor plans for your sites yet.</span>
+        }
+    </div></section>
+}
+
+@foreach (var site in Model.BySite)
+{
+    <section class="card card--flush" aria-label="@site.Key">
+        <div class="card-header"><h2>@site.Key</h2></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th scope="col">Floor</th><th scope="col" class="num">Workspots</th><th scope="col" class="num">Teams</th><th scope="col">Drawing imported</th></tr></thead>
+                <tbody>
+                @foreach (var f in site)
+                {
+                    <tr>
+                        <td><a asp-page="Floor" asp-route-id="@f.Id"><strong>@f.Name</strong></a>@if (!f.IsActive) { <span class="badge badge--muted">Archived</span> }</td>
+                        <td class="num">@f.Spots</td>
+                        <td class="num">@f.Teams</td>
+                        <td class="nowrap">@f.ImportedAt.ToString("yyyy-MM-dd")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}

@@ -24,6 +24,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LoanEvent> LoanEvents => Set<LoanEvent>();
     public DbSet<StockEvent> StockEvents => Set<StockEvent>();
     public DbSet<ManagerSiteGrant> ManagerSiteGrants => Set<ManagerSiteGrant>();
+    public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
+    public DbSet<Floor> Floors => Set<Floor>();
+    public DbSet<Workspot> Workspots => Set<Workspot>();
+    public DbSet<FloorTeam> FloorTeams => Set<FloorTeam>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<NotificationOutbox> Outbox => Set<NotificationOutbox>();
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
@@ -181,6 +185,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.Field).WithMany().HasForeignKey(x => x.FieldId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        b.Entity<Floor>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.ViewBox).HasMaxLength(100);
+            e.Property(x => x.ImportedBy).HasMaxLength(256);
+            e.HasIndex(x => new { x.SiteId, x.Name }).IsUnique();
+            e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Workspot>(e =>
+        {
+            e.Property(x => x.ElementId).HasMaxLength(200);
+            e.Property(x => x.Label).HasMaxLength(100);
+            e.Property(x => x.RoomId).HasMaxLength(100);
+            e.Property(x => x.RoomName).HasMaxLength(200);
+            e.Property(x => x.RoomType).HasMaxLength(50);
+            e.Property(x => x.TableId).HasMaxLength(100);
+            e.HasIndex(x => new { x.FloorId, x.ElementId }).IsUnique();
+            e.HasIndex(x => new { x.FloorId, x.Label });
+            e.HasIndex(x => x.TeamId);
+            e.HasOne(x => x.Floor).WithMany(f => f.Workspots).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Team).WithMany().HasForeignKey(x => x.TeamId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<FloorTeam>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => new { x.FloorId, x.Name }).IsUnique();
+            e.HasOne(x => x.Floor).WithMany(f => f.Teams).HasForeignKey(x => x.FloorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         b.Entity<Pool>(e =>
         {
             e.Property(x => x.Sku).HasMaxLength(100);
@@ -250,6 +285,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.GrantedBy).HasMaxLength(256);
             e.HasIndex(x => new { x.PrincipalDirectoryId, x.SiteId }).IsUnique();
             e.HasOne(x => x.Site).WithMany().OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<RoleAssignment>(e =>
+        {
+            e.Property(x => x.PrincipalDirectoryId).HasMaxLength(64);
+            e.Property(x => x.PrincipalName).HasMaxLength(256);
+            e.Property(x => x.GrantedBy).HasMaxLength(256);
+            e.HasIndex(x => new { x.Role, x.PrincipalDirectoryId }).IsUnique();
         });
 
         b.Entity<AuditEvent>(e =>

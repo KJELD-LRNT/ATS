@@ -38,6 +38,9 @@ builder.Services.AddAuthorization(o =>
     o.AddPolicy(Policies.InventoryRead, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.It), nameof(AppRoles.Manager)));
     o.AddPolicy(Policies.AdminOnly, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.Admin)));
     o.AddPolicy(Policies.ItOrAdmin, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.It), nameof(AppRoles.Admin)));
+    o.AddPolicy(Policies.WorkplaceRead, p => p.RequireClaim(AppClaimTypes.Role,
+        nameof(AppRoles.It), nameof(AppRoles.Facility), nameof(AppRoles.Manager)));
+    o.AddPolicy(Policies.WorkplaceEdit, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.It), nameof(AppRoles.Facility)));
 });
 
 builder.Services.AddHttpContextAccessor();

@@ -22,19 +22,35 @@ public sealed record SiteAccess(bool AllSites, IReadOnlySet<int> SiteIds)
 public class AccessScope(AppDbContext db, ICurrentUser user)
 {
     private SiteAccess? _cached;
+    private SiteAccess? _cachedWorkplace;
 
     public async Task<SiteAccess> GetAsync(CancellationToken ct = default)
     {
         if (_cached is not null) return _cached;
         if (user.IsIt) return _cached = new SiteAccess(true, new HashSet<int>());
-        if (!user.IsManager || string.IsNullOrEmpty(user.Sid)) return _cached = SiteAccess.None;
+        return _cached = await ManagerAccessAsync(ct);
+    }
 
+    /// <summary>
+    /// What the principal may see of the Workplace floor plans: IT and facility → all sites, manager → granted sites.
+    /// Facility does <b>not</b> open inventory, loans or reports (<see cref="GetAsync"/> stays closed for it).
+    /// </summary>
+    public async Task<SiteAccess> GetWorkplaceAsync(CancellationToken ct = default)
+    {
+        if (_cachedWorkplace is not null) return _cachedWorkplace;
+        if (user.IsIt || user.IsFacility) return _cachedWorkplace = new SiteAccess(true, new HashSet<int>());
+        return _cachedWorkplace = await ManagerAccessAsync(ct);
+    }
+
+    private async Task<SiteAccess> ManagerAccessAsync(CancellationToken ct)
+    {
+        if (!user.IsManager || string.IsNullOrEmpty(user.Sid)) return SiteAccess.None;
         var siteIds = await (
             from g in db.ManagerSiteGrants
             join p in db.People on g.PrincipalDirectoryId equals p.DirectoryId
             where p.Sid == user.Sid && p.IsActive
             select g.SiteId).ToListAsync(ct);
-        return _cached = new SiteAccess(false, siteIds.ToHashSet());
+        return new SiteAccess(false, siteIds.ToHashSet());
     }
 
     public async Task<IQueryable<IndividualAsset>> VisibleAssetsAsync(CancellationToken ct = default)
@@ -83,5 +99,18 @@ public class AccessScope(AppDbContext db, ICurrentUser user)
     public void EnsureAdmin()
     {
         if (!user.IsAdmin) throw new Common.AccessDeniedException();
+    }
+
+    /// <summary>Whether the principal may change floor plans, workspots and teams: IT or facility.</summary>
+    public bool CanEditWorkplace => user.IsIt || user.IsFacility;
+
+    public void EnsureWorkplaceEditor()
+    {
+        if (!CanEditWorkplace) throw new Common.AccessDeniedException();
+    }
+
+    public async Task EnsureCanReadWorkplaceSiteAsync(int siteId, CancellationToken ct = default)
+    {
+        if (!(await GetWorkplaceAsync(ct)).CanRead(siteId)) throw new Common.AccessDeniedException();
     }
 }

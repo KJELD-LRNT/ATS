@@ -130,6 +130,8 @@ All names are made up, for example `Alex Demoson` or `Jules Sampleton`. All addr
 
 **Closed history:** `AMS-LT-007` has two closed loans. `NYC-LT-007` was loaned to Billie Demoson at New York, returned, and then **moved to Amsterdam**. `NYC-LT-008` was returned damaged. A Singapore mouse loan was returned.
 
+**Floor plans (Workplace):** AMS *Floor 1* (four offices, boardroom, canteen, print room; teams *Finance*, *Engineering*, *Service desk*), AMS *Floor 2* and NYC *Floor 1*, drawn from the fictional SVGs in `DemoFloorplans`. `max.demoson` has the **Facility** role, given inside the app (Admin → System roles), not by an AD group.
+
 ## 7. Scenario checklist
 
 Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6, "Stage n") or the sponsor decision (`docs/decisions.md`, D1–D11) that it demonstrates. Unless a scenario says otherwise, use the default identity (IT + Admin as `DEMO\you`). Switch identities on `/Demo`.
@@ -190,6 +192,20 @@ Switch to **Admin** only.
 ### No role
 
 - [ ] Untick all roles. **Expected:** the home page says you have no access, and every inventory, admin and audit URL returns *Forbidden* or *Not found*. `/Demo` stays reachable so you can switch back.
+
+### Workplace (floor plans)
+
+Delete the old demo database first (`%LOCALAPPDATA%\AssetTrackerDemo`): this module adds tables.
+
+- [ ] **Floor plans.** *Workplace → Floor plans* lists *Floor 1* and *Floor 2* of Amsterdam and *Floor 1* of New York. Open *AMS Floor 1*. **Expected:** a map of four offices, a boardroom, a canteen and a print room; the *Finance*, *Engineering* and *Service desk* seats are coloured with a dashed outline and the team name; the side panel lists the three teams and a summary (workspots per room type).
+- [ ] **Select seats.** Click a seat: the panel shows its label, room, table and team. Shift-click adds seats; click a table or a room to select all its seats; drag with **Shift** (or press *Select area* and drag) to select an area. Scroll or use + / − / *Fit* to zoom, drag to move.
+- [ ] **Find on the map.** Type `sales` in the search box above the map: the *Sales* room (and, on other floors, matches there) is listed with its floor; pick it. **Expected:** its seats are highlighted and the map zooms to them. Type `Open space` on the *Floor plans* page and pick a result: it opens that floor with the seats highlighted. Typing a seat label such as `1.04-T01-S02` finds the seat.
+- [ ] **Teams.** Select the seats of the *Sales* room, type a name and press *Group as team*. **Expected:** the seats take the next colour with an outline and the name. Under *Teams* open *Edit* on it: rename it, change its colour, delete it (seats stay on the floor). Select seats of two teams and press *Take out of team* or *Add to an existing team*.
+- [ ] **Rename a seat.** Select one seat, change its label and save: the new label is what the search finds. A label already used on the floor is refused.
+- [ ] **Import a floor plan.** *Workplace → Import floor plan*: choose a site, a name and an SVG. A drawing in the facility team's format (rooms, tables and seats with `data-kind`) gives one workspot per seat at once. Try a plain SVG without seats: the page asks you to click the shapes that are seats, press *Mark as workspots* (optionally with a prefix such as `D-`) and the seats get labels D-1, D-2, … Scripts, links and images in an uploaded file are removed.
+- [ ] **Replace a drawing.** *Replace drawing* with a revised SVG of the same floor: the message says how many workspots were added and switched off; labels and teams stay, seats that disappeared are switched off (greyed), not deleted. Replace it again with the original and they come back.
+- [ ] **Facility role, given in the app.** As the demo admin open *Admin → System roles*: *Max Demoson* has the Facility role. On `/Demo` choose *Max Demoson (… Facility role)*, untick every role and apply. **Expected:** the menu shows only *Overview* and *Floor plans*; floors can be imported and edited; Assets, Loans, Reports and Admin return *Forbidden*. Back as admin remove the role: Max loses access at once. Give it again to someone else by searching their name.
+- [ ] **Manager (read only).** As *Demo Manager (AMS)* with only the Manager role: the floors of Amsterdam are listed and can be searched, but there is no *Import*, *Replace* or team editing, and the New York floor is *Not found*.
 
 ### Time, overdue and reminders (D4)
 

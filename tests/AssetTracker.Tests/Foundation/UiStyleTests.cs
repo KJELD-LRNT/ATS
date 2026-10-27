@@ -65,7 +65,8 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
 
     public static TheoryData<string, string> Pages() => new()
     {
-        { "it", "/" }, { "it", "/Assets" }, { "it", "/Assets/Create" }, { "it", "/Pools" }, { "it", "/Pools/Create" }, { "it", "/Pools?low=true" }, { "it", "/Loans?inactive=true" },
+        { "it", "/" }, { "it", "/Assets" }, { "it", "/Assets/Create" }, { "it", "/Pools" }, { "it", "/Pools/Create" }, { "it", "/Pools?low=true" }, { "it", "/Loans?inactive=true" }, { "it", "/Workplace" },
+        { "manager", "/Workplace" }, { "it", "/Workplace/Import" }, { "admin", "/Admin/SystemRoles" },
         { "it", "/Loans" }, { "it", "/Loans/Checkout" }, { "it", "/Reports" }, { "it", "/Reports/Inventory" },
         { "it", "/Reports/Inventory?view=pools" }, { "it", "/Reports/Assignments" }, { "it", "/Reports/Overdue" },
         { "it", "/Reports/History" }, { "it", "/Audit" }, { "it", "/Ops" }, { "it", "/Ops/Mail" }, { "it", "/Admin/Sync" },

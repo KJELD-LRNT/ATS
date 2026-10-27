@@ -18,6 +18,7 @@
     <link rel="preload" href="~/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="~/fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @await RenderSectionAsync("Head", required: false)
     <script src="~/js/site.js" asp-append-version="true" defer></script>
 </head>
 <body>
@@ -45,6 +46,14 @@
             }
         </ul>
 
+        @if (CurrentUser.IsIt || CurrentUser.IsFacility || CurrentUser.IsManager)
+        {
+            <ul class="nav-group" aria-labelledby="nav-workplace">
+                <li class="nav-heading" id="nav-workplace">Workplace</li>
+                @{ NavLink("/Workplace/Index", "Floor plans", "map", "/Workplace/"); }
+            </ul>
+        }
+
         @if (CurrentUser.IsIt)
         {
             <ul class="nav-group" aria-labelledby="nav-it">
@@ -71,6 +80,7 @@
                     NavLink("/Admin/Vendors", "Vendors", "vendors");
                     NavLink("/Admin/Models", "Models", "models");
                     NavLink("/Admin/Grants", "Grants", "grants");
+                    NavLink("/Admin/SystemRoles", "System roles", "roles");
                     NavLink("/Admin/OverviewTiles", "Overview tiles", "overview");
                     NavLink("/Admin/Settings", "Settings", "settings");
                     NavLink("/Admin/Sync", "Directory sync", "sync");

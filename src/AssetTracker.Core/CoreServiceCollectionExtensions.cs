@@ -6,6 +6,7 @@ using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
 using AssetTracker.Core.Ops;
 using AssetTracker.Core.Overview;
+using AssetTracker.Core.Workplace;
 using AssetTracker.Core.Privacy;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Reporting;
@@ -44,6 +45,10 @@ public static class CoreServiceCollectionExtensions
         services.AddScoped<AuditQueryService>();
         services.AddScoped<DirectorySyncService>();
         services.AddScoped<AdminService>();
+        services.AddScoped<RoleAssignmentService>();
+        services.AddScoped<FloorService>();
+        services.AddScoped<WorkspotService>();
+        services.AddScoped<TeamService>();
         // Database-backed settings (WP4.1). ISettingsReloader/ISecretProtector come from the infrastructure layer.
         services.AddScoped<SettingsService>();
 

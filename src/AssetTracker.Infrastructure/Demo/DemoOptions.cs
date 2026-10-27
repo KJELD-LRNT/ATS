@@ -79,6 +79,12 @@ public static class DemoDefaults
     public const string ManagerUsername = "manager.ams";
     public const string ManagerSid = SidPrefix + "5002";
 
+    /// <summary>
+    /// A regular demo person who is given the Facility role inside the application (no AD group involved). Sign in as
+    /// them with "Act as person" on /Demo and no roles ticked.
+    /// </summary>
+    public static string FacilityUsername => DemoDirectorySource.Username(12);
+
     public const string ItMailbox = "it-helpdesk@demo.example";
     public const string FromAddress = "asset-tracker@demo.example";
     public const string EmailDomain = "demo.example";

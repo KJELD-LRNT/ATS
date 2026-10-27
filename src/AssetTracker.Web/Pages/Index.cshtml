@@ -49,7 +49,14 @@ else if (Model.Summary is not { } s)
     <section class="card">
         <h2>Welcome</h2>
         <p>Signed in as <strong>@Model.UserName</strong>. Roles: @Model.Roles.</p>
-        <p class="secondary">Your role has no inventory access; use the admin pages in the menu.</p>
+        @if (Model.Roles.HasFlag(AppRoles.Facility))
+        {
+            <p class="secondary">Your role has no inventory access. Open the <a asp-page="/Workplace/Index">floor plans</a> to find and plan workspots.</p>
+        }
+        else
+        {
+            <p class="secondary">Your role has no inventory access; use the admin pages in the menu.</p>
+        }
     </section>
 }
 else

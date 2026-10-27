@@ -115,6 +115,7 @@ public static class Ui
         if (roles.HasFlag(AppRoles.It)) list.Add("IT");
         if (roles.HasFlag(AppRoles.Manager)) list.Add("Manager");
         if (roles.HasFlag(AppRoles.Admin)) list.Add("Admin");
+        if (roles.HasFlag(AppRoles.Facility)) list.Add("Facility");
         return list.Count == 0 ? "No access" : string.Join(" · ", list);
     }
 
@@ -137,7 +138,9 @@ public static class Ui
     private static readonly Dictionary<string, string> IconPaths = new()
     {
         ["overview"] = "<rect x=\"3\" y=\"3\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\" rx=\"1\"/>",
-        ["assets"] = "<rect x=\"2\" y=\"4\" width=\"20\" height=\"13\" rx=\"2\"/><path d=\"M8 21h8M12 17v4\"/>",
+        ["map"] = "<path d=\"M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z\"/><path d=\"M9 4v14M15 6.5v14\"/>",
+        ["roles"] = "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20a6.5 6.5 0 0 1 13 0\"/><path d=\"M17 7.5l1.5 1.5L21.5 6\"/>",
+        ["assets"] ="<rect x=\"2\" y=\"4\" width=\"20\" height=\"13\" rx=\"2\"/><path d=\"M8 21h8M12 17v4\"/>",
         ["pools"] = "<path d=\"M21 8 12 3 3 8v8l9 5 9-5z\"/><path d=\"m3 8 9 5 9-5M12 13v8\"/>",
         ["loans"] = "<path d=\"M7 17 17 7M8 7h9v9\"/>",
         ["reports"] = "<path d=\"M4 20V10M10 20V4M16 20v-7M22 20H2\"/>",

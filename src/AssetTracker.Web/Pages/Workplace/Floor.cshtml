@@ -1,0 +1,205 @@
+@page "{id:int}"
+@model AssetTracker.Web.Pages.Workplace.FloorModel
+@{
+    var floor = Model.View.Floor;
+    ViewData["Title"] = $"{floor.Name} - {Model.View.SiteKey}";
+    string[] colors = ["Orange", "Green", "Purple", "Red", "Teal", "Gold", "Pink", "Navy"];
+    var spotsTotal = Model.View.ActiveSpots.Count();
+}
+@section Head {
+    <link rel="stylesheet" href="@Url.Page("Floor", "Css", new { id = floor.Id, v = floor.Version })" />
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>@floor.Name @if (!floor.IsActive) { <span class="badge badge--muted">Archived</span> }</h1>
+        <p class="page-subtitle"><span class="mono">@Model.View.SiteKey</span> – @Model.View.SiteName · @spotsTotal workspots · @Model.View.Teams.Count team(s) · drawing imported @floor.ImportedAt.ToString("yyyy-MM-dd")</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" asp-page="Index">All floors</a>
+        @if (Model.CanEdit)
+        {
+            <a class="btn" asp-page="Replace" asp-route-id="@floor.Id">Replace drawing</a>
+            <form method="post" asp-page-handler="@(floor.IsActive ? "Archive" : "Unarchive")" asp-route-id="@floor.Id" class="inline-form">
+                <button type="submit">@(floor.IsActive ? "Archive floor" : "Restore floor")</button>
+            </form>
+        }
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
+@if (Model.CanEdit && !Model.HasDeclaredSeats && spotsTotal == 0)
+{
+    <div class="alert alert--info" role="status"><div class="alert-body">This drawing does not declare its seats. Click the shapes that are seats (Shift-click adds, or Shift-drag an area), then use <strong>Mark as workspots</strong>.</div></div>
+}
+
+<div class="wp" data-floor-map data-floor-id="@floor.Id" data-editable="@(Model.CanEdit ? "true" : "false")" data-focus="@string.Join(',', Model.FocusIds)">
+    <section class="wp-stage card" aria-label="Floor plan">
+        <div class="wp-toolbar">
+            <div class="wp-find">@await Html.PartialAsync("_FindBox", "wp-q")</div>
+            <div class="wp-tools" role="group" aria-label="Map tools">
+                <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-zoom="fit">Fit</button>
+                <button type="button" data-area aria-pressed="false" title="Drag on the map to select an area (or hold Shift)">Select area</button>
+            </div>
+        </div>
+        <div class="wp-canvas" data-canvas tabindex="0" aria-label="Floor plan of @floor.Name. Use the search box to find a workspot, or zoom and click.">
+            @Html.Raw(Model.Svg)
+        </div>
+        <p class="hint wp-hint">Scroll to zoom, drag to move. Click a seat to select it; Shift-click adds more, a table or room selects its seats.</p>
+    </section>
+
+    <aside class="wp-panel" aria-label="Selection and teams">
+        <section class="card wp-box" data-when="none" aria-labelledby="wp-sel-h">
+            <h2 id="wp-sel-h">Selection</h2>
+            <p class="muted">Nothing selected. Click a seat, a table or a room on the map.</p>
+        </section>
+
+        <section class="card wp-box" data-when="ws" hidden aria-labelledby="wp-sel2-h">
+            <h2 id="wp-sel2-h">Selection</h2>
+            <p data-sel-summary></p>
+            <dl class="wp-facts" data-when="one" hidden>
+                <dt>Label</dt><dd data-fact="label"></dd>
+                <dt>Room</dt><dd data-fact="room"></dd>
+                <dt>Table</dt><dd data-fact="table"></dd>
+                <dt>Team</dt><dd data-fact="team"></dd>
+            </dl>
+            <ul class="wp-selected" data-sel-list></ul>
+
+            @if (Model.CanEdit)
+            {
+                <form method="post" asp-page-handler="Label" asp-route-id="@floor.Id" class="stack wp-form" data-when="one" hidden>
+                    <input type="hidden" name="workspotId" data-ws-id />
+                    <div class="field">
+                        <label for="wp-label">Label</label>
+                        <input id="wp-label" name="label" maxlength="@WorkspotService.LabelMax" data-ws-label required />
+                    </div>
+                    <button type="submit" class="btn--sm">Save label</button>
+                </form>
+
+                <form method="post" asp-page-handler="Team" asp-route-id="@floor.Id" class="stack wp-form" data-needs="ws">
+                    <input type="hidden" name="ids" data-ids="ws" />
+                    <div class="field">
+                        <label for="wp-team-name">Group as team</label>
+                        <input id="wp-team-name" name="name" maxlength="@TeamService.NameMax" placeholder="Team name" required />
+                    </div>
+                    <button type="submit" class="btn--primary btn--sm">Group as team</button>
+                </form>
+
+                @if (Model.View.Teams.Count > 0)
+                {
+                    <form method="post" asp-page-handler="TeamAdd" asp-route-id="@floor.Id" class="stack wp-form" data-needs="ws">
+                        <input type="hidden" name="ids" data-ids="ws" />
+                        <div class="field">
+                            <label for="wp-team-add">Add to an existing team</label>
+                            <select id="wp-team-add" name="teamId">
+                                @foreach (var t in Model.View.Teams) { <option value="@t.Id">@t.Name</option> }
+                            </select>
+                        </div>
+                        <button type="submit" class="btn--sm">Add to team</button>
+                    </form>
+                }
+
+                <form method="post" asp-page-handler="TeamRemove" asp-route-id="@floor.Id" class="wp-form" data-when="teamed" hidden>
+                    <input type="hidden" name="ids" data-ids="ws" />
+                    <button type="submit" class="btn--sm">Take out of team</button>
+                </form>
+
+                <form method="post" asp-page-handler="Retire" asp-route-id="@floor.Id" class="wp-form" data-when="on" hidden>
+                    <input type="hidden" name="ids" data-ids="ws" />
+                    <button type="submit" class="btn--sm btn--danger">Switch off</button>
+                </form>
+                <form method="post" asp-page-handler="Restore" asp-route-id="@floor.Id" class="wp-form" data-when="off" hidden>
+                    <input type="hidden" name="ids" data-ids="ws" />
+                    <button type="submit" class="btn--sm">Switch on</button>
+                </form>
+            }
+        </section>
+
+        @if (Model.CanEdit)
+        {
+            <section class="card wp-box" data-when="el" hidden aria-labelledby="wp-mark-h">
+                <h2 id="wp-mark-h">Mark as workspots</h2>
+                <p data-el-summary></p>
+                <form method="post" asp-page-handler="Mark" asp-route-id="@floor.Id" class="stack wp-form">
+                    <input type="hidden" name="ids" data-ids="el" />
+                    <div class="field">
+                        <label for="wp-prefix">Label prefix (optional)</label>
+                        <input id="wp-prefix" name="prefix" maxlength="40" placeholder="D-" />
+                        <span class="hint">With a prefix the seats are numbered D-1, D-2, … in the order you clicked them.</span>
+                    </div>
+                    <button type="submit" class="btn--primary btn--sm">Mark as workspots</button>
+                </form>
+            </section>
+        }
+
+        <section class="card wp-box" aria-labelledby="wp-teams-h">
+            <h2 id="wp-teams-h">Teams</h2>
+            @if (Model.View.Teams.Count == 0)
+            {
+                <p class="muted">No teams on this floor. Select seats and group them as a team; teams are only a drawing on the map and can be renamed at any time.</p>
+            }
+            else
+            {
+                <ul class="wp-teams">
+                    @foreach (var t in Model.View.Teams)
+                    {
+                        <li data-team-id="@t.Id">
+                            <button type="button" class="wp-team-show" data-show-team="@t.Id" title="Show on the map">
+                                <span class="wp-swatch fp-team-@t.ColorIndex" aria-hidden="true"></span>
+                                <span class="wp-team-name">@t.Name</span>
+                                <span class="muted">@(Model.TeamSeats.GetValueOrDefault(t.Id)) seats</span>
+                            </button>
+                            @if (Model.CanEdit)
+                            {
+                                <details class="wp-team-edit">
+                                    <summary>Edit</summary>
+                                    <form method="post" asp-page-handler="TeamRename" asp-route-id="@floor.Id" class="stack wp-form">
+                                        <input type="hidden" name="teamId" value="@t.Id" />
+                                        <div class="field">
+                                            <label for="wp-rn-@t.Id">Name</label>
+                                            <input id="wp-rn-@t.Id" name="name" value="@t.Name" maxlength="@TeamService.NameMax" required />
+                                        </div>
+                                        <button type="submit" class="btn--sm">Rename</button>
+                                    </form>
+                                    <form method="post" asp-page-handler="TeamColor" asp-route-id="@floor.Id" class="stack wp-form">
+                                        <input type="hidden" name="teamId" value="@t.Id" />
+                                        <div class="field">
+                                            <label for="wp-co-@t.Id">Colour</label>
+                                            <select id="wp-co-@t.Id" name="color">
+                                                @for (var i = 0; i < colors.Length; i++) { <option value="@i" selected="@(i == t.ColorIndex)">@colors[i]</option> }
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="btn--sm">Change colour</button>
+                                    </form>
+                                    <form method="post" asp-page-handler="TeamDelete" asp-route-id="@floor.Id" class="wp-form" data-confirm="Delete team '@t.Name'? Its workspots stay on the floor.">
+                                        <input type="hidden" name="teamId" value="@t.Id" />
+                                        <button type="submit" class="btn--sm btn--danger">Delete team</button>
+                                    </form>
+                                </details>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="card wp-box" aria-labelledby="wp-sum-h">
+            <h2 id="wp-sum-h">Summary</h2>
+            <table class="wp-summary">
+                <tbody>
+                    <tr><th scope="row">Workspots</th><td class="num">@spotsTotal</td></tr>
+                    @foreach (var (type, count) in Model.RoomTypes)
+                    {
+                        <tr><td class="muted">@(type == "" ? "Not in a room" : char.ToUpperInvariant(type[0]) + type[1..])</td><td class="num">@count</td></tr>
+                    }
+                    <tr><th scope="row">In a team</th><td class="num">@Model.TeamSeats.Values.Sum()</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </aside>
+</div>

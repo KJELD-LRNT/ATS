@@ -42,17 +42,21 @@ public class IndexModel(
         var grants = await db.ManagerSiteGrants.AsNoTracking()
             .Join(db.Sites, g => g.SiteId, s => s.Id, (g, s) => new { g.PrincipalDirectoryId, s.Key })
             .ToListAsync(ct);
+        var facility = await db.RoleAssignments.AsNoTracking().Where(r => r.Role == AppRoles.Facility)
+            .Select(r => r.PrincipalDirectoryId).ToListAsync(ct);
         var people = await db.People.AsNoTracking().Where(p => p.Sid != null && p.IsActive)
             .Select(p => new { p.Sid, p.Username, p.DisplayName, p.DirectoryId, SiteKey = p.Site != null ? p.Site.Key : null })
             .ToListAsync(ct);
         People = people
-            .OrderBy(p => p.Username == DemoDefaults.YouUsername ? 0 : p.Username == DemoDefaults.ManagerUsername ? 1 : 2)
+            .OrderBy(p => p.Username == DemoDefaults.YouUsername ? 0 : p.Username == DemoDefaults.ManagerUsername ? 1
+                : facility.Contains(p.DirectoryId) ? 2 : 3)
             .ThenBy(p => p.DisplayName)
             .Select(p =>
             {
                 var g = grants.Where(x => x.PrincipalDirectoryId == p.DirectoryId).Select(x => x.Key).ToList();
                 var label = $"{p.DisplayName} ({DemoDefaults.Domain}\\{p.Username}, site {p.SiteKey ?? "none"})" +
-                            (g.Count > 0 ? $" — manager grant: {string.Join(", ", g)}" : "");
+                            (g.Count > 0 ? $" — manager grant: {string.Join(", ", g)}" : "") +
+                            (facility.Contains(p.DirectoryId) ? " — Facility role (given in the app)" : "");
                 return new PersonChoice(p.Sid!, label);
             })
             .ToList();
