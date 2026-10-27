@@ -28,8 +28,10 @@ public readonly record struct Area(double X, double Y, double Width, double Heig
 /// map is styled and scripted with (free desk, taken, not a desk, switched off, flagged, team colour); a seat with
 /// someone or something placed gets a marker: a person icon in the seat, small desktop and screen icons just outside
 /// it (away from its table) and a label with the person's name and the desktop's tag, which the page scales to a fixed
-/// size on screen. Teams get a dashed outline per table and their name per room (a table can be split between teams). Only data of this application goes in; the drawing
-/// itself was sanitised on import.
+/// size on screen. Teams get a dashed outline per table and their name per room (a table can be split between teams).
+/// Nothing assumes a particular drawing: positions come from <see cref="SvgGeometry"/> (any shape, any transform), and
+/// sizes (markers, outlines, team names) follow the size of the drawing's own seats. Only data of this application goes
+/// in; the drawing itself was sanitised on import.
 /// </summary>
 public static class FloorplanRenderer
 {
@@ -54,10 +56,12 @@ public static class FloorplanRenderer
             if ((string?)e.Attribute("id") is { } id) byId.TryAdd(id, e);
 
         var teamById = teams.ToDictionary(t => t.Id);
+        var geometry = new Geometry(root);
         // Team outlines are drawn per table (or per room for seats without a table), so a table split between two teams
         // shows both halves, and a team spread over several tables does not get one box over everything in between.
-        // Below: all its seats sit below their table (the lower half of a split table), so the name goes under it.
-        var teamBounds = new Dictionary<(int Team, string Group, string Room), (Box Box, bool Below)>();
+        // Side: where all its seats sit relative to their table (null when they differ), so the name can go on that side
+        // rather than across the table.
+        var teamBounds = new Dictionary<(int Team, string Group, string Room), (SvgBox Box, Side? Side)>();
         var markers = new XElement(Svg + "g", new XAttribute("class", "fp-marks"), new XAttribute("pointer-events", "none"));
         var labels = new XElement(Svg + "g", new XAttribute("class", "fp-labels"), new XAttribute("pointer-events", "none"));
 
@@ -83,7 +87,7 @@ public static class FloorplanRenderer
             if (state?.Desktop is not null) el.SetAttributeValue("data-desktop", state.Desktop);
             if (spot.IsDesk) el.SetAttributeValue("data-desk", "1");
 
-            var box = Bounds(el);
+            var box = geometry.Seat(el);
             FloorTeam? team = null;
             if (spot.IsActive && spot.TeamId is { } teamId && teamById.TryGetValue(teamId, out team))
             {
@@ -92,8 +96,8 @@ public static class FloorplanRenderer
                 if (box is { } b)
                 {
                     var key = (teamId, spot.TableId ?? spot.RoomId ?? "", spot.RoomId ?? "");
-                    var below = Direction(el, b) == Side.Down;
-                    teamBounds[key] = teamBounds.TryGetValue(key, out var cur) ? (cur.Box.Union(b), cur.Below && below) : (b, below);
+                    var side = geometry.Direction(el, spot.TableId, b);
+                    teamBounds[key] = teamBounds.TryGetValue(key, out var cur) ? (cur.Box.Union(b), cur.Side == side ? side : null) : (b, side);
                 }
             }
 
@@ -110,10 +114,10 @@ public static class FloorplanRenderer
             el.SetAttributeValue("class", string.IsNullOrEmpty(existing) ? string.Join(' ', classes) : existing + " " + string.Join(' ', classes));
 
             if (state is not null && box is { } seat)
-                AddMarker(markers, labels, spot, state, seat, Direction(el, seat));
+                AddMarker(markers, labels, spot, state, seat, geometry.Direction(el, spot.TableId, seat));
         }
 
-        AddTeamLayer(root, floor, teamById, teamBounds);
+        AddTeamLayer(root, geometry.Unit(spots.Where(s => s.IsActive).Select(s => s.ElementId), floor), teamById, teamBounds);
         root.Add(markers, labels);
         root.AddFirst(new XElement(Svg + "defs", XElement.Parse("<x xmlns=\"http://www.w3.org/2000/svg\">" + Icons + "</x>").Elements()));
         if (viewBox is { } vb) root.SetAttributeValue("viewBox", vb.ToString());
@@ -128,26 +132,79 @@ public static class FloorplanRenderer
             .GroupBy(e => (string)e.Attribute("id")!).ToDictionary(g => g.Key, g => g.First());
         var result = new Dictionary<int, (double, double)>();
         foreach (var spot in spots)
-            if (byId.TryGetValue(spot.ElementId, out var el) && Bounds(el) is { } b)
+            if (byId.TryGetValue(spot.ElementId, out var el) && SvgGeometry.Bounds(el) is { } b)
                 result[spot.Id] = (b.Cx, b.Cy);
         return result;
     }
 
     private enum Side { Up, Down, Left, Right }
 
-    /// <summary>Which way is "away from the table" for a seat (its marker and label go there); below when it has no table.</summary>
-    private static Side Direction(XElement seat, Box box)
+    /// <summary>Measurements of one drawing, cached: seat boxes, table boxes and the typical seat size.</summary>
+    private sealed class Geometry(XElement root)
     {
-        var table = seat.Ancestors().FirstOrDefault(a => (string?)a.Attribute("data-kind") == "table");
-        var tableBox = table?.Elements(Svg + "rect").Select(r => Bounds(r)).FirstOrDefault(b => b is not null);
-        if (tableBox is not { } t) return Side.Down;
-        var dx = (box.Cx - t.Cx) / Math.Max(t.Width / 2, 0.001);
-        var dy = (box.Cy - t.Cy) / Math.Max(t.Height / 2, 0.001);
-        if (Math.Abs(dy) >= Math.Abs(dx)) return dy < 0 ? Side.Up : Side.Down;
-        return dx < 0 ? Side.Left : Side.Right;
+        private readonly Dictionary<XElement, SvgBox?> _seats = [];
+        private readonly Dictionary<XElement, SvgBox?> _tables = [];
+        private Dictionary<string, XElement>? _tablesById;
+        private Dictionary<string, XElement>? _byElementId;
+
+        public SvgBox? Seat(XElement seat)
+        {
+            if (!_seats.TryGetValue(seat, out var box)) _seats[seat] = box = SvgGeometry.Bounds(seat);
+            return box;
+        }
+
+        /// <summary>
+        /// Which way is "away from the table" for a seat (its badges and label go there). The table is the seat's
+        /// <c>data-kind="table"</c> ancestor or the table its id names; its box is what is drawn for the table itself, or
+        /// else the middle of its seats. Below when the seat has no table.
+        /// </summary>
+        public Side Direction(XElement seat, string? tableId, SvgBox box)
+        {
+            var table = seat.Ancestors().FirstOrDefault(a => (string?)a.Attribute("data-kind") == "table");
+            if (table is null && tableId is not null)
+            {
+                _tablesById ??= root.Descendants().Where(e => (string?)e.Attribute("data-kind") == "table" && e.Attribute("data-id") is not null)
+                    .GroupBy(e => (string)e.Attribute("data-id")!).ToDictionary(g => g.Key, g => g.First());
+                _tablesById.TryGetValue(tableId, out table);
+            }
+            if (table is null || Table(table) is not { } t) return Side.Down;
+            var dx = (box.Cx - t.Cx) / Math.Max(t.Width / 2, 0.001);
+            var dy = (box.Cy - t.Cy) / Math.Max(t.Height / 2, 0.001);
+            if (Math.Abs(dy) >= Math.Abs(dx)) return dy < 0 ? Side.Up : Side.Down;
+            return dx < 0 ? Side.Left : Side.Right;
+        }
+
+        private SvgBox? Table(XElement table)
+        {
+            if (_tables.TryGetValue(table, out var box)) return box;
+            box = SvgGeometry.Bounds(table, e => (string?)e.Attribute("data-kind") == "seat");
+            if (box is { } own && (own.Width > 0 || own.Height > 0)) return _tables[table] = box;
+            // Nothing drawn for the table itself (only its seats, maybe elsewhere): the middle of its seats.
+            var tableId = (string?)table.Attribute("data-id");
+            SvgBox? seats = null;
+            foreach (var s in root.Descendants().Where(e => (string?)e.Attribute("data-kind") == "seat" &&
+                         (e.Ancestors().Contains(table) || (tableId is not null && (string?)e.Attribute("data-parent") == tableId))))
+                if (Seat(s) is { } b) seats = seats is { } a ? a.Union(b) : b;
+            return _tables[table] = seats;
+        }
+
+        /// <summary>
+        /// The typical seat size (median of the shorter side of the seats), so outlines and team names fit the drawing
+        /// whatever its scale; a part of the drawing's width when it has no measurable seats.
+        /// </summary>
+        public double Unit(IEnumerable<string> elementIds, Floor floor)
+        {
+            _byElementId ??= root.DescendantsAndSelf().Where(e => e.Attribute("id") is not null)
+                .GroupBy(e => (string)e.Attribute("id")!).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+            var sizes = elementIds.Select(id => _byElementId.TryGetValue(id, out var el) ? Seat(el) : null)
+                .Where(b => b is not null).Select(b => Math.Min(b!.Value.Width, b.Value.Height)).Where(v => v > 0).Order().ToList();
+            if (sizes.Count > 0) return sizes[sizes.Count / 2];
+            var parts = floor.ViewBox.Split(' ');
+            return parts.Length == 4 && double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w / 200 : 5;
+        }
     }
 
-    private static void AddMarker(XElement markers, XElement labels, Workspot spot, SpotState state, Box seat, Side side)
+    private static void AddMarker(XElement markers, XElement labels, Workspot spot, SpotState state, SvgBox seat, Side side)
     {
         var r = Math.Max(Math.Min(seat.Width, seat.Height) / 2, 0.5);
         var (cx, cy) = (seat.Cx, seat.Cy);
@@ -222,16 +279,17 @@ public static class FloorplanRenderer
 
     /// <summary>
     /// A dashed outline in the team's colour around each of its tables (or groups of seats in a room), and the team's name
-    /// once per room, above its top table there (below it when those seats are on the far side of their table).
+    /// once per room at its top table there: above it, or below or beside it when those seats are all on that side of their
+    /// table, so the name does not run across the table.
     /// </summary>
-    private static void AddTeamLayer(XElement root, Floor floor, Dictionary<int, FloorTeam> teams,
-        Dictionary<(int Team, string Group, string Room), (Box Box, bool Below)> bounds)
+    /// <param name="unit">The typical seat size: the outline keeps about half a seat of room, the name is a bit larger
+    /// than a seat.</param>
+    private static void AddTeamLayer(XElement root, double unit, Dictionary<int, FloorTeam> teams,
+        Dictionary<(int Team, string Group, string Room), (SvgBox Box, Side? Side)> bounds)
     {
         if (bounds.Count == 0) return;
-        var parts = floor.ViewBox.Split(' ');
-        var width = double.Parse(parts[2], CultureInfo.InvariantCulture);
-        var pad = width / 400;
-        var font = width / 170;
+        var pad = unit * 0.6;
+        var font = unit * 1.3;
         var layer = new XElement(Svg + "g", new XAttribute("class", "fp-teamlayer"), new XAttribute("pointer-events", "none"));
         foreach (var (key, (b, _)) in bounds.OrderBy(kv => kv.Key.Team).ThenBy(kv => kv.Value.Box.MinY).ThenBy(kv => kv.Value.Box.MinX))
         {
@@ -245,11 +303,13 @@ public static class FloorplanRenderer
         foreach (var room in bounds.GroupBy(kv => (kv.Key.Team, kv.Key.Room)).OrderBy(g => g.Key.Team))
         {
             var team = teams[room.Key.Team];
-            var (top, below) = room.Select(kv => kv.Value).OrderBy(v => v.Box.MinY).ThenBy(v => v.Box.MinX).First();
-            var y = below ? top.MaxY + pad + font : top.MinY - pad - font * 0.35;
+            var (top, side) = room.Select(kv => kv.Value).OrderBy(v => v.Box.MinY).ThenBy(v => v.Box.MinX).First();
+            var y = side == Side.Down ? top.MaxY + pad + font : top.MinY - pad - font * 0.35;
+            // Seats left of their table: the name ends at their right edge and runs away from the table.
+            var (x, anchor) = side == Side.Left ? (top.MaxX + pad, "end") : (top.MinX - pad, "start");
             foreach (var cls in new[] { "fp-team-halo", $"fp-team-label fp-team-{team.ColorIndex}" })
                 layer.Add(new XElement(Svg + "text", new XAttribute("class", cls),
-                    new XAttribute("x", Num(top.MinX)), new XAttribute("y", Num(y)),
+                    new XAttribute("x", Num(x)), new XAttribute("y", Num(y)), new XAttribute("text-anchor", anchor),
                     new XAttribute("font-size", Num(font)), team.Name));
         }
         root.Add(layer);
@@ -257,36 +317,4 @@ public static class FloorplanRenderer
 
     private static string Num(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
-    private static double? D(XElement e, string name) =>
-        double.TryParse((string?)e.Attribute(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
-
-    private readonly record struct Box(double MinX, double MinY, double MaxX, double MaxY)
-    {
-        public double Width => MaxX - MinX;
-        public double Height => MaxY - MinY;
-        public double Cx => (MinX + MaxX) / 2;
-        public double Cy => (MinY + MaxY) / 2;
-        public Box Union(Box o) => new(Math.Min(MinX, o.MinX), Math.Min(MinY, o.MinY), Math.Max(MaxX, o.MaxX), Math.Max(MaxY, o.MaxY));
-    }
-
-    /// <summary>Box of a circle, ellipse or rectangle (a group: its first such descendant). No transforms are applied.</summary>
-    private static Box? Bounds(XElement e)
-    {
-        var shape = e.Name.LocalName is "circle" or "ellipse" or "rect"
-            ? e
-            : e.Descendants().FirstOrDefault(d => d.Name.LocalName is "circle" or "ellipse" or "rect");
-        if (shape is null) return null;
-        switch (shape.Name.LocalName)
-        {
-            case "circle" when D(shape, "cx") is { } cx && D(shape, "cy") is { } cy && D(shape, "r") is { } r:
-                return new Box(cx - r, cy - r, cx + r, cy + r);
-            case "ellipse" when D(shape, "cx") is { } ex && D(shape, "cy") is { } ey && D(shape, "rx") is { } rx && D(shape, "ry") is { } ry:
-                return new Box(ex - rx, ey - ry, ex + rx, ey + ry);
-            case "rect" when D(shape, "width") is { } w && D(shape, "height") is { } h:
-                var x = D(shape, "x") ?? 0; var y = D(shape, "y") ?? 0;
-                return new Box(x, y, x + w, y + h);
-            default:
-                return null;
-        }
-    }
 }

@@ -32,7 +32,9 @@ public class ReplaceModel(FloorService floors) : PageModel
         {
             var xml = await ImportModel.ReadAsync(Drawing, ct);
             var r = await floors.ReplaceDrawingAsync(id, xml, ct);
-            TempData["Message"] = $"Drawing replaced: {r.Added} workspot(s) added, {r.Reactivated} switched back on, {r.Deactivated} switched off.";
+            TempData["Message"] = $"Drawing replaced: {r.Added} seat(s) added, {r.Reactivated} back, {r.Deactivated} switched off" +
+                (r.Moved > 0 ? $", {r.Moved} found again under a new id or in a slightly different place" : "") + "." +
+                (r.Orphaned > 0 ? $" {r.Orphaned} seat(s) that are gone still had someone or something placed: they are flagged under To check; drag them to their new desk." : "");
             return RedirectToPage("Floor", new { id });
         }
         catch (DomainException ex) { this.Show(ex); }

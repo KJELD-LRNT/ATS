@@ -237,12 +237,20 @@ public static partial class FloorplanImporter
     }
 
     /// <summary>The seats the drawing declares, each with the room and table it sits in.</summary>
+    /// <summary>
+    /// The seats a drawing declares, each with its table and room. A seat belongs to the table and room it is drawn in, or
+    /// else the ones its <c>data-parent</c> (or its table's) names, or else the smallest room whose outline it lies in, so
+    /// a revised drawing that groups its elements differently still gives the same answer.
+    /// </summary>
     private static List<ParsedSpot> FindSpots(XElement root)
     {
-        var rooms = root.Descendants()
-            .Where(e => (string?)e.Attribute("data-kind") == "room" && (string?)e.Attribute("data-id") is not null)
+        Dictionary<string, XElement> ById(string kind) => root.Descendants()
+            .Where(e => (string?)e.Attribute("data-kind") == kind && (string?)e.Attribute("data-id") is not null)
             .GroupBy(e => (string)e.Attribute("data-id")!)
             .ToDictionary(g => g.Key, g => g.First());
+        var rooms = ById("room");
+        var tables = ById("table");
+        List<(XElement Room, SvgBox Box)>? roomBoxes = null;
 
         var spots = new List<ParsedSpot>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -251,9 +259,18 @@ public static partial class FloorplanImporter
             var id = (string?)seat.Attribute("id");
             if (id is null || !seen.Add(id)) continue;
 
-            var table = seat.Ancestors().FirstOrDefault(a => (string?)a.Attribute("data-kind") == "table");
+            var parent = (string?)seat.Attribute("data-parent");
+            var table = seat.Ancestors().FirstOrDefault(a => (string?)a.Attribute("data-kind") == "table")
+                        ?? (parent is not null && tables.TryGetValue(parent, out var t) ? t : null);
             var room = seat.Ancestors().FirstOrDefault(a => (string?)a.Attribute("data-kind") == "room");
-            var roomId = (string?)room?.Attribute("data-id") ?? (string?)table?.Attribute("data-parent");
+            var roomId = (string?)room?.Attribute("data-id") ?? (string?)table?.Attribute("data-parent")
+                         ?? (parent is not null && rooms.ContainsKey(parent) ? parent : null);
+            if (roomId is null && rooms.Count > 0 && SvgGeometry.Center(seat) is { } c)
+            {
+                roomBoxes ??= rooms.Values.Select(r => (Room: r, Box: SvgGeometry.Bounds(r))).Where(r => r.Box is not null)
+                    .Select(r => (r.Room, r.Box!.Value)).OrderBy(r => r.Value.Width * r.Value.Height).ToList();
+                roomId = (string?)roomBoxes.FirstOrDefault(r => r.Box.Contains(c.X, c.Y)).Room?.Attribute("data-id");
+            }
             XElement? roomEl = null;
             if (roomId is not null) rooms.TryGetValue(roomId, out roomEl);
             var label = (string?)seat.Attribute("data-id") ?? id;

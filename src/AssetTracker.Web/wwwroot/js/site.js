@@ -493,11 +493,24 @@ function layoutLabels(svg, host, force) {
     });
 }
 
+// The box of an element in the drawing's own coordinates (its viewBox space), whatever transforms the drawing puts on
+// it or its groups: measured on screen and mapped back, so any shape or nesting works.
+function userBox(svg, el) {
+    var r = el.getBoundingClientRect();
+    var m = svg.getScreenCTM().inverse();
+    var p = svg.createSVGPoint();
+    p.x = r.left; p.y = r.top;
+    var a = p.matrixTransform(m);
+    p.x = r.right; p.y = r.bottom;
+    var b = p.matrixTransform(m);
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+}
+
 // Typical distance between neighbouring desks (median of nearest neighbours, sampled), in drawing units.
 function seatSpacing(svg) {
     var pts = Array.prototype.slice.call(svg.querySelectorAll("[data-ws][data-desk]"), 0, 400).map(function (el) {
-        var b = el.getBBox();
-        return [b.x + b.width / 2, b.y + b.height / 2];
+        var b = userBox(svg, el);
+        return [b.x + b.w / 2, b.y + b.h / 2];
     });
     if (pts.length < 2) return 1e9;
     var near = pts.map(function (p, i) {
@@ -983,9 +996,9 @@ function seatSpacing(svg) {
     function boundsOf(list) {
         var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         list.forEach(function (el) {
-            var b = el.getBBox();
+            var b = userBox(svg, el);
             minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
-            maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+            maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h);
         });
         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
