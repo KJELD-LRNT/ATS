@@ -34,7 +34,7 @@ public sealed record AssetSearch(
 /// Reads are scoped by <see cref="AccessScope"/>; mutations are IT-only and audited in the same transaction.
 /// State transitions use conditional atomic updates so they cannot race a concurrent checkout.
 /// </summary>
-public class AssetService(AppDbContext db, AccessScope access, AuditWriter audit, IClock clock, TagGenerator tags)
+public class AssetService(AppDbContext db, AccessScope access, AuditWriter audit, IClock clock, TagGenerator tags, ICurrentUser user)
 {
     public const int TagMaxLength = 64;
 
@@ -220,6 +220,8 @@ public class AssetService(AppDbContext db, AccessScope access, AuditWriter audit
 
         audit.Record("asset.transfer_site", nameof(IndividualAsset), id, toSiteId, Normalization.OptionalText(reason),
             new { fromSiteId = asset.SiteId, toSiteId });
+        // A desktop or screen placed at a desk of the old site cannot stay there.
+        await Workplace.AssignmentService.ReleaseAssetAsync(db, audit, id, user.Name, clock.UtcNow, "Asset moved to another site", ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }
@@ -253,6 +255,8 @@ public class AssetService(AppDbContext db, AccessScope access, AuditWriter audit
 
         audit.Record(action, nameof(IndividualAsset), id, asset.SiteId, Normalization.OptionalText(reason),
             new { from = asset.State.ToString(), to = to.ToString() });
+        if (to == AssetState.Retired)
+            await Workplace.AssignmentService.ReleaseAssetAsync(db, audit, id, user.Name, now, "Asset retired", ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }

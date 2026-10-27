@@ -164,9 +164,10 @@ public class DemoRuntimeTests : IClassFixture<DemoAppFactory>
         Assert.Contains("id=\"demo-roles\">Manager<", home);
 
         // Manager with a grant for AMS only: AMS inventory, nothing from NYC or SIN.
-        var assets = await (await client.GetAsync("/Assets?pageSize=100")).Content.ReadAsStringAsync();
+        var assets = await (await client.GetAsync("/Assets")).Content.ReadAsStringAsync();
         Assert.Contains("AMS-LT-001", assets);
-        Assert.Contains(DemoSeeder.TransferredAssetTag, assets); // moved to AMS
+        // moved to AMS (last by tag, so on page 2 of the list)
+        Assert.Contains(DemoSeeder.TransferredAssetTag, await (await client.GetAsync("/Assets?q=" + DemoSeeder.TransferredAssetTag)).Content.ReadAsStringAsync());
         Assert.DoesNotContain("NYC-LT-001", assets);
         Assert.DoesNotContain("SIN-LT-001", assets);
         // D2: audit is IT only.

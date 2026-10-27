@@ -222,22 +222,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.AssignedBy).HasMaxLength(256);
             e.Property(x => x.ReleasedBy).HasMaxLength(256);
             e.HasIndex(x => new { x.WorkspotId, x.ReleasedAt });
-            // Open rows only: a person is in one place, an asset is in one place, a workspot has one person.
+            // Open rows only: a person is in one place, an asset is in one place, a workspot has one person and one desktop.
             e.HasIndex(x => x.PersonId).IsUnique().HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenPerson");
             e.HasIndex(x => x.AssetId).IsUnique().HasFilter("[AssetId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenAsset");
             e.HasIndex(x => x.WorkspotId).IsUnique().HasFilter("[PersonId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenSeatPerson");
-            e.HasIndex(x => new { x.WorkspotId, x.PoolId }).IsUnique().HasFilter("[PoolId] IS NOT NULL AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenPool");
-            e.HasIndex(x => x.PoolId);
+            e.HasIndex(x => new { x.WorkspotId, x.Kind }).IsUnique().HasFilter("[Kind] = 2 AND [ReleasedAt] IS NULL").HasDatabaseName("UX_WorkspotAssignments_OpenSeatDesktop");
             e.HasOne(x => x.Workspot).WithMany().HasForeignKey(x => x.WorkspotId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Person).WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Asset).WithMany().HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.Pool).WithMany().HasForeignKey(x => x.PoolId).OnDelete(DeleteBehavior.Restrict);
-            e.ToTable(t =>
-            {
-                t.HasCheckConstraint("CK_WorkspotAssignment_OneKind",
-                    "([PersonId] IS NOT NULL AND [AssetId] IS NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NOT NULL AND [PoolId] IS NULL) OR ([PersonId] IS NULL AND [AssetId] IS NULL AND [PoolId] IS NOT NULL)");
-                t.HasCheckConstraint("CK_WorkspotAssignment_Quantity", "[Quantity] > 0");
-            });
+            e.ToTable(t => t.HasCheckConstraint("CK_WorkspotAssignment_Kind",
+                "([Kind] = 1 AND [PersonId] IS NOT NULL AND [AssetId] IS NULL) OR ([Kind] IN (2, 3) AND [PersonId] IS NULL AND [AssetId] IS NOT NULL)"));
         });
 
         b.Entity<Pool>(e =>

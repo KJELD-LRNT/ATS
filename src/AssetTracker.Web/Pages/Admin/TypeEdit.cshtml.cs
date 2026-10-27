@@ -22,6 +22,7 @@ public class TypeEditModel(CatalogService catalog) : PageModel
         public bool UsesSerialNumber { get; set; }
         public bool UsesCondition { get; set; }
         public string? TagPattern { get; set; }
+        public WorkspotRole WorkspotRole { get; set; }
     }
 
     public class FieldForm
@@ -66,6 +67,7 @@ public class TypeEditModel(CatalogService catalog) : PageModel
         {
             Name = Type.Name, IsActive = Type.IsActive, UsesModel = Type.UsesModel, UsesDescription = Type.UsesDescription,
             UsesSerialNumber = Type.UsesSerialNumber, UsesCondition = Type.UsesCondition, TagPattern = Type.TagPattern,
+            WorkspotRole = Type.WorkspotRole,
         };
         if (fieldId is { } fid && Type.Fields.FirstOrDefault(f => f.Id == fid) is { } f)
         {
@@ -83,7 +85,8 @@ public class TypeEditModel(CatalogService catalog) : PageModel
         RunAsync(id, null, async () =>
         {
             var type = await catalog.UpdateTypeAsync(id, new TypeInput(Input.Name, (await catalog.GetTypeAsync(id, ct)).Mode,
-                Input.UsesModel, Input.UsesDescription, Input.UsesSerialNumber, Input.UsesCondition, Input.TagPattern, Input.IsActive), ct);
+                Input.UsesModel, Input.UsesDescription, Input.UsesSerialNumber, Input.UsesCondition, Input.TagPattern, Input.IsActive,
+                Input.WorkspotRole), ct);
             return $"Asset type {type.Name} saved.";
         }, ct);
 

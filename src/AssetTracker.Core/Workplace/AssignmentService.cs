@@ -11,39 +11,45 @@ namespace AssetTracker.Core.Workplace;
 
 public sealed record PersonOnSpot(int AssignmentId, int PersonId, string Name, string Username, string? JobTitle, string? SiteKey, bool IsActive);
 
-public sealed record AssetOnSpot(int AssignmentId, int AssetId, string Tag, string Type, string? Model, string Description, string State);
+public sealed record AssetOnSpot(int AssignmentId, int AssetId, string Tag, PlacementKind Kind, string Type, string? Model, string Description);
 
-public sealed record PoolOnSpot(int AssignmentId, int PoolId, string Sku, string Type, string Description, int Quantity);
-
-/// <param name="Hints">Things worth a look at this workspot (see <see cref="AssignmentService.HintsAsync"/>).</param>
+/// <param name="Flags">What is wrong at this seat (see <see cref="SeatFlag"/>).</param>
 public sealed record SpotDetail(int WorkspotId, int FloorId, string Label, string? RoomName, string FloorName, string SiteKey,
-    bool IsActive, PersonOnSpot? Person, IReadOnlyList<AssetOnSpot> Assets, IReadOnlyList<PoolOnSpot> Pools, IReadOnlyList<string> Hints);
+    bool IsActive, bool IsDesk, PersonOnSpot? Person, AssetOnSpot? Desktop, IReadOnlyList<AssetOnSpot> Screens, IReadOnlyList<string> Flags);
 
-/// <summary>What the map shows of a seat: who sits there and how many things are placed.</summary>
-public sealed record SpotOccupancy(string? Person, bool PersonLeft, int Items);
+/// <summary>What the map draws at a seat: who sits there, the desktop's tag, how many screens, and whether it is flagged.</summary>
+public sealed record SpotState(string? Person, bool PersonLeft, string? Desktop, int Screens, bool Flagged);
 
-public sealed record Hint(string Kind, int WorkspotId, string Label, string Text);
+/// <summary>A seat that needs a look.</summary>
+/// <param name="Kind"><c>person-left</c> (no longer in the directory), <c>seat-disabled</c> (the seat is switched off,
+/// gone from the drawing or not a desk) or <c>missing</c> (a person without a desktop and/or a screen).</param>
+public sealed record SeatFlag(string Kind, int WorkspotId, string Label, string? Person, string Text);
 
-/// <param name="Kind"><c>person</c>, <c>asset</c> or <c>pool</c>.</param>
+/// <summary>The floor at a glance: desks, who sits where, free desks and flags.</summary>
+public sealed record FloorStatus(int Desks, int Seated, IReadOnlyList<int> FreeDesks, int Desktops, int Screens, IReadOnlyList<SeatFlag> Flags)
+{
+    public int Free => FreeDesks.Count;
+}
+
+/// <param name="Kind"><c>person</c>, <c>desktop</c> or <c>screen</c>.</param>
 /// <param name="Place">Where it is now ("6th floor · D-12"), if it is placed.</param>
 /// <param name="Reason">Why it cannot be placed here (shown instead of making the row selectable).</param>
 public sealed record PlaceCandidate(string Kind, int Id, string Title, string? Subtitle, string? SiteKey, string? Place, string? Reason);
 
-/// <param name="Quantity">Units for a pool, otherwise 1.</param>
-public sealed record PlaceInfo(int FloorId, string FloorName, string SiteKey, int WorkspotId, string Label, string? RoomName, int Quantity);
+public sealed record PlaceInfo(int FloorId, string FloorName, string SiteKey, int WorkspotId, string Label, string? RoomName);
 
 /// <summary>
-/// Places people, tagged assets and pool units at workspots. This is <b>location only</b>: it is separate from loans
-/// (who is responsible for an item) and never touches stock. A person and an asset are in one place at a time
-/// (assigning them elsewhere moves them, and the old row stays as history), a workspot has one person and any number
-/// of assets and pools. Reading follows the Workplace scope (IT and facility all sites, managers their granted sites);
-/// changing needs IT or facility; everything is audited in the same transaction.
+/// Places people, desktops and screens at desks. This is <b>location only</b>: it is separate from loans (who is
+/// responsible for an item). A person and an asset are in one place at a time (placing them elsewhere moves them, and
+/// the old row stays as history); a desk has at most one person and one desktop, and any number of screens. Only assets
+/// whose type is a desktop or a screen (<see cref="AssetType.WorkspotRole"/>) are placed. Reading follows the Workplace
+/// scope (IT and facility all sites, managers their granted sites); changing needs IT or facility; everything is audited
+/// in the same transaction.
 /// </summary>
 public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter audit, ICurrentUser user, IClock clock)
 {
     public const int SearchLimit = 6;
-    public const int HintLimit = 50;
-    public const int QuantityMax = 1000;
+    public const int PaletteLimit = 40;
 
     // ---- reading ---------------------------------------------------------------------------------------------
 
@@ -60,103 +66,154 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             .Include(a => a.Person).ThenInclude(p => p!.Site)
             .Include(a => a.Asset).ThenInclude(a => a!.Type)
             .Include(a => a.Asset).ThenInclude(a => a!.Model)
-            .Include(a => a.Pool).ThenInclude(p => p!.Type)
             .OrderBy(a => a.Id).ToListAsync(ct);
 
         var person = open.Where(a => a.Person is not null).Select(a => new PersonOnSpot(a.Id, a.PersonId!.Value,
             a.Person!.DisplayName, a.Person.Username, a.Person.JobTitle, a.Person.Site?.Key, a.Person.IsActive)).FirstOrDefault();
-        var assets = open.Where(a => a.Asset is not null).Select(a => new AssetOnSpot(a.Id, a.AssetId!.Value, a.Asset!.Tag,
-            a.Asset.Type!.Name, a.Asset.Model?.Name, a.Asset.Description, a.Asset.RetiredAt != null ? "Retired" : a.Asset.State.ToString())).ToList();
-        var pools = open.Where(a => a.Pool is not null).Select(a => new PoolOnSpot(a.Id, a.PoolId!.Value, a.Pool!.Sku,
-            a.Pool.Type!.Name, a.Pool.Description, a.Quantity)).ToList();
+        var assets = open.Where(a => a.Asset is not null).Select(a => new AssetOnSpot(a.Id, a.AssetId!.Value, a.Asset!.Tag, a.Kind,
+            a.Asset.Type!.Name, a.Asset.Model?.Name, a.Asset.Description)).ToList();
 
-        var hints = (await HintsForAsync(spot.Floor.Id, workspotId, ct)).Select(h => h.Text).ToList();
+        var flags = Flags(spot, person?.Name, person is { IsActive: false }, assets.Any(a => a.Kind == PlacementKind.Desktop),
+            assets.Any(a => a.Kind == PlacementKind.Screen)).Select(f => f.Text).ToList();
         return new SpotDetail(spot.Id, spot.FloorId, spot.Label, spot.RoomName, spot.Floor.Name, spot.Floor.Site!.Key, spot.IsActive,
-            person, assets, pools, hints);
+            spot.IsDesk, person, assets.FirstOrDefault(a => a.Kind == PlacementKind.Desktop),
+            assets.Where(a => a.Kind == PlacementKind.Screen).ToList(), flags);
     }
 
-    /// <summary>Who sits where and how much is placed, for colouring the map and its tooltips.</summary>
-    public async Task<IReadOnlyDictionary<int, SpotOccupancy>> OccupancyAsync(int floorId, CancellationToken ct = default)
-    {
-        var rows = await db.WorkspotAssignments.AsNoTracking()
+    private sealed record Row(int WorkspotId, PlacementKind Kind, string? Person, bool PersonActive, string? Tag);
+
+    private Task<List<Row>> OpenRowsAsync(int floorId, CancellationToken ct) =>
+        db.WorkspotAssignments.AsNoTracking()
             .Where(a => a.Workspot!.FloorId == floorId && a.ReleasedAt == null)
-            .Select(a => new { a.WorkspotId, Person = a.Person == null ? null : a.Person.DisplayName, Left = a.Person != null && !a.Person.IsActive, IsItem = a.PersonId == null })
+            .OrderBy(a => a.Id)
+            .Select(a => new Row(a.WorkspotId, a.Kind, a.Person == null ? null : a.Person.DisplayName, a.Person != null && a.Person.IsActive,
+                a.Asset == null ? null : a.Asset.Tag))
             .ToListAsync(ct);
-        return rows.GroupBy(r => r.WorkspotId).ToDictionary(g => g.Key, g => new SpotOccupancy(
-            g.Select(r => r.Person).FirstOrDefault(p => p != null), g.Any(r => r.Left), g.Count(r => r.IsItem)));
+
+    /// <summary>What the map draws at each seat that has something placed.</summary>
+    public async Task<IReadOnlyDictionary<int, SpotState>> StatesAsync(IReadOnlyCollection<Workspot> spots, CancellationToken ct = default)
+    {
+        if (spots.Count == 0) return new Dictionary<int, SpotState>();
+        var rows = await OpenRowsAsync(spots.First().FloorId, ct);
+        var byId = spots.ToDictionary(s => s.Id);
+        return rows.GroupBy(r => r.WorkspotId).Where(g => byId.ContainsKey(g.Key)).ToDictionary(g => g.Key, g =>
+        {
+            var person = g.FirstOrDefault(r => r.Kind == PlacementKind.Person);
+            var desktop = g.FirstOrDefault(r => r.Kind == PlacementKind.Desktop)?.Tag;
+            var screens = g.Count(r => r.Kind == PlacementKind.Screen);
+            var flagged = Flags(byId[g.Key], person?.Person, person is { PersonActive: false }, desktop is not null, screens > 0).Count > 0;
+            return new SpotState(person?.Person, person is { PersonActive: false }, desktop, screens, flagged);
+        });
     }
 
-    /// <summary>The floor's open points of attention (capped), for the side panel.</summary>
-    public Task<IReadOnlyList<Hint>> HintsAsync(int floorId, CancellationToken ct = default) => HintsForAsync(floorId, null, ct);
-
-    private async Task<IReadOnlyList<Hint>> HintsForAsync(int floorId, int? onlyWorkspot, CancellationToken ct)
+    /// <summary>Desks, who sits where, free desks and the seats that need a look.</summary>
+    public async Task<FloorStatus> StatusAsync(IReadOnlyCollection<Workspot> spots, CancellationToken ct = default)
     {
-        var open = db.WorkspotAssignments.AsNoTracking().Where(a => a.Workspot!.FloorId == floorId && a.ReleasedAt == null);
-        if (onlyWorkspot is { } only) open = open.Where(a => a.WorkspotId == only);
-        var rows = await open.Select(a => new
+        var rows = spots.Count == 0 ? new List<Row>() : await OpenRowsAsync(spots.First().FloorId, ct);
+        var bySeat = rows.ToLookup(r => r.WorkspotId);
+        var desks = spots.Where(s => s.IsActive && s.IsDesk).ToList();
+        var flags = new List<SeatFlag>();
+        foreach (var spot in spots.OrderBy(s => s.Label, StringComparer.OrdinalIgnoreCase))
         {
-            a.WorkspotId, a.Workspot!.Label, SpotActive = a.Workspot.IsActive, a.PersonId, PersonName = a.Person == null ? null : a.Person.DisplayName,
-            PersonActive = a.Person != null && a.Person.IsActive, a.AssetId, Tag = a.Asset == null ? null : a.Asset.Tag,
-            AssetRetired = a.Asset != null && a.Asset.RetiredAt != null, AssetUnavailable = a.Asset != null && a.Asset.State == AssetState.Unavailable,
-            Sku = a.Pool == null ? null : a.Pool.Sku,
-        }).ToListAsync(ct);
-
-        var hints = new List<Hint>();
-        var seatPerson = rows.Where(r => r.PersonId != null).ToDictionary(r => r.WorkspotId);
-        foreach (var r in rows.Where(r => r.PersonId != null && !r.PersonActive))
-            hints.Add(new Hint("person-left", r.WorkspotId, r.Label, $"{r.PersonName} has left the organisation: the seat can be freed."));
-        foreach (var g in rows.GroupBy(r => r.WorkspotId).Where(g => !g.First().SpotActive))
-            hints.Add(new Hint("seat-gone", g.Key, g.First().Label, "This seat is switched off or no longer in the drawing but still has people or items placed."));
-        foreach (var r in rows.Where(r => r.AssetId != null && (r.AssetRetired || r.AssetUnavailable)))
-            hints.Add(new Hint("asset-state", r.WorkspotId, r.Label, $"{r.Tag} is {(r.AssetRetired ? "retired" : "unavailable")} but still placed here."));
-
-        // An asset on loan to someone other than the person at its seat (location and loans are separate, so this is a hint).
-        var assetIds = rows.Where(r => r.AssetId != null && seatPerson.ContainsKey(r.WorkspotId)).Select(r => r.AssetId!.Value).ToList();
-        if (assetIds.Count > 0)
-        {
-            var loans = await db.Loans.AsNoTracking().Where(l => l.ClosedAt == null && l.AssetId != null && assetIds.Contains(l.AssetId.Value))
-                .Select(l => new { AssetId = l.AssetId!.Value, l.HolderId, Holder = l.HolderNameSnapshot }).ToListAsync(ct);
-            foreach (var r in rows.Where(r => r.AssetId != null && seatPerson.ContainsKey(r.WorkspotId)))
-            {
-                var loan = loans.FirstOrDefault(l => l.AssetId == r.AssetId);
-                var sitting = seatPerson[r.WorkspotId];
-                if (loan is null || loan.HolderId == sitting.PersonId) continue;
-                var who = user.IsIt ? $"on loan to {loan.Holder}" : "on loan to someone else";
-                hints.Add(new Hint("loan-mismatch", r.WorkspotId, r.Label, $"{r.Tag} is {who}, not to {sitting.PersonName} who sits here."));
-            }
+            var here = bySeat[spot.Id].ToList();
+            if (here.Count == 0) continue;
+            var person = here.FirstOrDefault(r => r.Kind == PlacementKind.Person);
+            flags.AddRange(Flags(spot, person?.Person, person is { PersonActive: false },
+                here.Any(r => r.Kind == PlacementKind.Desktop), here.Any(r => r.Kind == PlacementKind.Screen)));
         }
-        return hints.Take(HintLimit).ToList();
+        return new FloorStatus(
+            desks.Count,
+            desks.Count(d => bySeat[d.Id].Any(r => r.Kind == PlacementKind.Person)),
+            desks.Where(d => !bySeat[d.Id].Any(r => r.Kind == PlacementKind.Person)).Select(d => d.Id).ToList(),
+            rows.Count(r => r.Kind == PlacementKind.Desktop),
+            rows.Count(r => r.Kind == PlacementKind.Screen),
+            flags.OrderBy(f => f.Kind switch { "person-left" => 0, "seat-disabled" => 1, _ => 2 }).ToList());
     }
-
-    // ---- locations (for the asset and pool pages) ------------------------------------------------------------
-
-    public async Task<PlaceInfo?> LocationOfAssetAsync(int assetId, CancellationToken ct = default) =>
-        (await PlacesAsync(db.WorkspotAssignments.Where(a => a.AssetId == assetId && a.ReleasedAt == null), ct)).FirstOrDefault();
-
-    public Task<IReadOnlyList<PlaceInfo>> LocationsOfPoolAsync(int poolId, CancellationToken ct = default) =>
-        PlacesAsync(db.WorkspotAssignments.Where(a => a.PoolId == poolId && a.ReleasedAt == null), ct);
-
-    private async Task<IReadOnlyList<PlaceInfo>> PlacesAsync(IQueryable<WorkspotAssignment> q, CancellationToken ct)
-    {
-        var access = await scope.GetWorkplaceAsync(ct);
-        if (!access.CanReadInventory) return [];
-        var editor = scope.CanEditWorkplace;
-        var rows = await q.AsNoTracking().Where(a => a.Workspot!.Floor!.IsActive || editor)
-            .OrderBy(a => a.Workspot!.Floor!.Name).ThenBy(a => a.Workspot!.Label)
-            .Select(a => new PlaceInfo(a.Workspot!.FloorId, a.Workspot.Floor!.Name, a.Workspot.Floor.Site!.Key, a.WorkspotId,
-                a.Workspot.Label, a.Workspot.RoomName, a.Quantity)).ToListAsync(ct);
-        var siteIds = access.SiteIds;
-        if (access.AllSites) return rows;
-        var floors = await db.Floors.AsNoTracking().Where(f => rows.Select(r => r.FloorId).Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.SiteId, ct);
-        return rows.Where(r => siteIds.Contains(floors[r.FloorId])).ToList();
-    }
-
-    // ---- searching what can be placed ------------------------------------------------------------------------
 
     /// <summary>
-    /// People, assets and pools matching the text, with where each is now and why it cannot be placed on this floor (an
-    /// asset or pool of another site, an inactive person). Editors only; assets are found by tag, description, model and
-    /// non-sensitive fields, never by sensitive ones.
+    /// The flags of one seat: a person who is no longer in the directory, a person at a seat that is switched off, gone
+    /// from the drawing or not a desk, and a person without a desktop or a screen.
+    /// </summary>
+    private static List<SeatFlag> Flags(Workspot spot, string? person, bool personLeft, bool hasDesktop, bool hasScreen)
+    {
+        var flags = new List<SeatFlag>();
+        if (person is null) return flags;
+        if (personLeft)
+            flags.Add(new SeatFlag("person-left", spot.Id, spot.Label, person, $"{person} no longer works here: free the seat."));
+        if (!spot.IsActive)
+            flags.Add(new SeatFlag("seat-disabled", spot.Id, spot.Label, person, $"{person} is at a seat that is switched off or no longer in the drawing."));
+        else if (!spot.IsDesk)
+            flags.Add(new SeatFlag("seat-disabled", spot.Id, spot.Label, person, $"{person} is at a seat that is not a desk."));
+        if (!hasDesktop || !hasScreen)
+        {
+            var missing = !hasDesktop && !hasScreen ? "no desktop and no screen" : !hasDesktop ? "no desktop" : "no screen";
+            flags.Add(new SeatFlag("missing", spot.Id, spot.Label, person, $"{person} has {missing}."));
+        }
+        return flags;
+    }
+
+    // ---- locations (for the asset page) ----------------------------------------------------------------------
+
+    public async Task<PlaceInfo?> LocationOfAssetAsync(int assetId, CancellationToken ct = default)
+    {
+        var access = await scope.GetWorkplaceAsync(ct);
+        if (!access.CanReadInventory) return null;
+        var editor = scope.CanEditWorkplace;
+        var row = await db.WorkspotAssignments.AsNoTracking()
+            .Where(a => a.AssetId == assetId && a.ReleasedAt == null && (a.Workspot!.Floor!.IsActive || editor))
+            .Select(a => new { a.Workspot!.Floor!.SiteId, Info = new PlaceInfo(a.Workspot.FloorId, a.Workspot.Floor.Name,
+                a.Workspot.Floor.Site!.Key, a.WorkspotId, a.Workspot.Label, a.Workspot.RoomName) })
+            .FirstOrDefaultAsync(ct);
+        return row is not null && access.CanRead(row.SiteId) ? row.Info : null;
+    }
+
+    // ---- what can be placed ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The drag-and-drop list: people (<c>person</c>), desktops (<c>desktop</c>) or screens (<c>screen</c>) that are not
+    /// placed anywhere yet. Without text: the floor's site (people of that site, its desktops or screens); with text: a
+    /// search (people of every site). Editors only.
+    /// </summary>
+    public async Task<IReadOnlyList<PlaceCandidate>> PaletteAsync(int floorId, string kind, string? term, CancellationToken ct = default)
+    {
+        scope.EnsureWorkplaceEditor();
+        var floor = await db.Floors.AsNoTracking().Include(f => f.Site).SingleOrDefaultAsync(f => f.Id == floorId, ct)
+                    ?? throw new DomainException("floor.not-found", "Floor not found.");
+        term = term?.Trim();
+        var pattern = string.IsNullOrEmpty(term) ? null : Paging.ContainsPattern(term);
+        var placed = db.WorkspotAssignments.Where(a => a.ReleasedAt == null);
+
+        if (kind == "person")
+        {
+            var people = db.People.AsNoTracking().Where(p => p.IsActive && !placed.Any(a => a.PersonId == p.Id));
+            people = pattern is null
+                ? people.Where(p => p.SiteId == floor.SiteId)
+                : people.Where(p => EF.Functions.Like(p.DisplayName, pattern, @"\") || EF.Functions.Like(p.Username, pattern, @"\") ||
+                                    (p.JobTitle != null && EF.Functions.Like(p.JobTitle, pattern, @"\")));
+            return await people.OrderBy(p => p.DisplayName).Take(PaletteLimit)
+                .Select(p => new PlaceCandidate("person", p.Id, p.DisplayName,
+                    p.JobTitle == null ? p.Username : p.Username + " · " + p.JobTitle, p.Site == null ? null : p.Site.Key, null, null))
+                .ToListAsync(ct);
+        }
+
+        var role = kind switch
+        {
+            "desktop" => WorkspotRole.Desktop,
+            "screen" => WorkspotRole.Screen,
+            _ => throw new DomainException("palette.kind", "Choose people, desktops or screens."),
+        };
+        var assets = db.Assets.AsNoTracking()
+            .Where(a => a.RetiredAt == null && a.SiteId == floor.SiteId && a.Type!.WorkspotRole == role && !placed.Any(x => x.AssetId == a.Id));
+        if (term is not null && term.Length > 0) assets = AssetService.MatchingTerm(assets, term, includeSensitive: false);
+        return await assets.OrderBy(a => a.Tag).Take(PaletteLimit)
+            .Select(a => new PlaceCandidate(kind, a.Id, a.Tag,
+                a.Model == null ? a.Description : a.Model.Name + (a.Description == "" ? "" : " · " + a.Description), a.Site!.Key, null, null))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// People, desktops and screens matching the text, with where each is now and why it cannot be placed here (another
+    /// site, an inactive person). Editors only; assets are found by tag, description, model and non-sensitive fields.
     /// </summary>
     public async Task<IReadOnlyList<PlaceCandidate>> SearchAsync(int floorId, string? term, CancellationToken ct = default)
     {
@@ -172,60 +229,54 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
                         (p.JobTitle != null && EF.Functions.Like(p.JobTitle, pattern, @"\")))
             .OrderByDescending(p => p.IsActive).ThenBy(p => p.DisplayName).Take(SearchLimit)
             .Select(p => new { p.Id, p.DisplayName, p.Username, p.JobTitle, SiteKey = p.Site == null ? null : p.Site.Key, p.IsActive }).ToListAsync(ct);
-        var assets = await AssetService.MatchingTerm(db.Assets.AsNoTracking().Where(a => a.RetiredAt == null), term, includeSensitive: false)
+        var assets = await AssetService.MatchingTerm(db.Assets.AsNoTracking()
+                .Where(a => a.RetiredAt == null && a.Type!.WorkspotRole != WorkspotRole.None), term, includeSensitive: false)
             .OrderBy(a => a.Tag).Take(SearchLimit)
-            .Select(a => new { a.Id, a.Tag, Type = a.Type!.Name, Model = a.Model == null ? null : a.Model.Name, a.Description, a.SiteId, SiteKey = a.Site!.Key }).ToListAsync(ct);
-        var pools = await db.Pools.AsNoTracking()
-            .Where(p => EF.Functions.Like(p.Sku, pattern, @"\") || EF.Functions.Like(p.Description, pattern, @"\"))
-            .OrderBy(p => p.Sku).Take(SearchLimit)
-            .Select(p => new { p.Id, p.Sku, Type = p.Type!.Name, p.Description, p.SiteId, SiteKey = p.Site!.Key, p.Available, p.Outstanding }).ToListAsync(ct);
+            .Select(a => new { a.Id, a.Tag, Role = a.Type!.WorkspotRole, Type = a.Type.Name, Model = a.Model == null ? null : a.Model.Name,
+                a.Description, a.SiteId, SiteKey = a.Site!.Key }).ToListAsync(ct);
 
         var personIds = people.Select(p => p.Id).ToList();
         var assetIds = assets.Select(a => a.Id).ToList();
-        var poolIds = pools.Select(p => p.Id).ToList();
         var places = await db.WorkspotAssignments.AsNoTracking()
             .Where(a => a.ReleasedAt == null && ((a.PersonId != null && personIds.Contains(a.PersonId.Value)) ||
-                                                 (a.AssetId != null && assetIds.Contains(a.AssetId.Value)) ||
-                                                 (a.PoolId != null && poolIds.Contains(a.PoolId.Value))))
-            .Select(a => new { a.PersonId, a.AssetId, a.PoolId, a.Quantity, Floor = a.Workspot!.Floor!.Name, a.Workspot.Label }).ToListAsync(ct);
+                                                 (a.AssetId != null && assetIds.Contains(a.AssetId.Value))))
+            .Select(a => new { a.PersonId, a.AssetId, Floor = a.Workspot!.Floor!.Name, a.Workspot.Label }).ToListAsync(ct);
 
         var result = new List<PlaceCandidate>();
         result.AddRange(people.Select(p => new PlaceCandidate("person", p.Id, p.DisplayName,
             string.Join(" · ", new[] { p.Username, p.JobTitle, p.SiteKey }.Where(s => !string.IsNullOrEmpty(s))), p.SiteKey,
             places.Where(x => x.PersonId == p.Id).Select(x => $"{x.Floor} · {x.Label}").FirstOrDefault(),
-            p.IsActive ? null : "Inactive in the directory")));
-        result.AddRange(assets.Select(a => new PlaceCandidate("asset", a.Id, a.Tag,
+            p.IsActive ? null : "No longer in the directory")));
+        result.AddRange(assets.Select(a => new PlaceCandidate(a.Role == WorkspotRole.Desktop ? "desktop" : "screen", a.Id, a.Tag,
             string.Join(" · ", new[] { a.Type, a.Model, a.Description }.Where(s => !string.IsNullOrEmpty(s)).Distinct()), a.SiteKey,
             places.Where(x => x.AssetId == a.Id).Select(x => $"{x.Floor} · {x.Label}").FirstOrDefault(),
             a.SiteId == floor.SiteId ? null : $"Belongs to site {a.SiteKey}")));
-        result.AddRange(pools.Select(p => new PlaceCandidate("pool", p.Id, p.Sku, $"{p.Type} · {p.Description} · {p.Available + p.Outstanding} on hand", p.SiteKey,
-            places.Where(x => x.PoolId == p.Id).Select(x => $"{x.Quantity} at {x.Floor} · {x.Label}").FirstOrDefault(),
-            p.SiteId == floor.SiteId ? null : $"Belongs to site {p.SiteKey}")));
         return result;
     }
 
     // ---- changing ---------------------------------------------------------------------------------------------
 
-    private async Task<Workspot> LoadSpotAsync(int workspotId, CancellationToken ct)
+    private async Task<Workspot> LoadDeskAsync(int workspotId, CancellationToken ct)
     {
         scope.EnsureWorkplaceEditor();
         var spot = await db.Workspots.Include(w => w.Floor).SingleOrDefaultAsync(w => w.Id == workspotId, ct)
                    ?? throw new DomainException("workspot.not-found", "Workspot not found.");
-        if (!spot.IsActive) throw new DomainException("workspot.inactive", "This workspot is switched off. Switch it on first.");
         if (!spot.Floor!.IsActive) throw new DomainException("floor.archived", "This floor is archived.");
+        if (!spot.IsActive) throw new DomainException("workspot.inactive", $"{spot.Label} is switched off. Switch it on first.");
+        if (!spot.IsDesk) throw new DomainException("workspot.not-desk", $"{spot.Label} is not a desk. Make it a desk first.");
         return spot;
     }
 
-    /// <summary>Puts a person at the workspot (moving them if they sit elsewhere). A seat holds one person.</summary>
+    /// <summary>Puts a person at the desk (moving them if they sit elsewhere). A desk holds one person.</summary>
     public async Task<string> AssignPersonAsync(int workspotId, int personId, CancellationToken ct = default)
     {
-        var spot = await LoadSpotAsync(workspotId, ct);
-        var person = await db.People.Include(p => p.Site).SingleOrDefaultAsync(p => p.Id == personId, ct)
+        var spot = await LoadDeskAsync(workspotId, ct);
+        var person = await db.People.SingleOrDefaultAsync(p => p.Id == personId, ct)
                      ?? throw new DomainException("assignment.person", "Person not found.");
-        if (!person.IsActive) throw new DomainException("assignment.person-inactive", $"{person.DisplayName} is inactive in the directory.");
+        if (!person.IsActive) throw new DomainException("assignment.person-inactive", $"{person.DisplayName} is no longer in the directory.");
 
         var seat = await db.WorkspotAssignments.Include(a => a.Person)
-            .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.PersonId != null && a.ReleasedAt == null, ct);
+            .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.Kind == PlacementKind.Person && a.ReleasedAt == null, ct);
         if (seat is not null)
         {
             if (seat.PersonId == personId) return $"{person.DisplayName} already sits at {spot.Label}.";
@@ -233,16 +284,25 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         }
         var current = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
             .FirstOrDefaultAsync(a => a.PersonId == personId && a.ReleasedAt == null, ct);
-        return await PlaceAsync(spot, current, new WorkspotAssignment { PersonId = personId },
-            "person", person.DisplayName, new { person.Username }, ct);
+        return await PlaceAsync(spot, current, new WorkspotAssignment { PersonId = personId, Kind = PlacementKind.Person },
+            person.DisplayName, ct);
     }
 
-    /// <summary>Puts a tagged asset at the workspot (moving it if it is placed elsewhere). It must belong to the floor's site.</summary>
+    /// <summary>
+    /// Puts a desktop or a screen at the desk (moving it if it is placed elsewhere). It must belong to the floor's site and
+    /// its type must be a desktop or a screen; a desk has one desktop.
+    /// </summary>
     public async Task<string> AssignAssetAsync(int workspotId, int assetId, CancellationToken ct = default)
     {
-        var spot = await LoadSpotAsync(workspotId, ct);
-        var asset = await db.Assets.Include(a => a.Site).SingleOrDefaultAsync(a => a.Id == assetId, ct)
+        var spot = await LoadDeskAsync(workspotId, ct);
+        var asset = await db.Assets.Include(a => a.Site).Include(a => a.Type).SingleOrDefaultAsync(a => a.Id == assetId, ct)
                     ?? throw new DomainException("assignment.asset", "Asset not found.");
+        var kind = asset.Type!.WorkspotRole switch
+        {
+            WorkspotRole.Desktop => PlacementKind.Desktop,
+            WorkspotRole.Screen => PlacementKind.Screen,
+            _ => throw new DomainException("assignment.asset-type", $"{asset.Tag} is a {asset.Type.Name}: only desktops and screens are placed at desks."),
+        };
         if (asset.RetiredAt != null) throw new DomainException("assignment.asset-retired", $"{asset.Tag} is retired.");
         if (asset.SiteId != spot.Floor!.SiteId)
             throw new DomainException("assignment.asset-site", $"{asset.Tag} belongs to site {asset.Site!.Key}, this floor is at another site. Transfer the asset first.");
@@ -250,67 +310,53 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         var current = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
             .FirstOrDefaultAsync(a => a.AssetId == assetId && a.ReleasedAt == null, ct);
         if (current?.WorkspotId == workspotId) return $"{asset.Tag} is already at {spot.Label}.";
-        return await PlaceAsync(spot, current, new WorkspotAssignment { AssetId = assetId }, "asset", asset.Tag, null, ct);
-    }
-
-    /// <summary>Puts <paramref name="quantity"/> units of a pool at the workspot (replacing the number already there).</summary>
-    public async Task<string> AssignPoolAsync(int workspotId, int poolId, int quantity, CancellationToken ct = default)
-    {
-        var spot = await LoadSpotAsync(workspotId, ct);
-        if (quantity is < 1 or > QuantityMax) throw new DomainException("assignment.quantity", $"The quantity must be between 1 and {QuantityMax}.");
-        var pool = await db.Pools.Include(p => p.Site).SingleOrDefaultAsync(p => p.Id == poolId, ct)
-                   ?? throw new DomainException("assignment.pool", "Pool not found.");
-        if (pool.SiteId != spot.Floor!.SiteId)
-            throw new DomainException("assignment.pool-site", $"{pool.Sku} belongs to site {pool.Site!.Key}, this floor is at another site.");
-
-        var open = await db.WorkspotAssignments.Where(a => a.PoolId == poolId && a.ReleasedAt == null).ToListAsync(ct);
-        var here = open.FirstOrDefault(a => a.WorkspotId == workspotId);
-        var elsewhere = open.Where(a => a.WorkspotId != workspotId).Sum(a => a.Quantity);
-        if (elsewhere + quantity > pool.OnHand)
-            throw new DomainException("assignment.pool-too-many",
-                $"{pool.Sku} has {pool.OnHand} unit(s) in total and {elsewhere} are already placed elsewhere.");
-
-        if (here is not null)
+        if (kind == PlacementKind.Desktop)
         {
-            if (here.Quantity == quantity) return $"{quantity} × {pool.Sku} is already at {spot.Label}.";
-            var before = here.Quantity;
-            here.Quantity = quantity;
-            audit.Record("assignment.assign", nameof(WorkspotAssignment), here.Id, spot.Floor.SiteId,
-                details: new { Kind = "pool", Name = pool.Sku, Workspot = spot.Label, Floor = spot.Floor.Name, Before = before, After = quantity });
-            await db.SaveChangesAsync(ct);
-            return $"{quantity} × {pool.Sku} at {spot.Label}.";
+            var other = await db.WorkspotAssignments.Include(a => a.Asset)
+                .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.Kind == PlacementKind.Desktop && a.ReleasedAt == null, ct);
+            if (other is not null)
+                throw new ConflictException("assignment.desktop-taken", $"{spot.Label} already has desktop {other.Asset!.Tag}. Release it first.");
         }
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var row = NewRow(spot, new WorkspotAssignment { PoolId = poolId, Quantity = quantity });
-        db.WorkspotAssignments.Add(row);
-        await db.SaveChangesAsync(ct);
-        audit.Record("assignment.assign", nameof(WorkspotAssignment), row.Id, spot.Floor.SiteId,
-            details: new { Kind = "pool", Name = pool.Sku, Workspot = spot.Label, Floor = spot.Floor.Name, Quantity = quantity });
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
-        return $"{quantity} × {pool.Sku} placed at {spot.Label}.";
+        return await PlaceAsync(spot, current, new WorkspotAssignment { AssetId = assetId, Kind = kind }, asset.Tag, ct);
     }
 
-    /// <summary>Takes a person, asset or pool units away from a workspot. The row stays as history.</summary>
+    /// <summary>Takes a person, desktop or screen away from a desk. The row stays as history.</summary>
     public async Task<string> ReleaseAsync(int assignmentId, CancellationToken ct = default)
     {
         scope.EnsureWorkplaceEditor();
         var row = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
-                      .Include(a => a.Person).Include(a => a.Asset).Include(a => a.Pool)
+                      .Include(a => a.Person).Include(a => a.Asset)
                       .SingleOrDefaultAsync(a => a.Id == assignmentId, ct)
                   ?? throw new DomainException("assignment.not-found", "Assignment not found.");
-        if (row.ReleasedAt != null) throw new ConflictException("assignment.released", "This assignment was already released.");
+        if (row.ReleasedAt != null) throw new ConflictException("assignment.released", "This was already released.");
         row.ReleasedAt = clock.UtcNow;
         row.ReleasedBy = user.Name;
-        var (kind, name) = Describe(row);
+        var name = row.Person?.DisplayName ?? row.Asset?.Tag ?? "";
         audit.Record("assignment.release", nameof(WorkspotAssignment), row.Id, row.Workspot!.Floor!.SiteId,
-            details: new { Kind = kind, Name = name, Workspot = row.Workspot.Label, Floor = row.Workspot.Floor.Name, row.Quantity });
+            details: new { Kind = row.Kind.ToString(), Name = name, Workspot = row.Workspot.Label, Floor = row.Workspot.Floor.Name });
         await db.SaveChangesAsync(ct);
         return $"{name} released from {row.Workspot.Label}.";
     }
 
-    private async Task<string> PlaceAsync(Workspot spot, WorkspotAssignment? current, WorkspotAssignment fresh, string kind, string name,
-        object? extra, CancellationToken ct)
+    /// <summary>
+    /// Closes the open placement of an asset that is retired or moved to another site (called by the inventory in its own
+    /// transaction): a retired desktop or one at another site cannot stay at a desk.
+    /// </summary>
+    public static async Task ReleaseAssetAsync(AppDbContext db, AuditWriter audit, int assetId, string actor, DateTimeOffset now,
+        string why, CancellationToken ct)
+    {
+        var rows = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor).Include(a => a.Asset)
+            .Where(a => a.AssetId == assetId && a.ReleasedAt == null).ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            row.ReleasedAt = now;
+            row.ReleasedBy = actor;
+            audit.Record("assignment.release", nameof(WorkspotAssignment), row.Id, row.Workspot!.Floor!.SiteId, why,
+                new { Kind = row.Kind.ToString(), Name = row.Asset!.Tag, Workspot = row.Workspot.Label, Floor = row.Workspot.Floor.Name });
+        }
+    }
+
+    private async Task<string> PlaceAsync(Workspot spot, WorkspotAssignment? current, WorkspotAssignment fresh, string name, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         string? movedFrom = null;
@@ -322,24 +368,15 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
             movedFrom = $"{current.Workspot!.Floor!.Name} · {current.Workspot.Label}";
             await db.SaveChangesAsync(ct);
         }
-        var row = NewRow(spot, fresh);
-        db.WorkspotAssignments.Add(row);
+        fresh.WorkspotId = spot.Id;
+        fresh.AssignedAt = clock.UtcNow;
+        fresh.AssignedBy = user.Name;
+        db.WorkspotAssignments.Add(fresh);
         await db.SaveChangesAsync(ct);
-        audit.Record("assignment.assign", nameof(WorkspotAssignment), row.Id, spot.Floor!.SiteId,
-            details: new { Kind = kind, Name = name, Workspot = spot.Label, Floor = spot.Floor.Name, MovedFrom = movedFrom, Extra = extra });
+        audit.Record("assignment.assign", nameof(WorkspotAssignment), fresh.Id, spot.Floor!.SiteId,
+            details: new { Kind = fresh.Kind.ToString(), Name = name, Workspot = spot.Label, Floor = spot.Floor.Name, MovedFrom = movedFrom });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return movedFrom is null ? $"{name} placed at {spot.Label}." : $"{name} moved from {movedFrom} to {spot.Label}.";
     }
-
-    private WorkspotAssignment NewRow(Workspot spot, WorkspotAssignment row)
-    {
-        row.WorkspotId = spot.Id;
-        row.AssignedAt = clock.UtcNow;
-        row.AssignedBy = user.Name;
-        return row;
-    }
-
-    private static (string Kind, string Name) Describe(WorkspotAssignment a) =>
-        a.Person is not null ? ("person", a.Person.DisplayName) : a.Asset is not null ? ("asset", a.Asset.Tag) : ("pool", a.Pool?.Sku ?? "");
 }

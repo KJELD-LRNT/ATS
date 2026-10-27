@@ -111,8 +111,9 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             await teams.CreateAsync("Engineering", await SeatsOf("1.02"), ct);
             await teams.CreateAsync("Service desk", await SeatsOf("1.03", 8), ct);
 
-            // People, desktops and headsets placed at seats. AMS-LT-003 is on loan to someone else than the person at its
-            // seat, and the leaver (disabled in the later syncs) still has a seat: both show up under "To check".
+            // People, desktops and screens at desks of Floor 1, chosen so every flag shows: two complete desks, a person
+            // without a screen, one without a desktop, one with nothing, a desk with only a screen, and the leaver
+            // (disabled by the later syncs) who still has a desk.
             var assign = sp.GetRequiredService<Core.Workplace.AssignmentService>();
             async Task<List<int>> Seats(string room) =>
                 await db.Workspots.Where(w => w.FloorId == ams1.Floor.Id && w.RoomId == room).OrderBy(w => w.ElementId)
@@ -121,15 +122,18 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             var engineering = await Seats("1.02");
             await assign.AssignPersonAsync(finance[0], P(6), ct);
             await assign.AssignAssetAsync(finance[0], assets["AMS-DT-001"], ct);
-            await assign.AssignPoolAsync(finance[0], pools[("AMS", "HS-STEREO")], 2, ct);
+            await assign.AssignAssetAsync(finance[0], assets["AMS-SC-001"], ct);
+            await assign.AssignAssetAsync(finance[0], assets["AMS-SC-002"], ct);
             await assign.AssignPersonAsync(finance[1], P(40), ct);
             await assign.AssignAssetAsync(finance[1], assets["AMS-DT-002"], ct);
-            await assign.AssignAssetAsync(finance[1], assets["AMS-LT-003"], ct);
+            await assign.AssignAssetAsync(finance[1], assets["AMS-SC-003"], ct);
             await assign.AssignPersonAsync(finance[2], P(41), ct);
+            await assign.AssignAssetAsync(finance[2], assets["AMS-DT-003"], ct);
             await assign.AssignPersonAsync(finance[3], P(42), ct);
-            await assign.AssignAssetAsync(finance[4], assets["AMS-DT-003"], ct);
+            await assign.AssignAssetAsync(finance[4], assets["AMS-SC-004"], ct);
             await assign.AssignPersonAsync(engineering[0], people[DemoDirectorySource.LeaverUsername], ct);
             await assign.AssignPersonAsync(engineering[1], P(43), ct);
+            await assign.AssignAssetAsync(engineering[1], assets["AMS-SC-005"], ct);
 
             await sp.GetRequiredService<RoleAssignmentService>()
                 .AssignAsync(people[DemoDefaults.FacilityUsername], AppRoles.Facility, ct);
@@ -257,12 +261,12 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     private static readonly string[] SiteKeys = ["AMS", "NYC", "SIN"];
 
     /// <summary>Vendor and model ids the demo assets are created with.</summary>
-    private sealed record DemoModels(int Vendor, int LaptopModel, int DesktopModel, int PhoneModel);
+    private sealed record DemoModels(int Vendor, int LaptopModel, int DesktopModel, int PhoneModel, int ScreenModel);
 
     /// <summary>Tag patterns that reproduce the demo tags (AMS-LT-001 ...), and a vendor with a model per tagged type.</summary>
     private static async Task<DemoModels> SetUpCatalogAsync(CatalogService catalog, CancellationToken ct)
     {
-        foreach (var (typeId, code) in new[] { (BuiltIn.Laptop, "LT"), (BuiltIn.Desktop, "DT"), (BuiltIn.Phone, "PH") })
+        foreach (var (typeId, code) in new[] { (BuiltIn.Laptop, "LT"), (BuiltIn.Desktop, "DT"), (BuiltIn.Phone, "PH"), (BuiltIn.Screen, "SC") })
         {
             var type = await catalog.GetTypeAsync(typeId, ct);
             await catalog.UpdateTypeAsync(typeId, new TypeInput(type.Name, type.Mode, type.UsesModel, type.UsesDescription,
@@ -278,7 +282,7 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         var laptop = await catalog.CreateModelAsync(BuiltIn.Laptop, acme.Id, "Pro 14", ct);
         var desktop = await catalog.CreateModelAsync(BuiltIn.Desktop, acme.Id, "Tower D5", ct);
         var phone = await catalog.CreateModelAsync(BuiltIn.Phone, northwind.Id, "P8", ct);
-        return new DemoModels(acme.Id, laptop.Id, desktop.Id, phone.Id);
+        return new DemoModels(acme.Id, laptop.Id, desktop.Id, phone.Id, (await catalog.CreateModelAsync(BuiltIn.Screen, acme.Id, "View 27", ct)).Id);
     }
 
     private static Dictionary<int, IReadOnlyList<string?>> Fields(params (int FieldId, string?[] Values)[] fields) =>
@@ -288,18 +292,18 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         CancellationToken ct)
     {
         var result = new Dictionary<string, int>();
-        // Per site: laptops, desktops, phones, phone numbers.
-        var counts = new Dictionary<string, (int Lt, int Dt, int Ph, int Pn)>
+        // Per site: laptops, desktops, phones, phone numbers, screens.
+        var counts = new Dictionary<string, (int Lt, int Dt, int Ph, int Pn, int Sc)>
         {
-            ["AMS"] = (10, 3, 3, 2),
-            ["NYC"] = (8, 2, 2, 1),
-            ["SIN"] = (5, 3, 2, 1),
+            ["AMS"] = (10, 4, 3, 2, 6),
+            ["NYC"] = (8, 2, 2, 1, 2),
+            ["SIN"] = (5, 3, 2, 1, 1),
         };
         for (var s = 0; s < SiteKeys.Length; s++)
         {
             var key = SiteKeys[s];
             var site = sites.Of(key);
-            var (lt, dt, ph, pn) = counts[key];
+            var (lt, dt, ph, pn, sc) = counts[key];
             for (var i = 1; i <= lt; i++)
             {
                 // No tag given: the generator counts up per type and site (AMS-LT-001, AMS-LT-002 ...).
@@ -312,6 +316,9 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             for (var i = 1; i <= dt; i++)
                 await Create(new CreateAssetInput(null, BuiltIn.Desktop, site, "Demo D5 desktop", "Good",
                     $"DEMO-SN-{key}-D{i:000}", models.Vendor, models.DesktopModel));
+            for (var i = 1; i <= sc; i++)
+                await Create(new CreateAssetInput(null, BuiltIn.Screen, site, "Demo 27 inch screen", "Good",
+                    $"DEMO-SN-{key}-S{i:000}", models.Vendor, models.ScreenModel));
             for (var i = 1; i <= ph; i++)
                 await Create(new CreateAssetInput(null, BuiltIn.Phone, site, "Demo phone", "Good", null, null, models.PhoneModel,
                     Fields: Fields(

@@ -295,6 +295,7 @@ td .mono, td.mono { white-space: nowrap; }
 .badge--warning { color: var(--due-text); background: var(--due-bg); }
 .badge--error { color: var(--bad-fg); background: var(--bad-bg); }
 .badge--info { color: var(--out-fg); background: var(--out-bg); }
+.badge--ok { color: var(--ok-fg); background: var(--ok-bg); }
 
 /* Settings source badges. */
 .source { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 1px 8px;
@@ -659,14 +660,14 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 /* ---------------------------------------------------------------------------------------------------------------
    Workplace: floor plans. The drawing's own rules are scoped to ".floorplan" with "fp-" class names (see FloorplanCss);
    these are the application's rules for the map, the seats and the side panel. */
-.wp { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
-.wp-stage { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wp { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.wp-stage { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; position: sticky; top: 12px; }
 .wp-toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .wp-find { flex: 1 1 260px; min-width: 0; }
-.wp-tools { display: flex; gap: 6px; }
+.wp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .wp-tools button { min-width: 40px; }
 .wp-tools button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
-.wp-canvas { position: relative; height: min(72vh, 760px); min-height: 360px; border: 1px solid var(--line); border-radius: var(--radius);
+.wp-canvas { position: relative; height: min(calc(100vh - 220px), 760px); min-height: 360px; border: 1px solid var(--line); border-radius: var(--radius);
     background: #F7F6F2; overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
 .wp-canvas:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 1px; }
 .wp-canvas.is-area { cursor: crosshair; }
@@ -695,69 +696,174 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .wp-summary th { font-weight: 600; }
 .wp-summary td.num { text-align: right; }
 
-/* Seats, states and teams inside the drawing (specificity beats the drawing's scoped rules on purpose). */
+/* Seats, markers and labels inside the drawing (specificity beats the drawing's scoped rules on purpose).
+   A free desk is a white seat with a green ring, a taken desk is filled (in its team's colour) with a person icon, a desktop
+   and screens are small dark and teal badges outside the seat, a seat to check has a red dashed ring. */
 .floorplan .fp-ws { cursor: pointer; }
 .floorplan .fp-ws-manual { stroke: var(--accent); stroke-width: 0.6; }
-.floorplan .fp-ws-off { opacity: 0.3; }
-.floorplan .fp-ws.is-hit { stroke: #D6336C; stroke-width: 1.4; }
-.floorplan .fp-ws.is-selected, .floorplan .fp-ws-manual.is-selected { stroke: #D6336C; stroke-width: 2px; vector-effect: non-scaling-stroke; }
-.floorplan [id]:not(.fp-ws).is-selected { stroke: #D6336C; stroke-width: 2px; vector-effect: non-scaling-stroke; }
-.floorplan .fp-team-outline { stroke-width: 1.2px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
-.floorplan .fp-team-label { font-weight: 600; }
+.floorplan .fp-ws.fp-free { fill: #FFFFFF; stroke: #2F9E5A; stroke-width: 1.8px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-ws.fp-occ { fill: #1F4E79; stroke: #FFFFFF; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-ws.fp-nodesk { fill: #CBD2DA; stroke: none; }
+.floorplan .fp-ws.fp-ws-off { opacity: 0.3; }
+.floorplan .fp-ws.fp-occ.fp-left { fill: #9A3412; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-0, .print-map .floorplan .fp-ws.fp-occ.fp-team-0 { fill: #C2410C; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-1, .print-map .floorplan .fp-ws.fp-occ.fp-team-1 { fill: #15803D; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-2, .print-map .floorplan .fp-ws.fp-occ.fp-team-2 { fill: #7E22CE; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-3, .print-map .floorplan .fp-ws.fp-occ.fp-team-3 { fill: #B91C1C; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-4, .print-map .floorplan .fp-ws.fp-occ.fp-team-4 { fill: #0F766E; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-5, .print-map .floorplan .fp-ws.fp-occ.fp-team-5 { fill: #A16207; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-6, .print-map .floorplan .fp-ws.fp-occ.fp-team-6 { fill: #BE185D; }
+.wp-canvas:not(.hide-teams) .floorplan .fp-ws.fp-occ.fp-team-7, .print-map .floorplan .fp-ws.fp-occ.fp-team-7 { fill: #1E3A8A; }
+.wp-canvas.hide-teams .floorplan .fp-teamlayer { display: none; }
+.floorplan .fp-i-person, .floorplan .fp-i-badge { fill: #FFFFFF; }
+.floorplan .fp-badge { stroke: #FFFFFF; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-badge-desktop { fill: #334155; }
+.floorplan .fp-badge-screen { fill: #0E7490; }
+.floorplan .fp-flag-ring { fill: none; stroke: #DC2626; stroke-width: 2.2px; stroke-dasharray: 4 2; vector-effect: non-scaling-stroke; }
+/* Labels (name and desktop tag) are scaled by site.js to a fixed size on screen and shown once they fit. */
+.floorplan .fp-labels { display: none; }
+.wp-canvas.show-labels .floorplan .fp-labels, .print-map.show-labels .floorplan .fp-labels { display: inline; }
+.floorplan .fp-label text { font-family: var(--font-sans); font-size: 12px; font-weight: 600; fill: #111827;
+    paint-order: stroke; stroke: #FFFFFF; stroke-width: 3px; stroke-linejoin: round; }
+.floorplan .fp-label .fp-label-tag { font-family: var(--font-mono); font-size: 11px; font-weight: 500; fill: #334155; }
+.floorplan .fp-label .fp-label-left-person { fill: #B91C1C; text-decoration: line-through; }
+.floorplan .fp-label-up text, .floorplan .fp-label-down text { text-anchor: middle; }
+.floorplan .fp-label-left text { text-anchor: end; }
+.floorplan .fp-label-right text { text-anchor: start; }
+/* Selection, search hits, drop target and the highlights of free desks or seats to check. */
+.floorplan .fp-ws.is-hit { stroke: #D6336C; stroke-width: 2.4px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-ws.is-selected, .floorplan [id]:not(.fp-ws).is-selected { stroke: #D6336C; stroke-width: 2.4px; vector-effect: non-scaling-stroke; }
+.floorplan .fp-ws.is-drop { stroke: #F59E0B; stroke-width: 4px; vector-effect: non-scaling-stroke; }
+.wp-canvas.hl-free .floorplan .fp-ws:not(.fp-free), .wp-canvas.hl-free .floorplan .fp-marks,
+.wp-canvas.hl-flag .floorplan .fp-ws:not(.fp-flag), .wp-canvas.hl-flag .floorplan .fp-mark:not(.fp-mark-flag) { opacity: 0.2; }
+.wp-canvas.hl-free .floorplan .fp-ws.fp-free { fill: #BBF7D0; stroke-width: 3px; }
+.floorplan .fp-team-outline { stroke-width: 1.2px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; fill: none; }
+.floorplan .fp-team-label { font-weight: 600; stroke: none; }
 .floorplan .fp-team-halo { fill: #FFFFFF; stroke: #FFFFFF; stroke-width: 2px; stroke-linejoin: round; opacity: 0.85; font-weight: 600; }
-.floorplan .fp-ws.fp-team-0, .wp-swatch.fp-team-0 { fill: #DD7A1F; background: #DD7A1F; }
-.floorplan .fp-ws.fp-team-1, .wp-swatch.fp-team-1 { fill: #2F9E5A; background: #2F9E5A; }
-.floorplan .fp-ws.fp-team-2, .wp-swatch.fp-team-2 { fill: #8A5CC7; background: #8A5CC7; }
-.floorplan .fp-ws.fp-team-3, .wp-swatch.fp-team-3 { fill: #D6403A; background: #D6403A; }
-.floorplan .fp-ws.fp-team-4, .wp-swatch.fp-team-4 { fill: #14948F; background: #14948F; }
-.floorplan .fp-ws.fp-team-5, .wp-swatch.fp-team-5 { fill: #C9A100; background: #C9A100; }
-.floorplan .fp-ws.fp-team-6, .wp-swatch.fp-team-6 { fill: #D6609B; background: #D6609B; }
-.floorplan .fp-ws.fp-team-7, .wp-swatch.fp-team-7 { fill: #1A365D; background: #1A365D; }
-.floorplan .fp-team-outline.fp-team-0 { stroke: #DD7A1F; fill: none; }
-.floorplan .fp-team-label.fp-team-0 { fill: #DD7A1F; stroke: none; }
-.floorplan .fp-team-outline.fp-team-1 { stroke: #2F9E5A; fill: none; }
-.floorplan .fp-team-label.fp-team-1 { fill: #2F9E5A; stroke: none; }
-.floorplan .fp-team-outline.fp-team-2 { stroke: #8A5CC7; fill: none; }
-.floorplan .fp-team-label.fp-team-2 { fill: #8A5CC7; stroke: none; }
-.floorplan .fp-team-outline.fp-team-3 { stroke: #D6403A; fill: none; }
-.floorplan .fp-team-label.fp-team-3 { fill: #D6403A; stroke: none; }
-.floorplan .fp-team-outline.fp-team-4 { stroke: #14948F; fill: none; }
-.floorplan .fp-team-label.fp-team-4 { fill: #14948F; stroke: none; }
-.floorplan .fp-team-outline.fp-team-5 { stroke: #C9A100; fill: none; }
-.floorplan .fp-team-label.fp-team-5 { fill: #C9A100; stroke: none; }
-.floorplan .fp-team-outline.fp-team-6 { stroke: #D6609B; fill: none; }
-.floorplan .fp-team-label.fp-team-6 { fill: #D6609B; stroke: none; }
-.floorplan .fp-team-outline.fp-team-7 { stroke: #1A365D; fill: none; }
-.floorplan .fp-team-label.fp-team-7 { fill: #1A365D; stroke: none; }
+.floorplan .fp-team-outline.fp-team-0 { stroke: #C2410C; } .floorplan .fp-team-label.fp-team-0, .wp-swatch.fp-team-0 { fill: #C2410C; background: #C2410C; }
+.floorplan .fp-team-outline.fp-team-1 { stroke: #15803D; } .floorplan .fp-team-label.fp-team-1, .wp-swatch.fp-team-1 { fill: #15803D; background: #15803D; }
+.floorplan .fp-team-outline.fp-team-2 { stroke: #7E22CE; } .floorplan .fp-team-label.fp-team-2, .wp-swatch.fp-team-2 { fill: #7E22CE; background: #7E22CE; }
+.floorplan .fp-team-outline.fp-team-3 { stroke: #B91C1C; } .floorplan .fp-team-label.fp-team-3, .wp-swatch.fp-team-3 { fill: #B91C1C; background: #B91C1C; }
+.floorplan .fp-team-outline.fp-team-4 { stroke: #0F766E; } .floorplan .fp-team-label.fp-team-4, .wp-swatch.fp-team-4 { fill: #0F766E; background: #0F766E; }
+.floorplan .fp-team-outline.fp-team-5 { stroke: #A16207; } .floorplan .fp-team-label.fp-team-5, .wp-swatch.fp-team-5 { fill: #A16207; background: #A16207; }
+.floorplan .fp-team-outline.fp-team-6 { stroke: #BE185D; } .floorplan .fp-team-label.fp-team-6, .wp-swatch.fp-team-6 { fill: #BE185D; background: #BE185D; }
+.floorplan .fp-team-outline.fp-team-7 { stroke: #1E3A8A; } .floorplan .fp-team-label.fp-team-7, .wp-swatch.fp-team-7 { fill: #1E3A8A; background: #1E3A8A; }
+
+/* Legend (floor page and print page): the same symbols as on the map. */
+.wp-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.wp-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.wp-key { width: 18px; height: 18px; flex: none; }
+.wp-key-free { fill: #FFFFFF; stroke: #2F9E5A; stroke-width: 2.4; }
+.wp-key-occ { fill: #1F4E79; }
+.wp-key-desktop { fill: #334155; }
+.wp-key-screen { fill: #0E7490; }
+.wp-key-glyph { fill: #FFFFFF; }
+.wp-key-flag { fill: #FFFFFF; stroke: #DC2626; stroke-width: 2.4; stroke-dasharray: 4 2; }
+.wp-key-nodesk { fill: #CBD2DA; }
+.wp-toggle { font-size: 14px; white-space: nowrap; }
+
+/* At a glance: the counters highlight free desks or seats to check on the map. */
+.wp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+.wp-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); font: inherit; color: inherit; text-align: left; }
+button.wp-stat { cursor: pointer; }
+button.wp-stat:hover { background: var(--ground); }
+.wp-stat[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--accent-tint); }
+.wp-stat-value { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.wp-stat-of { font-size: 14px; color: var(--ink-3); font-weight: 400; }
+.wp-stat-label { font-size: 12px; color: var(--ink-2); }
+.wp-stat--free .wp-stat-value { color: #15803D; }
+.wp-stat--flag .wp-stat-value { color: #B91C1C; }
+.wp-stat-sub { font-size: 13px; }
+.wp-flag-h { font-size: 13px; margin: 12px 0 6px; display: flex; align-items: center; gap: 6px; }
+.wp-flags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.wp-flags li { color: var(--bad-text); background: var(--bad-bg); border-radius: var(--radius); padding: 5px 8px; }
+.wp-flag-show { display: block; width: 100%; white-space: normal; min-height: 0; background: transparent; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; justify-content: flex-start; }
+.wp-flag-show:hover { text-decoration: underline; }
+.wp-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.wp-chip { border: 1px solid #86EFAC; background: #F0FDF4; color: #14532D; border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 13px; cursor: pointer; min-height: 0; }
+.wp-chip:hover { background: #DCFCE7; }
+
+/* Place on the map: tabs, a search box and the entries you drag onto a desk. */
+.wp-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.wp-tabs button { flex: 1; min-height: 34px; }
+.wp-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.wp-palette .searchbox { margin-bottom: 6px; }
+.wp-palette-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; }
+.wp-pal-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--surface); font: inherit; color: inherit; text-align: left; cursor: grab; touch-action: none; min-height: 0; }
+.wp-pal-item:hover { border-color: var(--accent); background: var(--accent-tint); }
+.wp-pal-item:active { cursor: grabbing; }
+.wp-pal-icon { width: 26px; height: 26px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; }
+.wp-pal-icon--person { background: #1F4E79; }
+.wp-pal-icon--desktop { background: #334155; }
+.wp-pal-icon--screen { background: #0E7490; }
+.wp-pal-text { display: flex; flex-direction: column; min-width: 0; }
+.wp-pal-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-pal-text span { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-pal-empty { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
+.wp-ghost { position: fixed; z-index: 1000; pointer-events: none; padding: 6px 10px; border-radius: var(--radius); background: var(--surface);
+    border: 1px solid var(--accent); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.wp-canvas.is-dropping { cursor: copy; }
+
+/* The selected seat: who and what is there. */
+.wp-spot-kind { font-size: 13px; color: var(--ink-3); }
+.wp-items { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wp-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+.wp-item[data-drag] { cursor: grab; touch-action: none; }
+.wp-item-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.wp-item-text .muted { font-size: 13px; }
+.wp-item-empty { color: var(--ink-3); border-style: dashed; }
+.wp-flags--spot { margin-top: 8px; }
+.wp-more { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.wp-more summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.wp-form-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wp-form-row .wp-form { margin-top: 0; }
+
+/* Print menu on the floor page. */
+.wp-print { position: relative; }
+.wp-print summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.wp-print summary::-webkit-details-marker { display: none; }
+.wp-print-menu { position: absolute; right: 0; z-index: 30; margin-top: 4px; width: 240px; display: flex; flex-direction: column; gap: 4px; padding: 8px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
+.wp-print-menu button { justify-content: flex-start; text-align: left; }
+.wp-canvas.is-print-area { cursor: crosshair; }
+
+/* Print page: one landscape A4 sheet for the map (277 × 190 mm printable at 96 dpi), the desk list on the next page. */
+.print-body { background: #E5E7EB; padding: 16px; }
+.print-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 1047px; margin: 0 auto 12px; }
+.print-sheet { width: 1047px; max-width: 100%; margin: 0 auto; background: #FFFFFF; padding: 0; color: #111827; }
+.print-head { display: flex; flex-direction: column; gap: 2px; padding: 0 0 6px; border-bottom: 2px solid #111827; margin-bottom: 8px; }
+.print-head h1 { font-size: 20px; margin: 0; }
+.print-head p { margin: 0; font-size: 12px; color: #374151; }
+.print-site { font-size: 14px; font-weight: 400; color: #374151; margin-left: 8px; }
+.print-map { height: 600px; border: 1px solid #D1D5DB; background: #F7F6F2; }
+.print-map svg { display: block; width: 100%; height: 100%; }
+.print-sheet .wp-legend { margin: 6px 0 0; font-size: 11px; color: #374151; }
+.print-list { break-before: page; page-break-before: always; padding-top: 4px; }
+.print-list h2 { font-size: 16px; margin: 0 0 6px; }
+.print-list table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.print-list th, .print-list td { border-bottom: 1px solid #E5E7EB; padding: 3px 6px; text-align: left; vertical-align: top; }
+.print-list td.num, .print-list th.num { text-align: right; }
+.print-sheet { page: floorplan; }
+@page floorplan { size: A4 landscape; margin: 10mm; }
+@media print {
+    .print-body { background: #FFFFFF; padding: 0; }
+    .print-bar { display: none; }
+    .print-sheet { width: 1047px; max-width: none; margin: 0; }
+    .print-map { border-color: #9CA3AF; }
+    .print-list tr { break-inside: avoid; }
+}
 
 @media (max-width: 960px) {
     .wp { grid-template-columns: minmax(0, 1fr); }
     .wp-canvas { height: 62vh; }
 }
 
-/* Workplace: what sits at a workspot, placing things, and the occupancy view. */
-.wp-view { display: flex; align-items: center; gap: 6px; }
-.wp-view label { color: var(--ink-2); font-size: 14px; }
-.wp-spot h3 { font-size: 14px; margin: 12px 0 6px; }
-.wp-items { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.wp-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.wp-item-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
-.wp-item-text .muted { font-size: 13px; }
-.wp-hints { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.wp-hints li { color: var(--due-text); background: var(--due-bg); border-radius: var(--radius); padding: 6px 8px; }
-.wp-hint-show { background: transparent; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
-.wp-hint-show:hover { text-decoration: underline; }
-.wp-place { margin-top: 12px; }
-.wp-qty { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 8px; }
-.wp-qty input[type="number"] { width: 90px; }
-.wp-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.wp-legend li { display: flex; align-items: center; gap: 8px; }
-.wp-sw-occ { background: #2F9E5A; }
-.wp-sw-itm { background: #E0A100; }
-.wp-sw-left { background: #D6403A; }
-.wp-sw-free { background: #C9CED6; }
-.wp-canvas.view-occupancy .floorplan .fp-ws { fill: #C9CED6; }
-.wp-canvas.view-occupancy .floorplan .fp-ws.fp-itm { fill: #E0A100; }
-.wp-canvas.view-occupancy .floorplan .fp-ws.fp-occ { fill: #2F9E5A; }
-.wp-canvas.view-occupancy .floorplan .fp-ws.fp-occ.fp-left { fill: #D6403A; }
-.wp-canvas.view-occupancy .floorplan .fp-teamlayer { display: none; }
+/* Short messages after a drop or a release on the floor plan. */
+.wp-toast { position: fixed; z-index: 1100; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, 92vw);
+    padding: 10px 14px; border-radius: var(--radius); background: #14532D; color: #FFFFFF; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2); font-size: 14px; }
+.wp-toast--bad { background: #991B1B; }
+.wp-toast[hidden] { display: none; }
+.wp-group { margin-top: 8px; }
+.wp-group > summary { cursor: pointer; list-style: revert; }

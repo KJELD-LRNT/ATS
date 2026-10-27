@@ -61,7 +61,19 @@ public class Workspot
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// A desk that people are given (and that counts as free while nobody sits there). Seats in canteens and meeting rooms
+    /// are not desks by default; editors can change that per seat.
+    /// </summary>
+    public bool IsDesk { get; set; } = true;
+
     public DateTimeOffset CreatedAt { get; set; }
+
+    private static readonly HashSet<string> NonDeskRoomTypes = new(StringComparer.OrdinalIgnoreCase)
+        { "canteen", "meeting", "support", "core", "workshop", "kitchen", "lounge" };
+
+    /// <summary>Whether a seat in a room of this type is a desk by default: offices, unknown types and seats outside a room.</summary>
+    public static bool IsDeskRoomType(string? roomType) => string.IsNullOrEmpty(roomType) || !NonDeskRoomTypes.Contains(roomType);
 }
 
 /// <summary>
@@ -83,11 +95,19 @@ public class FloorTeam
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+/// <summary>What a <see cref="WorkspotAssignment"/> places at a seat.</summary>
+public enum PlacementKind
+{
+    Person = 1,
+    Desktop = 2,
+    Screen = 3,
+}
+
 /// <summary>
-/// Something placed at a workspot: a person (who sits there), a tagged asset (a desktop, a screen) or units of a pool
-/// (two headsets). It records <b>where</b> things are, for planning; it is separate from loans (who is responsible)
-/// and never changes stock. At most one open row per person and per asset (a thing is in one place), one person per
-/// workspot, and one row per pool and workspot. Releasing sets <see cref="ReleasedAt"/>: the row stays as history.
+/// Something placed at a workspot: a person (who sits there) or a tagged asset whose type is a desktop or a screen. It
+/// records <b>where</b> things are, for planning; it is separate from loans (who is responsible). At most one open row
+/// per person and per asset (a thing is in one place), one person and one desktop per workspot. Releasing sets
+/// <see cref="ReleasedAt"/>: the row stays as history.
 /// </summary>
 public class WorkspotAssignment
 {
@@ -102,11 +122,8 @@ public class WorkspotAssignment
     public int? AssetId { get; set; }
     public IndividualAsset? Asset { get; set; }
 
-    public int? PoolId { get; set; }
-    public Pool? Pool { get; set; }
-
-    /// <summary>1 for a person or an asset; the number of units for a pool.</summary>
-    public int Quantity { get; set; } = 1;
+    /// <summary>What was placed: a person, or an asset as desktop or screen (from its type when it was placed).</summary>
+    public PlacementKind Kind { get; set; }
 
     public DateTimeOffset AssignedAt { get; set; }
     public string AssignedBy { get; set; } = "";

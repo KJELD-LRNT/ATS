@@ -1,0 +1,60 @@
+@model AssetTracker.Web.Pages.Workplace.FloorModel
+@*
+    The floor at a glance: free desks, taken desks and the seats to check. Swapped in by site.js after a drop, so it holds
+    no forms. The free and "to check" counters highlight those seats on the map; the lists fold away when they get long.
+*@
+@{
+    var s = Model.Status;
+    var groups = new (string Kind, string Title)[]
+    {
+        ("person-left", "No longer works here"),
+        ("seat-disabled", "On a disabled seat"),
+        ("missing", "Missing desktop or screen"),
+    };
+    var flaggedSeats = s.Flags.Select(f => f.WorkspotId).Distinct().Count();
+    var spots = Model.View.Spots.ToDictionary(w => w.Id);
+}
+<section class="card wp-box wp-status" aria-labelledby="wp-status-h" data-status>
+    <h2 id="wp-status-h">At a glance</h2>
+    <div class="wp-stats">
+        <button type="button" class="wp-stat wp-stat--free" data-highlight="free" aria-pressed="false" title="Highlight the free desks on the map">
+            <span class="wp-stat-value">@s.Free</span><span class="wp-stat-label">free desk@(s.Free == 1 ? "" : "s")</span>
+        </button>
+        <div class="wp-stat">
+            <span class="wp-stat-value">@s.Seated<span class="wp-stat-of">/@s.Desks</span></span><span class="wp-stat-label">desks taken</span>
+        </div>
+        <button type="button" class="wp-stat wp-stat--flag" data-highlight="flag" aria-pressed="false" title="Highlight the seats to check on the map">
+            <span class="wp-stat-value">@flaggedSeats</span><span class="wp-stat-label">to check</span>
+        </button>
+    </div>
+    <p class="muted wp-stat-sub">@s.Desktops desktop@(s.Desktops == 1 ? "" : "s") and @s.Screens screen@(s.Screens == 1 ? "" : "s") placed</p>
+
+    @foreach (var (kind, title) in groups)
+    {
+        var items = s.Flags.Where(f => f.Kind == kind).ToList();
+        if (items.Count == 0) { continue; }
+        <details class="wp-group" open="@(items.Count <= 4)">
+            <summary class="wp-flag-h">@title <span class="badge badge--error">@items.Count</span></summary>
+            <ul class="wp-flags">
+                @foreach (var f in items)
+                {
+                    <li><button type="button" class="wp-flag-show" data-show-spot="@f.WorkspotId"><strong>@f.Label</strong> <span>@f.Text</span></button></li>
+                }
+            </ul>
+        </details>
+    }
+
+    @if (s.Free > 0)
+    {
+        <details class="wp-group" open="@(s.Free <= 12)">
+            <summary class="wp-flag-h">Free desks <span class="badge badge--ok">@s.Free</span></summary>
+            <ul class="wp-chips">
+                @foreach (var id in s.FreeDesks.Take(80))
+                {
+                    <li><button type="button" class="wp-chip" data-show-spot="@id">@(spots.TryGetValue(id, out var w) ? w.Label : id.ToString())</button></li>
+                }
+                @if (s.Free > 80) { <li class="muted">… and @(s.Free - 80) more</li> }
+            </ul>
+        </details>
+    }
+</section>

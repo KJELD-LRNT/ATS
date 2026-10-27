@@ -188,7 +188,7 @@ public partial class FloorService(AppDbContext db, AccessScope scope, AuditWrite
     private static Workspot NewSpot(ParsedSpot s, string label, DateTimeOffset now) => new()
     {
         ElementId = s.ElementId, Label = label, RoomId = s.RoomId, RoomName = s.RoomName, RoomType = s.RoomType,
-        TableId = s.TableId, IsActive = true, CreatedAt = now,
+        TableId = s.TableId, IsActive = true, IsDesk = Workspot.IsDeskRoomType(s.RoomType), CreatedAt = now,
     };
 
     /// <summary>The label, or "label (2)", "label (3)"... when it is taken.</summary>

@@ -46,6 +46,15 @@
                 <input asp-for="Input.TagPattern" class="mono" maxlength="100" placeholder="{SITE}D{000}OMA" />
                 <small class="hint">Generates asset tags, counting up per type and site. <code>{SITE}</code> is the site's tag code (Admin → Sites), <code>{000}</code> the counter (zeros = minimum digits), everything else is literal. Empty = tags are typed by hand.@if (Model.PatternExample is not null) { <text> Example for a site with code R: <strong class="mono">@Model.PatternExample</strong>, then the next number.</text> }</small>
             </div>
+            <div class="field">
+                <label asp-for="Input.WorkspotRole">On floor plans</label>
+                <select asp-for="Input.WorkspotRole">
+                    <option value="@WorkspotRole.None">Not placed at desks</option>
+                    <option value="@WorkspotRole.Desktop">Desktop (one per desk)</option>
+                    <option value="@WorkspotRole.Screen">Screen (any number per desk)</option>
+                </select>
+                <small class="hint">Only desktops and screens are placed at desks on the floor plans, next to the person who sits there.</small>
+            </div>
         }
     </div>
     <div class="form-actions"><button type="submit" class="btn--primary">Save type</button> <a class="text-link" asp-page="Types">Back</a></div>
