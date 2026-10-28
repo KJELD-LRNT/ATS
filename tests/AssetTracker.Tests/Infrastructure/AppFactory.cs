@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Data;
+using AssetTracker.Web.Security;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -59,12 +61,13 @@ public class AppFactory : WebApplicationFactory<Program>
             services.RemoveAll<IMailRelay>();
             services.AddSingleton<IMailRelay>(Mail);
 
-            services.AddAuthentication(o =>
-            {
-                o.DefaultScheme = TestAuthHandler.SchemeName;
-                o.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
-                o.DefaultChallengeScheme = TestAuthHandler.SchemeName;
-            }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            // The simulated Windows scheme sits behind the app's policy scheme (as Negotiate does in production), so
+            // the super admin cookie is tested too.
+            services.Configure<AppAuthenticationOptions>(o => o.WindowsScheme = TestAuthHandler.SchemeName);
+            services.AddAuthentication()
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            // Test seam: X-Test-Ip sets the client IP address (per-IP rate limit and the audited sign-in address).
+            services.AddSingleton<IStartupFilter, TestClientIpStartupFilter>();
         });
     }
 
@@ -112,6 +115,26 @@ public class AppFactory : WebApplicationFactory<Program>
         client.DefaultRequestHeaders.Add(TestAuthHandler.SidHeader, user.Sid);
         client.DefaultRequestHeaders.Add(TestAuthHandler.GroupsHeader, string.Join(',', user.GroupSids));
         return client;
+    }
+
+    /// <summary>
+    /// HTTP client without a Windows user (anonymous unless it signs in as the super admin), from the given client IP
+    /// address. Keeps cookies; does not follow redirects.
+    /// </summary>
+    public HttpClient CreateAnonymousClient(string? ip = null)
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add(TestClientIpStartupFilter.Header, ip ?? NextIp());
+        return client;
+    }
+
+    private static int _ip;
+
+    /// <summary>A fresh client IP address, so tests in one class don't share a rate-limit partition.</summary>
+    public static string NextIp()
+    {
+        var n = Interlocked.Increment(ref _ip);
+        return $"10.77.{n / 250 % 250}.{n % 250 + 1}";
     }
 
     /// <summary>
@@ -165,4 +188,22 @@ public class AppFactory : WebApplicationFactory<Program>
             try { File.Delete(_sqlitePath); } catch { /* best effort */ }
         }
     }
+}
+
+/// <summary>Test seam: sets <c>Connection.RemoteIpAddress</c> from the <c>X-Test-Ip</c> request header.</summary>
+public sealed class TestClientIpStartupFilter : IStartupFilter
+{
+    public const string Header = "X-Test-Ip";
+
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use((context, nextMiddleware) =>
+        {
+            if (context.Request.Headers.TryGetValue(Header, out var value) &&
+                System.Net.IPAddress.TryParse(value.ToString(), out var ip))
+                context.Connection.RemoteIpAddress = ip;
+            return nextMiddleware(context);
+        });
+        next(app);
+    };
 }

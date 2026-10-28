@@ -1,5 +1,6 @@
 using AssetTracker.Core.Security;
 using AssetTracker.Infrastructure.Demo;
+using AssetTracker.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -22,14 +23,16 @@ public static class DemoWebSetup
 
     /// <summary>
     /// Demo services: SQLite, demo adapters and jobs (<see cref="DemoServiceCollectionExtensions.AddAssetTrackerDemo"/>),
-    /// the demo authentication scheme instead of Negotiate, and the demo <see cref="ICurrentUser"/>.
+    /// the demo authentication scheme as the Windows scheme (instead of Negotiate), and the demo <see cref="ICurrentUser"/>.
     /// Call after the production registrations.
     /// </summary>
     public static IServiceCollection AddDemoWeb(this IServiceCollection services, DemoOptions demo, IConfiguration config)
     {
         services.AddAssetTrackerDemo(demo, config);
         services.AddSingleton<DemoIdentityCookie>();
-        services.AddAuthentication(DemoAuthenticationHandler.SchemeName)
+        // The demo scheme takes Negotiate's place behind the app's policy scheme, so the super admin cookie works here too.
+        services.Configure<AppAuthenticationOptions>(o => o.WindowsScheme = DemoAuthenticationHandler.SchemeName);
+        services.AddAuthentication()
             .AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>(DemoAuthenticationHandler.SchemeName, _ => { });
         services.Replace(ServiceDescriptor.Scoped<ICurrentUser, DemoCurrentUser>());
         return services;

@@ -1,0 +1,46 @@
+@page "/superadmin"
+@model AssetTracker.Web.Pages.Local.SuperAdminModel
+@{
+    ViewData["Title"] = "Super admin sign-in";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Super admin sign-in</h1>
+        <p class="page-subtitle">The built-in super admin account is not an AD account. Use it to run Asset Tracker without a
+            domain account, or to repair the directory and mail settings when they stop working.</p>
+    </div>
+</header>
+
+@if (Model.SignedOut)
+{
+    <div class="alert alert--success" role="status" id="superadmin-signed-out">@Ui.Icon("check", 18, 2.4)<div class="alert-body">You are signed out.</div></div>
+}
+@if (!Model.Status.CanSignIn)
+{
+    <div class="alert alert--warning" role="status" id="superadmin-disabled">
+        @Ui.Icon("warning", 18, 2.2)
+        <div class="alert-body">The super admin account is switched off. An IT administrator can switch it on by setting a
+            password with the setup command on the server (<code>deploy\Set-SuperAdmin.ps1</code>).</div>
+    </div>
+}
+@if (Model.Error is not null)
+{
+    <div class="alert alert--error" role="alert" id="superadmin-error">@Ui.Icon("error", 18, 2.2)<div class="alert-body">@Model.Error</div></div>
+}
+
+<section class="card signin-card" aria-labelledby="signin-h">
+    <h2 id="signin-h" class="visually-hidden">Sign in</h2>
+    <form method="post" class="stack" autocomplete="off">
+        <input type="hidden" asp-for="ReturnUrl" />
+        <div class="field">
+            <label for="UserName">Username</label>
+            <input id="UserName" name="UserName" value="@Model.UserName" autocomplete="username" autocapitalize="none"
+                   spellcheck="false" required maxlength="64" />
+        </div>
+        <div class="field">
+            <label for="Password">Password</label>
+            <input id="Password" name="Password" type="password" autocomplete="current-password" required maxlength="256" />
+        </div>
+        <div class="form-actions"><button type="submit" class="btn--primary" id="superadmin-signin">Sign in</button></div>
+    </form>
+</section>

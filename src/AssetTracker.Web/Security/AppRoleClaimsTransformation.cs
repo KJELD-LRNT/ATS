@@ -12,6 +12,8 @@ namespace AssetTracker.Web.Security;
 /// AD group takes effect as soon as the principal presents a new token; Facility from the application's own
 /// <c>RoleAssignments</c> (matched on the person's SID, and only while the person is active). Roles are a union; Admin
 /// implies nothing else.
+/// <para>The built-in super admin (identity from the <c>SuperAdmin</c> cookie scheme) gets exactly Admin, with no database
+/// lookup: it has no SID and no groups, and it is not in <c>RoleAssignments</c>.</para>
 /// </summary>
 public class AppRoleClaimsTransformation(IOptionsMonitor<RoleGroupOptions> options, AppDbContext db) : IClaimsTransformation
 {
@@ -20,7 +22,9 @@ public class AppRoleClaimsTransformation(IOptionsMonitor<RoleGroupOptions> optio
         if (principal.Identity?.IsAuthenticated != true || principal.HasClaim(c => c.Type == AppClaimTypes.RolesResolved))
             return principal;
 
-        var roles = Resolve(principal, options.CurrentValue) | await AssignedRolesAsync(principal);
+        var roles = SuperAdminPrincipal.Is(principal)
+            ? AppRoles.Admin
+            : Resolve(principal, options.CurrentValue) | await AssignedRolesAsync(principal);
         var identity = new ClaimsIdentity();
         identity.AddClaim(new Claim(AppClaimTypes.RolesResolved, "1"));
         foreach (var role in Enum.GetValues<AppRoles>().Where(r => r != AppRoles.None && roles.HasFlag(r)))

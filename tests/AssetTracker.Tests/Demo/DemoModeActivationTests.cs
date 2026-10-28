@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace AssetTracker.Tests.Demo;
 
@@ -73,10 +74,15 @@ public class DemoModeActivationTests
         try
         {
             var schemes = factory.Services.GetRequiredService<IAuthenticationSchemeProvider>();
-            Assert.Equal(NegotiateDefaults.AuthenticationScheme, (await schemes.GetDefaultAuthenticateSchemeAsync())?.Name);
+            // The default is the policy scheme (super admin cookie or Windows); its Windows scheme is Negotiate.
+            Assert.Equal(AppAuthentication.PolicyScheme, (await schemes.GetDefaultAuthenticateSchemeAsync())?.Name);
+            Assert.Equal(AppAuthentication.PolicyScheme, (await schemes.GetDefaultChallengeSchemeAsync())?.Name);
+            Assert.NotNull(await schemes.GetSchemeAsync(NegotiateDefaults.AuthenticationScheme));
+            Assert.NotNull(await schemes.GetSchemeAsync(AppAuthentication.SuperAdminScheme));
+            Assert.Equal(NegotiateDefaults.AuthenticationScheme,
+                factory.Services.GetRequiredService<IOptions<AppAuthenticationOptions>>().Value.WindowsScheme);
             Assert.Null(await schemes.GetSchemeAsync("Demo"));
 
-            Assert.Equal(NegotiateDefaults.AuthenticationScheme, (await schemes.GetDefaultChallengeSchemeAsync())?.Name);
             using var scope = factory.Services.CreateScope();
             Assert.IsType<HttpCurrentUser>(scope.ServiceProvider.GetRequiredService<ICurrentUser>());
             Assert.Null(scope.ServiceProvider.GetService<AssetTracker.Infrastructure.Demo.DemoOptions>());
