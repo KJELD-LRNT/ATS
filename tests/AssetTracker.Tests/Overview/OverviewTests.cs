@@ -181,7 +181,7 @@ public class OverviewTests : IClassFixture<AppFactory>
     public async Task Overview_site_filter_limits_figures_and_ignores_unreadable_sites()
     {
         await ResetTilesAsync();
-        var manager = new TestUser(@"CORP\mgr.ov01", "S-1-5-21-1000-1000-1000-3201", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ov01", "S-1-5-21-1000-1000-1000-3201", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var granted = await Seed.SiteAsync(db, "OV01");

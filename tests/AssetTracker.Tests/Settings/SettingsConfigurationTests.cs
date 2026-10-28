@@ -88,6 +88,7 @@ public class SettingsConfigurationTests(SettingsFactory f) : IClassFixture<Setti
         await f.WithDbAsync(async db =>
         {
             db.Settings.AddRange(
+                new AppSetting { Key = "Ops:WorkerHeartbeatInterval", Value = "00:00:01", UpdatedBy = "attacker" },
                 new AppSetting { Key = "Roles:AdminGroupSids:0", Value = "S-1-5-21-9-9-9-666", UpdatedBy = "attacker" },
                 new AppSetting { Key = "ConnectionStrings:AssetTracker", Value = "Server=evil", UpdatedBy = "attacker" },
                 new AppSetting { Key = "Mail:PasswordProtected", Value = "not-from-the-settings-page", UpdatedBy = "attacker" });
@@ -98,7 +99,9 @@ public class SettingsConfigurationTests(SettingsFactory f) : IClassFixture<Setti
         var config = f.Services.GetRequiredService<IConfiguration>();
         Assert.Null(config[OpsStatusService.HeartbeatKey]);
         Assert.Null(config[AppSetting.ItMailbox]);
-        Assert.Equal(TestGroups.Admin, config["Roles:AdminGroupSids:0"]);
+        // A file-only key keeps its config file value (appsettings.json); an unknown section is not exposed at all.
+        Assert.Equal("00:01:00", config["Ops:WorkerHeartbeatInterval"]);
+        Assert.Null(config["Roles:AdminGroupSids:0"]);
         Assert.NotEqual("Server=evil", config["ConnectionStrings:AssetTracker"]);
         Assert.Null(config["Mail:PasswordProtected"]);
 

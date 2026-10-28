@@ -35,7 +35,6 @@ if (!plainHttp)
 }
 // At most 10 super admin sign-in posts per IP address per 15 minutes (on top of the account lockout).
 builder.Services.AddSuperAdminRateLimiter();
-builder.Services.Configure<RoleGroupOptions>(builder.Configuration.GetSection("Roles"));
 builder.Services.AddTransient<IClaimsTransformation, AppRoleClaimsTransformation>();
 builder.Services.AddAuthorization(o =>
 {
@@ -88,6 +87,9 @@ var app = builder.Build();
 if (demo is not null) await app.Services.InitializeDemoAsync();
 // First load of database settings before anything reads options (tolerates a database that is not migrated yet).
 await app.Services.LoadDatabaseSettingsAsync();
+// Roles are given in the app now; AD group SIDs left in the config file are ignored (Admin → Settings says so too).
+if (LegacyRoleSettings.ArePresent(app.Configuration))
+    app.Logger.LogWarning("{Notice}", LegacyRoleSettings.Notice);
 
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
 {

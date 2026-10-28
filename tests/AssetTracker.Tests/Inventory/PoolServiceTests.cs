@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Domain;
@@ -220,7 +221,7 @@ public class PoolServiceTests : IClassFixture<AppFactory>
         var other = await SiteAsync("PS16");
         var (mine, theirs) = await _f.WithDbAsync(async db =>
             (await Seed.PoolAsync(db, "HS-MGR", granted, 1), await Seed.PoolAsync(db, "HS-MGR", other, 1)));
-        var manager = new TestUser(@"CORP\mgr.ps15", "S-1-5-21-1000-1000-1000-3015", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ps15", "S-1-5-21-1000-1000-1000-3015", AppRoles.Manager);
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, granted));
 
         var seen = await _f.RunAsAsync(manager, sp => sp.GetRequiredService<PoolService>().SearchAsync(new PoolSearch("HS-MGR")));

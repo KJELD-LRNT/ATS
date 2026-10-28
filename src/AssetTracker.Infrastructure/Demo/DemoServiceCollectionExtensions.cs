@@ -14,7 +14,7 @@ namespace AssetTracker.Infrastructure.Demo;
 public static class DemoServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds the in-memory demo configuration (role group SIDs, short job intervals, default timezone). Call before
+    /// Adds the in-memory demo configuration (short job intervals, default timezone). Call before
     /// <c>AddDatabaseSettings()</c> so settings saved in the app still win.
     /// </summary>
     public static IConfigurationBuilder AddDemoDefaults(this IConfigurationBuilder builder) =>
@@ -54,6 +54,7 @@ public static class DemoServiceCollectionExtensions
             .PersistKeysToFileSystem(new DirectoryInfo(demo.KeysDirectory));
 
         services.AddSingleton<DemoSeeder>();
+        services.AddScoped<DemoRoleSwitcher>();
         services.AddSingleton<DemoDataManager>();
 
         if (demo.RunBackgroundJobs)

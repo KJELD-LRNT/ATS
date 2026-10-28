@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -104,7 +105,7 @@ public class WorkplacePagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Managers_see_only_their_sites_floors_and_cannot_edit()
     {
-        var manager = new TestUser(@"CORP\mgr.wp03", "S-1-5-21-1000-1000-1000-3703", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.wp03", "S-1-5-21-1000-1000-1000-3703", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var a = await Seed.SiteAsync(db, "WP03");

@@ -42,7 +42,7 @@ public class AccessTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Overlapping_groups_union_roles_without_implied_admin_powers()
     {
-        var both = new TestUser(@"CORP\both", "S-1-5-21-1000-1000-1000-2099", TestGroups.Admin, TestGroups.Manager);
+        var both = new TestUser(@"CORP\both", "S-1-5-21-1000-1000-1000-2099", AppRoles.Admin | AppRoles.Manager);
         var roles = await _f.RunAsAsync(both, sp => Task.FromResult(sp.GetRequiredService<ICurrentUser>().Roles));
         Assert.Equal(AppRoles.Admin | AppRoles.Manager, roles);
     }

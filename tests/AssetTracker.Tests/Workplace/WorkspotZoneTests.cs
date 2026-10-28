@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Workplace;
@@ -153,7 +154,7 @@ public class WorkspotZoneTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Find_returns_rooms_and_zones_across_floors_within_the_principals_scope_but_not_seat_ids()
     {
-        var manager = new TestUser(@"CORP\mgr.ws12", "S-1-5-21-1000-1000-1000-3512", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ws12", "S-1-5-21-1000-1000-1000-3512", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var granted = await Seed.SiteAsync(db, "WS12");

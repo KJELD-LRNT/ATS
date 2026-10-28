@@ -1124,3 +1124,11 @@ button:disabled, .btn:disabled, button[disabled] { box-shadow: none; }
 @media print {
     .topbar, .rail-toggle { display: none !important; }
 }
+
+/* Admin → System roles: one row per person, the manager's sites as tick boxes on the same row. */
+.site-ticks { border: 0; padding: 0; margin: 0; min-width: 0; }
+.site-ticks-list { display: flex; flex-wrap: wrap; gap: 0 14px; }
+.site-ticks .check { min-height: 32px; }
+.roles-table .site-ticks { min-width: 15rem; }
+.roles-table .person-name { font-weight: 500; }
+.roles-table td.actions-cell { width: 1%; }

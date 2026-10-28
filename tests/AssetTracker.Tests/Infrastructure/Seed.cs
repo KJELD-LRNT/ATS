@@ -37,10 +37,15 @@ public static class Seed
         return p;
     }
 
-    /// <summary>Creates the Person record for a test user (so manager grants can resolve by SID) and grants sites.</summary>
+    /// <summary>
+    /// The Person record of a test user (so manager grants resolve by SID; the one <c>AppFactory</c> made when the user
+    /// already signed in, else a new one) with grants for the sites. The Manager role comes from the user's
+    /// <see cref="TestUser.Roles"/> when it signs in.
+    /// </summary>
     public static async Task<Person> ManagerWithGrantsAsync(AppDbContext db, TestUser user, params Site[] sites)
     {
-        var p = await PersonAsync(db, user.Name.Split('\\').Last(), sid: user.Sid);
+        var p = await db.People.SingleOrDefaultAsync(x => x.Sid == user.Sid)
+                ?? await PersonAsync(db, user.Username, sid: user.Sid);
         foreach (var s in sites)
             db.ManagerSiteGrants.Add(new ManagerSiteGrant
             {

@@ -103,7 +103,7 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
         { "it", "/Reports/Inventory?view=pools" }, { "it", "/Reports/Assignments" }, { "it", "/Reports/Overdue" },
         { "it", "/Reports/History" }, { "it", "/Audit" }, { "it", "/Ops" }, { "it", "/Ops/Mail" }, { "it", "/Admin/Sync" },
         { "manager", "/" }, { "manager", "/Assets" }, { "manager", "/Loans" },
-        { "admin", "/" }, { "admin", "/Admin/Sites" }, { "admin", "/Admin/Grants?q=zz" }, { "admin", "/Admin/Settings" },
+        { "admin", "/" }, { "admin", "/Admin/Sites" }, { "admin", "/Admin/SystemRoles?q=user" }, { "admin", "/Admin/Settings" },
         { "admin", "/Admin/Sync" }, { "admin", "/Admin/Privacy?q=zz" },
         { "admin", "/Admin/Types" }, { "admin", "/Admin/TypeEdit/4" }, { "admin", "/Admin/TypeEdit/4?fieldId=5" },
         { "admin", "/Admin/Vendors" }, { "admin", "/Admin/Models" }, { "admin", "/Admin/OverviewTiles" },

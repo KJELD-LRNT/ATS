@@ -139,8 +139,8 @@ in the database (machine DPAPI, so they only work on this server); back the fold
 ## 6. Configuration reference
 
 All settings, defaults and which app uses them: [`deploy/README.md`](../deploy/README.md). The configuration files
-hold only bootstrap values (connection string, role group SIDs, Data Protection key folder, reload interval, ops
-thresholds); both apps need the same `ConnectionStrings` and `DataProtection:KeyPath`. Everything else (AD query,
+hold only bootstrap values (connection string, Data Protection key folder, reload interval, ops thresholds); roles are
+given in the app (Admin → System roles), not in a file; both apps need the same `ConnectionStrings` and `DataProtection:KeyPath`. Everything else (AD query,
 sync safety thresholds and schedule, mail relay, notifications, default time zone, IT mailbox) is set by an admin on
 **Admin → Settings**, stored in the database and picked up by both apps without a restart (the worker within
 `Settings:ReloadInterval`, 30 seconds by default).
@@ -149,7 +149,7 @@ sync safety thresholds and schedule, mail relay, notifications, default time zon
 
 1. [ ] `GET https://<INTERNAL-DNS-NAME>/health` → `Healthy` (anonymous).
    - [ ] Set the super admin password (§15.1), store it in the password safe, and do the IIS smoke test (§15.2).
-2. [ ] Sign in as a member of the admin AD group → header shows `(Admin)`.
+2. [ ] Sign in on `/superadmin` as the super admin (roles are given in the app; right after installation nobody has one).
 3. [ ] **Admin → Settings** (in this order; each section has its own *Save* button):
        - *Default time zone* (`Clock:TimeZoneId`).
        - *Mail relay*: host, port, TLS mode, sending address (and username/password only for an authenticated
@@ -164,8 +164,10 @@ sync safety thresholds and schedule, mail relay, notifications, default time zon
 5. [ ] **Admin → Directory sync → Run now:** status `Succeeded`; review issues (unmapped sites, duplicates, missing
        ids). Fix site mappings and rerun until only expected issues remain. Confirm fetched/mapped counts against AD
        and set *Minimum expected entries* (`DirectorySync:MinimumExpectedCount`) on the Settings page accordingly.
-6. [ ] **Admin → Grants:** grant each manager their site(s).
-7. [ ] Sign in as an IT group member: **Ops** page shows database reachable, worker heartbeat current, last
+6. [ ] **Admin → System roles:** *Add a person* for the first IT staff and application admins and tick their roles;
+       tick *Manager* and their site(s) for each manager. A role needs a person who is active in the directory and has a
+       Windows account, so this comes after the first directory sync. Sign out as the super admin.
+7. [ ] Sign in as one of the new admins → the menu shows *Admin*. Sign in as IT: **Ops** page shows database reachable, worker heartbeat current, last
        successful sync, outbox empty.
 8. [ ] Test mail: check out a test asset to a test person with a mailbox (or a test account), confirm holder and IT
        mail arrive, then return it. Check the Mail queue for failures.
@@ -293,7 +295,7 @@ controls ([privacy](privacy-and-retention.md)).
    - Inventory: asset count per site/type/state matches the reference report taken at backup time (Reports → Inventory).
    - Open loans: Reports → Current assignments count and a sample of holders/quantities.
    - Stock balances: Reports → Inventory → Pools: available/outstanding per pool; `on hand = available + outstanding`.
-   - Grants: Admin → Grants (as admin) lists the expected manager grants; Admin → Settings shows the IT mailbox.
+   - Roles and grants: Admin → System roles (as admin) lists the expected roles and manager sites; Admin → Settings shows the IT mailbox.
    - Settings: Admin → Settings shows the expected values; **Send test email** succeeds. "The stored SMTP password
      cannot be decrypted" means the Data Protection key folder was not restored: restore it, or re-enter the password.
    - Queued mail: Ops → Mail queue counts.
@@ -331,7 +333,7 @@ Note: SMTP cannot guarantee exactly-once delivery; a mail accepted by the relay 
 | --- | --- | --- |
 | Repeated credential prompts / 401 loop | No/duplicate SPN, site not in Intranet zone, CNAME, kernel-mode auth vs `useAppPoolCredentials` mismatch | `setspn -Q HTTP/<INTERNAL-DNS-NAME>`; fix duplicates; check zone policy; `klist purge` on the client and retry; check System log for KDC errors (event 4 = duplicate SPN). |
 | Works on LAN, prompts on VPN | DC/DNS not reachable over VPN; NTLM blocked | Test `nltest /dsgetdc:DOMAIN` and DNS over VPN; ask network team for Kerberos (88) and DNS routes. |
-| 403 after sign-in | User not in a mapped AD group, or group SIDs wrong | Compare `whoami /groups` SIDs with `Roles:*GroupSids`; group changes need a new logon/ticket (`klist purge`). |
+| 403 after sign-in | The person has no role in the app, is inactive in the directory snapshot, or their SID differs from the one in the snapshot | An admin checks **Admin → System roles** (tick *Show inactive* to see roles of inactive people) and gives the role; it applies on the person's next request, no new logon needed. Check the person on the last directory sync (active, with a SID). If no admin can sign in, use the super admin (§15.3). |
 | 500.30 / 500.31 at start | Missing Hosting Bundle / runtime, bad config | Event Log (IIS AspNetCore Module V2); enable `stdoutLogEnabled` temporarily; check `appsettings.Production.json` JSON validity. |
 | Mail `Failed`: "5.7.1 relay denied" | Server IP not allowed on the relay, wrong sending address | Ask the mail team to allow the app server / `FromAddress`; requeue. |
 | Mail `Failed`: "stored SMTP password cannot be decrypted" | Data Protection key folder missing/changed, or web and worker use different `DataProtection:KeyPath` | Point both apps at the same folder (restore it from backup), or re-enter the password on Admin → Settings. |
@@ -411,7 +413,8 @@ The test host cannot cover IIS authentication, so check by hand:
 ### 15.3 Recovery: locked out, or AD settings broken
 
 Use this when no AD account can get in as an admin: for example after wrong AD/LDAP settings on Admin → Settings, a lost
-admin group membership, broken mail settings or a failed directory sync.
+Admin role (nobody has it any more, or every admin is inactive after a bad sync), broken mail settings or a failed
+directory sync.
 
 1. If the super admin password is unknown, or the account is off or locked: run `Set-SuperAdmin.ps1 -Action
    set-password` (or `generate-password`, or `unlock`) on the server (§15.1).

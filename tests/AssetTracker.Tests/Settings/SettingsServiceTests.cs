@@ -229,6 +229,9 @@ public class SettingsServiceTests(SettingsFactory f) : IClassFixture<SettingsFac
             Entries.Person("prv-dup", "prv.dup.b"),
             Entries.Person("", "prv.noid"),
         ];
+        // Counts are exact here: leave out the admin test user's own directory entry (a preview never writes).
+        await f.EnsureUserAsync(TestUser.Admin);
+        f.Directory.Permanent.Clear();
         var (people, runs) = await CountsAsync();
 
         var outcome = await f.RunAsAsync(TestUser.Admin, sp => sp.GetRequiredService<SettingsService>().PreviewDirectoryAsync());
