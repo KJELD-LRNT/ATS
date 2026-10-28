@@ -5,7 +5,7 @@
     var floor = Model.View.Floor;
     ViewData["Title"] = $"{floor.Name} - {Model.View.SiteKey} (print)";
     var taken = Model.Rows.Count(r => r.Person is not null);
-    var free = Model.Rows.Count(r => r.Note == "Free");
+    var free = Model.Rows.Count(r => r.IsFree);
 }
 @section Head {
     <link rel="stylesheet" href="@Url.Page("Floor", "Css", new { id = floor.Id, v = floor.Version })" />
@@ -40,38 +40,19 @@
         @await Html.PartialAsync("_Legend")
     </div>
 
-    @if (Model.List && Model.Rows.Count > 0)
+    @if (Model.List && Model.People.Count > 0)
     {
         <section class="print-list" aria-labelledby="print-list-h">
-            <h2 id="print-list-h">Desks @(Model.PrintArea is null ? "on this floor" : "in this part")</h2>
-            @foreach (var zone in Model.Groups)
-            {
-                <section class="print-zone">
-                    <h3>@(zone.Zone is null ? "No zone" : "Zone " + zone.Zone)</h3>
-                    <table>
-                        <thead><tr><th scope="col">Person</th><th scope="col">Desktop</th><th scope="col" class="num">Screens</th><th scope="col">Note</th></tr></thead>
-                        @foreach (var room in zone.Rooms)
-                        {
-                            <tbody class="print-room">
-                                <tr class="print-room-h"><th scope="rowgroup" colspan="4">@(room.Room ?? "No room")</th></tr>
-                                @foreach (var r in room.Desks)
-                                {
-                                    <tr>
-                                        <td>@r.Person@if (r.PersonLeft) { <span class="badge badge--muted">Left</span> }</td>
-                                        <td class="mono">@r.Desktop</td>
-                                        <td class="num">@(r.Screens == 0 ? "" : r.Screens.ToString())</td>
-                                        <td>@r.Note</td>
-                                    </tr>
-                                }
-                                @if (room.Free > 0)
-                                {
-                                    <tr class="print-free"><td colspan="4">@(room.Room ?? "No room"): @room.Free free</td></tr>
-                                }
-                            </tbody>
-                        }
-                    </table>
-                </section>
-            }
+            <h2 id="print-list-h">Who sits @(Model.PrintArea is null ? "on this floor" : "in this part")</h2>
+            <table>
+                <thead><tr><th scope="col">Person</th><th scope="col">Zone</th><th scope="col">Desktop</th></tr></thead>
+                <tbody>
+                    @foreach (var r in Model.People)
+                    {
+                        <tr><td>@r.Person</td><td>@r.Zone</td><td class="mono">@r.Desktop</td></tr>
+                    }
+                </tbody>
+            </table>
         </section>
     }
 </article>

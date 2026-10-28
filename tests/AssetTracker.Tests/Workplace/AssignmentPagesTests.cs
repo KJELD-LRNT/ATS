@@ -255,10 +255,9 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         Assert.Contains("Whole floor", whole);
         Assert.Contains("data-print-map", whole);
         Assert.Contains("ap11.anna", whole);
-        // the list groups by zone and room; the three free desks are one line
-        Assert.Contains("<h3>No zone</h3>", whole);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(whole, "<tr class=\"print-room-h\"><th scope=\"rowgroup\" colspan=\"4\">Bay</th></tr>"));
-        Assert.Contains("<tr class=\"print-free\"><td colspan=\"4\">Bay: 3 free</td></tr>", whole);
+        // the list is one plain table of who sits there: no rooms, no free desks
+        Assert.Contains("<th scope=\"col\">Person</th><th scope=\"col\">Zone</th><th scope=\"col\">Desktop</th>", whole);
+        Assert.DoesNotContain("free</td>", whole);
         Assert.DoesNotContain(">B1-T01-S0", whole); // the drawing's seat ids are never shown as text
         Assert.DoesNotContain("class=\"sidebar\"", whole); // the print layout has no menu
         Assert.DoesNotMatch("""\sstyle\s*=""", whole);
@@ -268,7 +267,6 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         Assert.Contains("Window side", part);
         Assert.Contains("viewBox=\"60 70 40 30\"", part);
         Assert.Contains("ap11.anna", part);
-        Assert.Contains("Bay: 1 free", part);
         // a bad area prints the whole floor
         Assert.Contains("Whole floor", await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=nonsense"));
 
@@ -308,34 +306,35 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task The_print_list_is_grouped_by_zone_and_room_with_free_desks_on_one_line()
+    public async Task The_print_list_is_a_plain_table_of_person_zone_and_desktop()
     {
         var s = await NewFloorAsync("AP13", seats: 6);
         await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<ZoneService>().CreateAsync("Alpha", [s.Spots[0].Id, s.Spots[1].Id, s.Spots[2].Id]));
         var anna = await _f.WithDbAsync(db => Seed.PersonAsync(db, "ap13.anna"));
         var bo = await _f.WithDbAsync(db => Seed.PersonAsync(db, "ap13.bo"));
+        var cas = await _f.WithDbAsync(db => Seed.PersonAsync(db, "ap13.cas"));
         var desktop = await _f.WithDbAsync(db => Seed.AssetAsync(db, "AP13-DT-1", s.Site, BuiltIn.Desktop));
+        var lonely = await _f.WithDbAsync(db => Seed.AssetAsync(db, "AP13-DT-2", s.Site, BuiltIn.Desktop));
         await AssignAsync(async a =>
         {
             await a.AssignPersonAsync(s.Spots[0].Id, anna.Id);
+            await a.AssignAssetAsync(s.Spots[0].Id, desktop.Id);
             await a.AssignPersonAsync(s.Spots[4].Id, bo.Id);
-            await a.AssignAssetAsync(s.Spots[5].Id, desktop.Id); // a free desk with a desktop is listed, not counted
+            await a.AssignPersonAsync(s.Spots[1].Id, cas.Id);
+            await a.AssignAssetAsync(s.Spots[5].Id, lonely.Id); // a desktop without a person is not listed
         });
 
         var html = await _f.CreateClientAs(TestUser.It).GetStringAsync($"/Workplace/Print/{s.Floor.Id}");
-        var alpha = html.IndexOf("<h3>Zone Alpha</h3>", StringComparison.Ordinal);
-        var none = html.IndexOf("<h3>No zone</h3>", StringComparison.Ordinal);
-        Assert.True(alpha > 0 && none > alpha, "zones in order, desks in no zone last");
-        var alphaPart = html[alpha..none];
-        var nonePart = html[none..];
-        Assert.Contains("ap13.anna", alphaPart);
-        Assert.Contains("<td colspan=\"4\">Bay: 2 free</td>", alphaPart);
-        Assert.Contains("ap13.bo", nonePart);
-        Assert.Contains("AP13-DT-1", nonePart);
-        Assert.Contains("<td colspan=\"4\">Bay: 1 free</td>", nonePart);
-        // plain free desks are never a row of their own; only the free desk with a desktop is
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<td>Free</td>"));
-        Assert.Contains("2 taken, 4 free", html);
+        var list = html[html.IndexOf("class=\"print-list\"", StringComparison.Ordinal)..];
+        var rows = System.Text.RegularExpressions.Regex.Matches(list, "<tr><td>(.*?)</td><td>(.*?)</td><td class=\"mono\">(.*?)</td></tr>")
+            .Select(m => $"{m.Groups[1].Value}|{m.Groups[2].Value}|{m.Groups[3].Value}").ToList();
+        // zone first (no zone last), then name; one row per person, nothing else
+        Assert.Equal(["ap13.anna|Alpha|AP13-DT-1", "ap13.cas|Alpha|", "ap13.bo||"], rows);
+        Assert.DoesNotContain("AP13-DT-2", list);
+        Assert.DoesNotContain("Screens", list);
+        Assert.DoesNotContain("Note", list);
+        Assert.DoesNotContain("free", list);
+        Assert.Contains("3 taken, 3 free", html);
     }
 
     [Fact]
