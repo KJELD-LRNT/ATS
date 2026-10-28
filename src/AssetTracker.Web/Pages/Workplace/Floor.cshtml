@@ -78,64 +78,56 @@
             </div>
         </div>
         @await Html.PartialAsync("_Legend")
-        <p class="hint wp-hint">Scroll to zoom, drag to move, double-click a room to zoom to it. Names and desktop tags are shortened to fit; where even that does not fit, the desk gets a number (see <em>Numbers on the map</em>). Click a seat to select it; Shift-click adds more, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
+        <p class="hint wp-hint">Scroll to zoom, drag to move, double-click a room to zoom to it. Names and desktop tags are shortened to fit; where even that does not fit, the desk gets a number (see <em>Numbers on the map</em>). Click a desk to open it; Shift-click adds more seats, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag a person, desktop or screen from the desk or the list onto another desk.</text> }</p>
     </section>
 
-    <aside class="wp-panel" aria-label="Status, placing and selection">
-        <div data-status-host>
-            @await Html.PartialAsync("_FloorStatus", Model)
-        </div>
-
-        @if (Model.CanEdit)
-        {
-            <section class="card wp-box wp-palette" aria-labelledby="wp-pal-h" data-palette data-palette-url="@Url.Page("Floor", "Palette", new { id = floor.Id })">
-                <h2 id="wp-pal-h">Place on the map</h2>
-                <div class="wp-tabs" role="group" aria-label="What to place">
-                    <button type="button" data-palette-kind="person" aria-pressed="true">People</button>
-                    <button type="button" data-palette-kind="desktop" aria-pressed="false">Desktops</button>
-                    <button type="button" data-palette-kind="screen" aria-pressed="false">Screens</button>
+    <aside class="wp-panel" aria-label="Desk, status, placing and selection">
+        <section class="card wp-box wp-desk" data-desk-view data-when="one" hidden aria-labelledby="wp-desk-h"
+                 data-spot-url="@Url.Page("Floor", "Spot", new { id = floor.Id })" data-search-url="@Url.Page("Floor", "DeskSearch", new { id = floor.Id })">
+            <div class="wp-desk-head">
+                <h2 id="wp-desk-h" data-desk-title>Desk</h2>
+                <button type="button" class="wp-desk-close" data-desk-close aria-label="Close the desk view (Esc)" title="Close (Esc)">@Ui.Icon("x", 16, 2)</button>
+            </div>
+            <p class="wp-desk-place" data-desk-place></p>
+            <p class="muted" data-spot-status>Loading…</p>
+            <div data-spot-body hidden>
+                <p class="wp-spot-kind" data-spot-kind hidden></p>
+                @foreach (var (slot, label, hint) in new[] { ("person", "Person", "Type a name…"), ("desktop", "Desktop", "Tag, serial or model…"), ("screen", "Screens", "Add a screen: tag or model…") })
+                {
+                    <div class="wp-slot" data-slot="@slot">
+                        <h3 class="wp-slot-h" id="wp-slot-@slot-h">@label</h3>
+                        <ul class="wp-items" data-slot-items aria-labelledby="wp-slot-@slot-h"></ul>
+                        @if (Model.CanEdit)
+                        {
+                            <div class="combo wp-slot-find" data-slot-find hidden>
+                                <div class="searchbox searchbox--wide">
+                                    @Ui.Icon("search", 16, 2)
+                                    <label for="wp-slot-@slot" class="visually-hidden" data-slot-label>@label for this desk</label>
+                                    <input id="wp-slot-@slot" type="search" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                                           aria-controls="wp-slot-@slot-list" placeholder="@hint" data-slot-input data-hint="@hint" />
+                                    <button type="button" class="btn--sm btn--link" data-slot-cancel hidden>Cancel</button>
+                                </div>
+                                <ul class="combo-list wp-slot-list" id="wp-slot-@slot-list" role="listbox" aria-label="Suggestions" hidden></ul>
+                            </div>
+                        }
+                    </div>
+                }
+                <ul class="wp-flags wp-flags--spot" data-spot-flags></ul>
+                @if (Model.CanEdit)
+                {
+                    <p class="hint wp-desk-keys">Type and press Enter to pick; Enter in an empty box goes to the next free desk.</p>
+                }
+                <div class="wp-desk-nav">
+                    <button type="button" class="btn--sm" data-desk-prev disabled>@Ui.Icon("chevron-left", 16, 2) Previous desk</button>
+                    <button type="button" class="btn--sm" data-desk-next>Next free desk @Ui.Icon("chevron-right", 16, 2)</button>
                 </div>
-                <div class="searchbox">
-                    @Ui.Icon("search", 16, 2)
-                    <label for="wp-pal-q" class="visually-hidden">Search the list</label>
-                    <input id="wp-pal-q" type="search" autocomplete="off" placeholder="Search name, tag or model" data-palette-q />
-                </div>
-                <p class="hint">Not placed yet@(" ")<span data-palette-scope>at @Model.View.SiteKey</span>. Drag onto a desk, or select a desk and click an entry.</p>
-                <ul class="wp-palette-list" data-palette-list aria-live="polite"></ul>
-            </section>
-            <form id="wp-assign-form" method="post" asp-page-handler="Assign" asp-route-id="@floor.Id" hidden>
-                <input type="hidden" name="workspotId" data-assign="workspotId" />
-                <input type="hidden" name="kind" data-assign="kind" />
-                <input type="hidden" name="targetId" data-assign="targetId" />
-            </form>
-            <form id="wp-release-form" method="post" asp-page-handler="Release" asp-route-id="@floor.Id" hidden>
-                <input type="hidden" name="assignmentId" data-release="assignmentId" />
-                <input type="hidden" name="workspotId" data-release="workspotId" />
-            </form>
-        }
-
-        <section class="card wp-box" data-when="none" aria-labelledby="wp-sel-h">
-            <h2 id="wp-sel-h">Selection</h2>
-            <p class="muted">Nothing selected. Click a seat, a table or a room on the map.</p>
+            </div>
         </section>
 
         <section class="card wp-box" data-when="ws" hidden aria-labelledby="wp-sel2-h">
-            <h2 id="wp-sel2-h">Selection</h2>
+            <h2 id="wp-sel2-h" data-sel-title>Selection</h2>
             <p class="wp-sel-summary" data-sel-summary></p>
-            <dl class="wp-facts" data-when="one" hidden>
-                <dt>Room</dt><dd data-fact="room"></dd>
-                <dt>Zone</dt><dd data-fact="zone"></dd>
-            </dl>
             <ul class="wp-selected" data-sel-list></ul>
-
-            <div class="wp-spot" data-when="one" hidden data-spot-url="@Url.Page("Floor", "Spot", new { id = floor.Id })">
-                <p class="muted" data-spot-status>Loading…</p>
-                <div data-spot-body hidden>
-                    <p class="wp-spot-kind" data-spot-kind></p>
-                    <ul class="wp-items" data-spot-items></ul>
-                    <ul class="wp-flags wp-flags--spot" data-spot-flags></ul>
-                </div>
-            </div>
 
             @if (Model.CanEdit)
             {
@@ -182,6 +174,48 @@
                 </details>
             }
         </section>
+
+        @if (Model.CanEdit)
+        {
+            <details class="card wp-box wp-palette" data-palette data-palette-url="@Url.Page("Floor", "Palette", new { id = floor.Id })">
+                <summary class="wp-palette-h">Place from a list</summary>
+                <div class="wp-tabs" role="group" aria-label="What to place">
+                    <button type="button" data-palette-kind="person" aria-pressed="true">People</button>
+                    <button type="button" data-palette-kind="desktop" aria-pressed="false">Desktops</button>
+                    <button type="button" data-palette-kind="screen" aria-pressed="false">Screens</button>
+                </div>
+                <div class="searchbox">
+                    @Ui.Icon("search", 16, 2)
+                    <label for="wp-pal-q" class="visually-hidden">Search the list</label>
+                    <input id="wp-pal-q" type="search" autocomplete="off" placeholder="Search name, tag or model" data-palette-q />
+                </div>
+                <p class="hint">Not placed yet@(" ")<span data-palette-scope>at @Model.View.SiteKey</span>. Drag onto a desk, or select a desk and click an entry.</p>
+                <ul class="wp-palette-list" data-palette-list aria-live="polite"></ul>
+            </details>
+            <form id="wp-assign-form" method="post" asp-page-handler="Assign" asp-route-id="@floor.Id" hidden>
+                <input type="hidden" name="workspotId" data-assign="workspotId" />
+                <input type="hidden" name="kind" data-assign="kind" />
+                <input type="hidden" name="targetId" data-assign="targetId" />
+            </form>
+            <form id="wp-replace-form" method="post" asp-page-handler="Replace" asp-route-id="@floor.Id" hidden>
+                <input type="hidden" name="workspotId" />
+                <input type="hidden" name="kind" />
+                <input type="hidden" name="targetId" />
+            </form>
+            <form id="wp-release-form" method="post" asp-page-handler="Release" asp-route-id="@floor.Id" hidden>
+                <input type="hidden" name="assignmentId" data-release="assignmentId" />
+                <input type="hidden" name="workspotId" data-release="workspotId" />
+            </form>
+        }
+
+        <section class="card wp-box" data-when="none" aria-labelledby="wp-sel-h">
+            <h2 id="wp-sel-h">Selection</h2>
+            <p class="muted">Nothing selected. Click a desk to see and fill it; Shift-click, a table or a room selects several seats.</p>
+        </section>
+
+        <div data-status-host>
+            @await Html.PartialAsync("_FloorStatus", Model)
+        </div>
 
         @if (Model.CanEdit)
         {

@@ -69,10 +69,13 @@ document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
 // createCombo wires one ARIA combobox: while typing (or on focus, when `browse` is set) it fetches JSON from the page's
 // handler, renders the rows, and calls `choose` for the picked one. Arrows move (rows that cannot be picked are skipped),
 // Enter picks, Escape closes. Both finders only enhance a plain GET form: without JavaScript the typed text is sent with
-// "Find" and searched on the server.
+// "Find" and searched on the server. Options used by the floor plan's desk view: `group(row)` puts a heading above each
+// run of rows with the same group, `autoActive` makes the first row that can be picked the active one as soon as text
+// is typed (so Enter picks it, also when pressed before the answer is in), `emptyText` may be a function of the text and
+// `browseOnClick` opens the browse list on a click or an arrow key instead of on focus.
 function createCombo(o) {
     var input = o.input, list = o.list;
-    var timer = null, controller = null, rows = [], active = -1;
+    var timer = null, controller = null, rows = [], active = -1, pending = false, enterPending = false;
 
     function make(tag, className, text) {
         var node = document.createElement(tag);
@@ -120,11 +123,21 @@ function createCombo(o) {
         list.textContent = "";
         active = -1;
         if (rows.length === 0) {
-            var none = make("li", "combo-empty", o.emptyText);
+            var none = make("li", "combo-empty", typeof o.emptyText === "function" ? o.emptyText(input.value.trim()) : o.emptyText);
             none.setAttribute("role", "presentation");
             list.appendChild(none);
         }
+        var lastGroup = null;
         rows.forEach(function (row, i) {
+            if (o.group) {
+                var g = o.group(row);
+                if (g && g !== lastGroup) {
+                    var heading = make("li", "combo-group", g);
+                    heading.setAttribute("role", "presentation");
+                    list.appendChild(heading);
+                }
+                lastGroup = g;
+            }
             var pickable = o.pickable ? o.pickable(row) : true;
             var option = make("li", "combo-option" + (pickable ? "" : " combo-option--disabled"));
             option.id = o.idPrefix + i;
@@ -138,6 +151,7 @@ function createCombo(o) {
         });
         list.hidden = false;
         input.setAttribute("aria-expanded", "true");
+        if (o.autoActive && input.value.trim() !== "") setActive(0);
     }
 
     function search() {
@@ -155,27 +169,43 @@ function createCombo(o) {
         }).then(function (found) {
             // Ignore an answer to text that has changed meanwhile.
             if (input.value.trim() !== q) return;
+            pending = false;
             rows = found;
             render();
+            if (enterPending) {
+                enterPending = false;
+                if (active >= 0) pick(rows[active]);
+            }
         }).catch(function (err) {
             if (err && err.name === "AbortError") return;
+            enterPending = false;
             close(); // the Find button still searches the typed text
         });
     }
 
     input.addEventListener("input", function () {
+        pending = true;
         if (o.edited) o.edited();
         clearTimeout(timer);
         timer = setTimeout(search, 200);
     });
 
-    if (o.browse) input.addEventListener("focus", function () { if (input.value.trim() === "") search(); });
+    // Browsing (the list with no text) opens on focus, or with `browseOnClick` only on a click or the arrow keys, so a
+    // box that gets the focus by itself does not cover what is below it.
+    if (o.browse && !o.browseOnClick) input.addEventListener("focus", function () { if (input.value.trim() === "") search(); });
+    if (o.browse && o.browseOnClick) input.addEventListener("click", function () { if (input.value.trim() === "" && list.hidden) search(); });
 
     input.addEventListener("keydown", function (e) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             if (list.hidden) { if (rows.length) render(); else { search(); return; } }
             e.preventDefault();
             if (active < 0) setActive(e.key === "ArrowDown" ? 0 : -1); else step(e.key === "ArrowDown" ? 1 : -1);
+        } else if (e.key === "Enter" && o.autoActive && input.value.trim() !== "" && (pending || list.hidden)) {
+            // Typed and pressed Enter before the suggestions were in: pick the first one when they arrive.
+            e.preventDefault();
+            enterPending = true;
+            clearTimeout(timer);
+            search();
         } else if (e.key === "Enter" && !list.hidden && active >= 0) {
             e.preventDefault();
             pick(rows[active]);
@@ -187,7 +217,7 @@ function createCombo(o) {
 
     input.addEventListener("blur", close);
 
-    return { make: make, refresh: function () { clearTimeout(timer); search(); }, close: close };
+    return { make: make, refresh: function () { clearTimeout(timer); search(); }, close: close, input: input, reset: function () { clearTimeout(timer); rows = []; pending = false; enterPending = false; close(); } };
 }
 
 // People typeahead ("Who receives it?"). /Loans/Checkout?handler=People returns matching people with their site; picking
@@ -1091,11 +1121,16 @@ function userBox(svg, el) {
     }
 
     // The canvas fills the window below the top bar and the page header (at least 480 px); in full screen, all of it.
+    // A wide drawing would leave empty bands above and below it at Fit, so outside full screen the canvas is no taller
+    // than the drawing's content box at the canvas's width (still at least 480 px).
     function sizeCanvas() {
         var top = wrap.getBoundingClientRect().top + (full ? 0 : window.scrollY);
         var below = full ? 12 + (root.querySelector(".wp-stage > .wp-legend") || { offsetHeight: 0 }).offsetHeight + 10 : 16;
         var h = window.innerHeight - top - below;
-        wrap.style.height = Math.round(full ? Math.max(240, h) : Math.max(480, h)) + "px";
+        if (full) { wrap.style.height = Math.round(Math.max(240, h)) + "px"; return; }
+        var width = wrap.getBoundingClientRect().width;
+        var drawing = width > 0 ? width * content.h / content.w + 2 : h;
+        wrap.style.height = Math.round(Math.max(480, Math.min(h, drawing))) + "px";
     }
 
     function userPoint(clientX, clientY) {
@@ -1178,7 +1213,8 @@ function userBox(svg, el) {
     function updatePanel() {
         var s = seats(), e = shapes();
         show('[data-when="none"]', s.length === 0 && e.length === 0);
-        show('[data-when="ws"]', s.length > 0);
+        // One desk: the desk view (and, for editors, its zone and seat settings); several seats: the selection box.
+        show('[data-when="ws"]', s.length > 1 || (s.length === 1 && editable));
         show('[data-when="one"]', s.length === 1);
         show('[data-when="zoned"]', s.some(function (x) { return x.hasAttribute("data-zone"); }));
         show('[data-when="on"]', s.some(function (x) { return !x.classList.contains("fp-ws-off"); }));
@@ -1191,8 +1227,10 @@ function userBox(svg, el) {
         all('[data-ids="ws"]').forEach(function (f) { f.value = s.map(function (x) { return x.getAttribute("data-ws"); }).join(","); });
         all('[data-ids="el"]').forEach(function (f) { f.value = e.map(function (x) { return x.id; }).join(","); });
 
+        var title = root.querySelector("[data-sel-title]");
+        if (title) title.textContent = s.length === 1 ? "Zone and seat settings" : "Selection";
         var summary = root.querySelector("[data-sel-summary]");
-        if (summary) summary.textContent = s.length === 1 ? "" : describe(s);
+        if (summary) { summary.textContent = s.length === 1 ? "" : describe(s); summary.hidden = s.length === 1; }
         var list = root.querySelector("[data-sel-list]");
         if (list) {
             list.textContent = "";
@@ -1202,22 +1240,16 @@ function userBox(svg, el) {
                 list.appendChild(li);
             });
             if (s.length > 12) { var more = document.createElement("li"); more.textContent = "… and " + (s.length - 12) + " more"; list.appendChild(more); }
+            list.hidden = s.length < 2;
         }
         var elSummary = root.querySelector("[data-el-summary]");
         if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
         syncZoneForm(s);
 
-        // In full screen the panel is an overlay: show the selection at once.
-        var selBox = root.querySelector('[data-when="ws"]');
+        // The desk view (or the selection) is at the top of the panel; in full screen the panel is an overlay.
         var panel = root.querySelector(".wp-panel");
-        if (full && panel && selBox && s.length) panel.scrollTop = Math.max(0, selBox.offsetTop - panel.offsetTop - 8);
-        if (s.length === 1) {
-            var one = s[0];
-            var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
-            fact("room", roomOf(one));
-            fact("zone", one.hasAttribute("data-zone") ? zoneName(one.getAttribute("data-zone")) : "");
-            loadSpot(one);
-        }
+        if (panel && s.length) panel.scrollTop = 0;
+        if (s.length === 1) openDesk(s[0]); else closeDesk();
     }
 
     function roomOf(seat) { return seat.getAttribute("data-room-name") || seat.getAttribute("data-room") || ""; }
@@ -1268,12 +1300,27 @@ function userBox(svg, el) {
     }
     if (zoneForm) zoneForm.querySelector("[data-zone-select]").addEventListener("change", syncZoneNew);
 
-    // ---- what sits at the selected seat -------------------------------------------------------------------------
+    // ---- the desk view: one desk, its person, desktop and screens ----------------------------------------------------
+    // Click a desk: the map zooms to its table and the panel shows what is there. Editors fill each slot with a search
+    // box (Enter picks and moves to the next slot; Enter in an empty box goes to the next free desk), replace the person
+    // or the desktop, release anything, and drag a card onto another desk to move it. Managers see the same, read only.
 
-    var spotHolder = root.querySelector("[data-spot-url]");
-    var spotToken = 0;
+    var deskView = root.querySelector("[data-desk-view]");
     var assignForm = document.getElementById("wp-assign-form");
+    var replaceForm = document.getElementById("wp-replace-form");
     var releaseForm = document.getElementById("wp-release-form");
+    var SLOTS = ["person", "desktop", "screen"];
+    var GROUPS = { free: "Not placed yet", elsewhere: "Placed elsewhere", here: "At this desk", blocked: "Cannot be placed here" };
+    var deskSeat = null;      // the seat in the desk view
+    var deskWs = null;        // its workspot id (the element is swapped when the map is refreshed)
+    var deskData = null;      // what the server said is there
+    var deskToken = 0;
+    var deskTrail = [];       // desks shown before, for "Previous desk"
+    var goingBack = false;
+    var pendingFocus = null;  // { slot, chain }: the slot to focus once the desk view is drawn again
+    var replacing = null;     // "person" or "desktop" while its Replace box is open
+    var combos = {};
+    var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
     function node(tag, cls, text) {
         var n = document.createElement(tag);
@@ -1282,77 +1329,221 @@ function userBox(svg, el) {
         return n;
     }
 
-    function item(kind, title, meta, drag, assignmentId, workspotId) {
+    function icon(kind) {
+        var i = node("span", "wp-pal-icon wp-pal-icon--" + kind, kind === "person" ? "P" : kind === "desktop" ? "D" : "S");
+        i.setAttribute("aria-hidden", "true");
+        return i;
+    }
+
+    function slotEl(kind) { return deskView ? deskView.querySelector('[data-slot="' + kind + '"]') : null; }
+
+    // What sits in a slot: a card with the name or tag and the job title or model. Editors drag it onto another desk to
+    // move it, and get Replace (person, desktop) and Release.
+    function card(kind, title, meta, dragId, assignmentId) {
         var li = node("li", "wp-item");
-        if (drag && editable) {
+        if (editable && dragId) {
             li.setAttribute("data-drag-kind", kind);
-            li.setAttribute("data-drag-id", String(drag));
+            li.setAttribute("data-drag-id", String(dragId));
             li.setAttribute("data-drag-title", title);
             li.title = "Drag onto another desk to move";
         }
-        var icon = node("span", "wp-pal-icon wp-pal-icon--" + kind);
-        icon.setAttribute("aria-hidden", "true");
-        icon.textContent = kind === "person" ? "P" : kind === "desktop" ? "D" : "S";
-        li.appendChild(icon);
+        li.appendChild(icon(kind));
         var text = node("span", "wp-item-text");
         text.appendChild(node("strong", null, title));
         if (meta) text.appendChild(node("span", "muted", meta));
         li.appendChild(text);
-        if (assignmentId && releaseForm) {
+        if (editable && assignmentId && releaseForm) {
+            var actions = node("span", "wp-item-actions");
+            if (kind !== "screen" && replaceForm && deskData && deskData.isActive && deskData.isDesk) {
+                var r = node("button", "btn--sm", "Replace");
+                r.type = "button";
+                r.setAttribute("data-replace", kind);
+                r.setAttribute("aria-label", "Replace " + title);
+                actions.appendChild(r);
+            }
             var b = node("button", "btn--sm", "Release");
             b.type = "button";
-            b.setAttribute("data-release", String(assignmentId));
+            b.setAttribute("data-release-id", String(assignmentId));
+            b.setAttribute("data-release-name", title);
+            b.setAttribute("data-release-kind", kind);
             b.setAttribute("aria-label", "Release " + title);
-            b.addEventListener("click", function () { release(assignmentId, workspotId); });
-            li.appendChild(b);
+            actions.appendChild(b);
+            li.appendChild(actions);
         }
         return li;
     }
 
-    function empty(text) { return node("li", "wp-item wp-item-empty", text); }
+    // "Finance · zone Finance": the room and the zone; a desk has no number of its own.
+    function placeLine(room, zone) { return [room, zone ? "zone " + zone : null].filter(Boolean).join(" · "); }
 
-    function renderSpot(d) {
-        root.querySelector("[data-spot-status]").hidden = true;
-        root.querySelector("[data-spot-body]").hidden = false;
-        var kind = !d.isActive ? "Switched-off seat" : d.isDesk ? "Desk" : "Seat, not a desk: nobody is placed here";
-        root.querySelector("[data-spot-kind]").textContent = kind + (d.place ? " · " + d.place : "") + ".";
-        var items = root.querySelector("[data-spot-items]");
+    function fillSlot(kind, cards, searchOpen, emptyText, isDesk) {
+        var slot = slotEl(kind);
+        if (!slot) return;
+        var items = slot.querySelector("[data-slot-items]");
         items.textContent = "";
-        if (d.person) {
-            items.appendChild(item("person", d.person.name, [d.person.isActive ? null : "No longer works here", d.person.jobTitle, d.person.siteKey].filter(Boolean).join(" · "),
-                d.person.personId, d.person.assignmentId, d.workspotId));
-        } else if (d.isDesk) {
-            items.appendChild(empty("Nobody sits here: free desk."));
-        }
-        if (d.desktop) items.appendChild(item("desktop", d.desktop.tag, ["Desktop", d.desktop.model].filter(Boolean).join(" · "), d.desktop.assetId, d.desktop.assignmentId, d.workspotId));
-        else if (d.isDesk) items.appendChild(empty("No desktop."));
-        d.screens.forEach(function (sc) { items.appendChild(item("screen", sc.tag, ["Screen", sc.model].filter(Boolean).join(" · "), sc.assetId, sc.assignmentId, d.workspotId)); });
-        if (d.isDesk && d.screens.length === 0) items.appendChild(empty("No screen."));
-        var flags = root.querySelector("[data-spot-flags]");
-        flags.textContent = "";
-        d.flags.forEach(function (f) { flags.appendChild(node("li", null, f)); });
+        cards.forEach(function (c) { items.appendChild(c); });
+        if (cards.length === 0 && !searchOpen) items.appendChild(node("li", "wp-item wp-item-empty", emptyText));
+        items.hidden = items.children.length === 0;
+        slot.hidden = !isDesk && cards.length === 0;
+        var find = slot.querySelector("[data-slot-find]");
+        if (!find) return;
+        var wasOpen = !find.hidden;
+        find.hidden = !searchOpen;
+        var input = find.querySelector("[data-slot-input]");
+        var swap = replacing === kind && cards.length > 0;
+        input.placeholder = swap ? (kind === "person" ? "Who sits here instead? Type a name…" : "Which desktop instead? Type a tag…") : input.getAttribute("data-hint");
+        find.querySelector("[data-slot-label]").textContent = swap ? "Replace with" : kind === "screen" ? "Add a screen" : "Find a " + kind;
+        find.querySelector("[data-slot-cancel]").hidden = !swap;
+        if (!searchOpen || !wasOpen) { input.value = ""; if (combos[kind]) combos[kind].reset(); }
     }
 
-    function loadSpot(seat) {
-        if (!spotHolder) return;
-        var status = root.querySelector("[data-spot-status]");
-        var token = ++spotToken;
-        status.hidden = false;
-        status.textContent = "Loading…";
-        root.querySelector("[data-spot-body]").hidden = true;
-        fetch(spotHolder.getAttribute("data-spot-url") + "&workspotId=" + encodeURIComponent(seat.getAttribute("data-ws")), {
+    function renderDesk(d) {
+        deskData = d;
+        deskView.querySelector("[data-spot-status]").hidden = true;
+        deskView.querySelector("[data-spot-body]").hidden = false;
+        var open = editable && d.isActive && d.isDesk;
+        var kindLine = deskView.querySelector("[data-spot-kind]");
+        kindLine.hidden = d.isActive && d.isDesk;
+        kindLine.textContent = !d.isActive ? "This seat is switched off: nothing new is placed here." : !d.isDesk ? "This seat is not a desk: nobody is placed here." : "";
+        deskView.querySelector("[data-desk-title]").textContent = d.isDesk && d.isActive ? "Desk" : "Seat";
+        deskView.querySelector("[data-desk-place]").textContent = placeLine(d.roomName, d.zoneName) || d.floorName;
+        var p = d.person;
+        fillSlot("person", p ? [card("person", p.name, [p.isActive ? null : "No longer works here", p.jobTitle || p.username, p.siteKey].filter(Boolean).join(" · "),
+            p.personId, p.assignmentId)] : [], open && (!p || replacing === "person"), d.isDesk ? "Nobody sits here: free desk." : "Nobody.", d.isDesk);
+        var dt = d.desktop;
+        fillSlot("desktop", dt ? [card("desktop", dt.tag, [dt.model, dt.description].filter(Boolean).join(" · ") || dt.type, dt.assetId, dt.assignmentId)] : [],
+            open && (!dt || replacing === "desktop"), "No desktop.", d.isDesk);
+        fillSlot("screen", d.screens.map(function (sc) {
+            return card("screen", sc.tag, [sc.model, sc.description].filter(Boolean).join(" · ") || sc.type, sc.assetId, sc.assignmentId);
+        }), open, "No screen.", d.isDesk);
+        var flags = deskView.querySelector("[data-spot-flags]");
+        flags.textContent = "";
+        d.flags.forEach(function (f) { flags.appendChild(node("li", null, f)); });
+        flags.hidden = d.flags.length === 0;
+        deskView.querySelector("[data-desk-prev]").disabled = deskTrail.length === 0;
+        if (pendingFocus) { var f = pendingFocus; pendingFocus = null; focusSlot(f.slot, f.chain); }
+    }
+
+    // Focuses the search box of a slot, or of the next one that is open (person, desktop, screen). Opening a desk with a
+    // click only goes as far as the desktop: a full desk keeps the focus on the map.
+    function focusSlot(kind, chain) {
+        for (var i = SLOTS.indexOf(kind); i >= 0 && i < SLOTS.length; i++) {
+            if (!chain && SLOTS[i] === "screen") return;
+            var slot = slotEl(SLOTS[i]);
+            var find = slot && slot.querySelector("[data-slot-find]");
+            if (find && !find.hidden && !slot.hidden) { find.querySelector("[data-slot-input]").focus({ preventScroll: false }); return; }
+        }
+    }
+
+    function openDesk(seat) {
+        if (!deskView) return;
+        var ws = seat.getAttribute("data-ws");
+        if (deskWs !== ws) {
+            if (deskWs && !goingBack) { deskTrail.push(deskWs); if (deskTrail.length > 100) deskTrail.shift(); }
+            replacing = null;
+            Object.keys(combos).forEach(function (k) { combos[k].reset(); combos[k].input.value = ""; });
+        }
+        goingBack = false;
+        var same = deskWs === ws && deskData && String(deskData.workspotId) === ws;
+        deskSeat = seat;
+        deskWs = ws;
+        if (!same) {
+            // Show the room and zone at once; the rest comes from the server.
+            deskData = null;
+            var zone = seat.hasAttribute("data-zone") ? zoneName(seat.getAttribute("data-zone")) : "";
+            deskView.querySelector("[data-desk-title]").textContent = seat.hasAttribute("data-desk") ? "Desk" : "Seat";
+            deskView.querySelector("[data-desk-place]").textContent = placeLine(roomOf(seat), zone);
+            var status = deskView.querySelector("[data-spot-status]");
+            status.hidden = false;
+            status.textContent = "Loading…";
+            deskView.querySelector("[data-spot-body]").hidden = true;
+        }
+        var token = ++deskToken;
+        fetch(deskView.getAttribute("data-spot-url") + "&workspotId=" + encodeURIComponent(ws), {
             headers: { Accept: "application/json" }, credentials: "same-origin"
         }).then(function (res) {
             if (!res.ok) throw new Error("spot failed");
             return res.json();
         }).then(function (d) {
-            if (token === spotToken) renderSpot(d);
+            if (token === deskToken && deskWs === ws) renderDesk(d);
         }).catch(function () {
-            if (token === spotToken) status.textContent = "Could not load what is at this seat.";
+            if (token !== deskToken) return;
+            var status = deskView.querySelector("[data-spot-status]");
+            status.hidden = false;
+            status.textContent = "Could not load what is at this desk.";
         });
     }
 
-    // ---- placing and releasing (fetch, then swap in the fresh map) ----------------------------------------------
+    function closeDesk() {
+        if (!deskView) return;
+        deskToken++;
+        deskSeat = null;
+        deskWs = null;
+        deskData = null;
+        replacing = null;
+        pendingFocus = null;
+        Object.keys(combos).forEach(function (k) { combos[k].reset(); });
+    }
+
+    // Zooms to the desk's table, unless the table is already in view at a closer zoom. In full screen the panel covers
+    // the right of the map, so the table goes to the middle of what is left.
+    function zoomToDesk(seat) {
+        var table = seat.closest("[data-kind=table]");
+        if (!table && seat.getAttribute("data-table")) table = svg.querySelector('[data-kind=table][data-id="' + esc(seat.getAttribute("data-table")) + '"]');
+        var b = boundsOf(table ? [table, seat] : [seat]);
+        var panel = root.querySelector(".wp-panel");
+        var cover = full && panel ? panel.getBoundingClientRect().width + 12 : 0;
+        var cw = canvas.getBoundingClientRect().width || 1;
+        var visibleW = view.w * Math.max(0.3, 1 - cover / cw);
+        var inView = b.x >= view.x && b.y >= view.y && b.x + b.w <= view.x + visibleW && b.y + b.h <= view.y + view.h;
+        if (inView && view.w <= fitW / 2.5) return;
+        // The table with its neighbours around it, not filling the canvas.
+        var a = aspect();
+        var w = Math.max(b.w * 2.6, b.h * 2.6 / a, fitW / 4);
+        setView(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - w * a / 2, w);
+        if (cover) setView(view.x + view.w * cover / cw / 2, view.y, view.w);
+    }
+
+    function showDesk(seat, focus) {
+        clearHits();
+        pendingFocus = focus || null;
+        setSelection([seat]);
+        zoomToDesk(seat);
+    }
+
+    // The next free desk: at the same table first, then in the same room, then anywhere on the floor (in drawing order,
+    // starting after this desk).
+    function nextFreeDesk(from) {
+        var seatsInOrder = all("[data-ws]", svg);
+        var at = seatsInOrder.indexOf(from);
+        var free = seatsInOrder.filter(function (x) { return x !== from && x.hasAttribute("data-desk") && x.classList.contains("fp-free"); });
+        function after(list) {
+            if (list.length === 0) return null;
+            var later = list.filter(function (x) { return seatsInOrder.indexOf(x) > at; });
+            return later[0] || list[0];
+        }
+        var table = from.getAttribute("data-table"), room = from.getAttribute("data-room");
+        return (table && after(free.filter(function (x) { return x.getAttribute("data-table") === table; }))) ||
+            (room && after(free.filter(function (x) { return x.getAttribute("data-room") === room; }))) ||
+            after(free);
+    }
+
+    function goNextFree() {
+        if (!deskSeat) return;
+        var next = nextFreeDesk(deskSeat);
+        if (!next) { say("There is no other free desk on this floor."); return; }
+        showDesk(next, editable ? { slot: "person", chain: false } : null);
+    }
+
+    function goBack() {
+        var seat = null;
+        while (deskTrail.length && !seat) seat = svg.querySelector('[data-ws="' + esc(deskTrail.pop()) + '"]');
+        if (!seat) return;
+        goingBack = true;
+        showDesk(seat, editable ? { slot: "person", chain: false } : null);
+    }
+
+    // ---- placing, replacing and releasing (fetch, then swap in the fresh map) ------------------------------------
 
     function post(form, values) {
         Object.keys(values).forEach(function (k) {
@@ -1367,6 +1558,7 @@ function userBox(svg, el) {
         });
     }
 
+    // A drop on the map or a click in the list.
     function place(seat, kind, id) {
         if (!assignForm) return;
         var ws = seat.getAttribute("data-ws");
@@ -1375,10 +1567,94 @@ function userBox(svg, el) {
             .catch(function (err) { say(err.message, true); });
     }
 
-    function release(assignmentId, workspotId) {
-        post(releaseForm, { assignmentId: assignmentId, workspotId: workspotId })
-            .then(function (body) { say(body.message); refresh(String(workspotId)); })
+    // A pick in a slot of the desk view: place it, or replace what is there; then on to the next slot.
+    function pickFor(kind, row) {
+        if (!deskWs || !assignForm) return;
+        var ws = deskWs;
+        var current = deskData && (kind === "person" ? deskData.person : kind === "desktop" ? deskData.desktop : null);
+        var form = replacing === kind && current ? replaceForm : assignForm;
+        post(form, { workspotId: ws, kind: kind, targetId: row.id }).then(function (body) {
+            replacing = null;
+            pendingFocus = { slot: kind === "person" ? "desktop" : "screen", chain: true };
+            say(body.message);
+            refresh(ws);
+        }).catch(function (err) {
+            say(err.message, true);
+            focusSlot(kind, true);
+        });
+    }
+
+    function release(assignmentId, name, kind) {
+        var ws = deskWs;
+        post(releaseForm, { assignmentId: assignmentId, workspotId: ws })
+            .then(function () { pendingFocus = { slot: kind, chain: true }; say("Released " + name + " from this desk."); refresh(ws); })
             .catch(function (err) { say(err.message, true); });
+    }
+
+    function startReplace(kind) {
+        replacing = kind;
+        if (deskData) renderDesk(deskData);
+        focusSlot(kind, true);
+    }
+
+    function cancelReplace() {
+        var kind = replacing;
+        replacing = null;
+        if (deskData) renderDesk(deskData);
+        var b = kind && slotEl(kind) && slotEl(kind).querySelector("[data-replace]");
+        if (b) b.focus();
+    }
+
+    if (deskView) {
+        deskView.addEventListener("click", function (e) {
+            var t = e.target instanceof Element ? e.target : null;
+            if (!t) return;
+            var rel = t.closest("[data-release-id]");
+            if (rel) { release(rel.getAttribute("data-release-id"), rel.getAttribute("data-release-name"), rel.getAttribute("data-release-kind")); return; }
+            var rep = t.closest("[data-replace]");
+            if (rep) { startReplace(rep.getAttribute("data-replace")); return; }
+            if (t.closest("[data-slot-cancel]")) { cancelReplace(); return; }
+            if (t.closest("[data-desk-close]")) { setSelection([]); canvas.focus({ preventScroll: true }); return; }
+            if (t.closest("[data-desk-next]")) { goNextFree(); return; }
+            if (t.closest("[data-desk-prev]")) goBack();
+        });
+
+        if (editable) SLOTS.forEach(function (kind) {
+            var slot = slotEl(kind);
+            var input = slot && slot.querySelector("[data-slot-input]");
+            if (!input) return;
+            combos[kind] = createCombo({
+                input: input, list: slot.querySelector(".combo-list"), min: 1, browse: true, browseOnClick: true, autoActive: true,
+                idPrefix: "wp-slot-" + kind + "-opt-",
+                emptyText: function (q) {
+                    return q ? "Nothing found." : kind === "person" ? "Everyone at this site is placed." : kind === "desktop" ? "No desktops left to place at this site." : "No screens left to place at this site.";
+                },
+                url: function (q) {
+                    return deskView.getAttribute("data-search-url") + "&workspotId=" + encodeURIComponent(deskWs || "") + "&kind=" + kind + "&q=" + encodeURIComponent(q);
+                },
+                pickable: function (r) { return r.canPick; },
+                group: function (r) { return GROUPS[r.group]; },
+                render: function (r, option) {
+                    option.classList.add("wp-cand");
+                    option.appendChild(icon(r.kind));
+                    var text = node("span", "wp-cand-text");
+                    text.appendChild(node("span", "combo-name", r.title));
+                    var meta = [r.subtitle, r.siteKey].filter(Boolean).join(" · ");
+                    if (meta) text.appendChild(node("span", "combo-meta", meta));
+                    var where = r.group === "elsewhere" ? (r.place || "Another desk") + " – move here"
+                        : r.group === "here" ? "Here at this desk" : r.reason || (r.place ? "At " + r.place : "");
+                    if (r.group === "blocked" && r.reason && r.place) where = r.reason + " (at " + r.place + ")";
+                    if (where) text.appendChild(node("span", "wp-cand-where wp-cand-where--" + r.group, where));
+                    option.appendChild(text);
+                },
+                choose: function (r) { input.value = ""; combos[kind].reset(); pickFor(kind, r); }
+            });
+            input.addEventListener("keydown", function (e) {
+                if (e.defaultPrevented) return;
+                if (e.key === "Enter" && input.value.trim() === "") { e.preventDefault(); goNextFree(); }
+                else if (e.key === "Escape" && replacing === kind) { e.preventDefault(); cancelReplace(); }
+            });
+        });
     }
 
     function refresh(selectWs) {
@@ -1399,13 +1675,14 @@ function userBox(svg, el) {
             if (host) host.innerHTML = parts[1];
             syncHighlightButtons();
             selected = [];
+            // The restored selection opens the desk view again (updatePanel), where pendingFocus is picked up.
             setSelection(keep.map(function (id) { return svg.querySelector('[data-ws="' + esc(id) + '"]'); }).filter(Boolean));
             relabel(true);
             if (palette) palette.reload();
         }).catch(function () { window.location.reload(); });
     }
 
-    // ---- the drag-and-drop list ---------------------------------------------------------------------------------
+    // ---- the list ("Place from a list"): a second way to place, collapsed by default ---------------------------------
 
     var palette = null;
     var palRoot = root.querySelector("[data-palette]");
@@ -1417,6 +1694,7 @@ function userBox(svg, el) {
         var PAL_EMPTY = { person: "Everyone is placed.", desktop: "No desktops left to place.", screen: "No screens left to place." };
 
         var load = function () {
+            if (!palRoot.open) return; // loaded when opened
             var token = ++palToken;
             var q = palInput.value.trim();
             fetch(palRoot.getAttribute("data-palette-url") + "&kind=" + palKind + "&q=" + encodeURIComponent(q), {
@@ -1432,9 +1710,7 @@ function userBox(svg, el) {
                     b.setAttribute("data-drag-kind", r.kind);
                     b.setAttribute("data-drag-id", String(r.id));
                     b.setAttribute("data-drag-title", r.title);
-                    var icon = node("span", "wp-pal-icon wp-pal-icon--" + r.kind, r.kind === "person" ? "P" : r.kind === "desktop" ? "D" : "S");
-                    icon.setAttribute("aria-hidden", "true");
-                    b.appendChild(icon);
+                    b.appendChild(icon(r.kind));
                     var text = node("span", "wp-pal-text");
                     text.appendChild(node("strong", null, r.title));
                     var meta = [r.subtitle, r.siteKey].filter(Boolean).join(" · ");
@@ -1446,6 +1722,7 @@ function userBox(svg, el) {
             }).catch(function () { if (token === palToken) palList.textContent = ""; });
         };
         palette = { reload: load };
+        palRoot.addEventListener("toggle", load);
 
         all("[data-palette-kind]", palRoot).forEach(function (tab) {
             tab.addEventListener("click", function () {
@@ -1466,7 +1743,6 @@ function userBox(svg, el) {
             }
             place(s[0], b.getAttribute("data-drag-kind"), b.getAttribute("data-drag-id"));
         });
-        load();
     }
 
     // Dragging an entry (from the list, or a person, desktop or screen at the selected seat) onto a desk. Pointer events,
@@ -1491,7 +1767,10 @@ function userBox(svg, el) {
     root.addEventListener("pointerdown", function (e) {
         if (!editable || (e.button !== undefined && e.button !== 0)) return;
         var it = e.target.closest("[data-drag-kind]");
-        if (!it || e.target.closest("[data-release]")) return;
+        if (!it) return;
+        var button = e.target.closest("button");
+        if (button && button !== it) return; // Replace and Release on a card
+
         drag = { kind: it.getAttribute("data-drag-kind"), id: it.getAttribute("data-drag-id"), title: it.getAttribute("data-drag-title"),
             x: e.clientX, y: e.clientY, pointerId: e.pointerId, started: false };
     });
@@ -1727,6 +2006,7 @@ function userBox(svg, el) {
         var hit = resolve(g.target);
         if (hit.length === 0) { if (!g.shift) setSelection([]); }
         else if (g.shift) toggle(hit);
+        else if (hit.length === 1 && hit[0].hasAttribute("data-ws")) showDesk(hit[0], editable && !coarse ? { slot: "person", chain: false } : null);
         else setSelection(hit);
     }
 
@@ -1751,15 +2031,15 @@ function userBox(svg, el) {
         e.preventDefault();
     });
 
-    // Esc undoes one thing at a time: a search list closes itself first (it handles the key), then print-area mode,
-    // search highlights, the selection and last full screen.
+    // Esc undoes one thing at a time: a search list closes itself first (it handles the key; in the desk view a Replace
+    // box closes next), then print-area mode, search highlights, the desk view or selection and last full screen.
     document.addEventListener("keydown", function (e) {
         if (e.key !== "Escape" || e.defaultPrevented) return;
         var t = e.target instanceof Element ? e.target : null;
-        if (t && t.closest("input, textarea, select") && !t.closest("[data-workplace-find]")) return;
+        if (t && t.closest("input, textarea, select") && !t.closest("[data-workplace-find], [data-slot-find]")) return;
         if (printMode) { printMode = false; canvas.classList.remove("is-print-area"); }
         else if (svg.querySelector(".is-hit")) clearHits();
-        else if (selected.length) setSelection([]);
+        else if (selected.length) { setSelection([]); if (t && deskView && deskView.contains(t)) canvas.focus({ preventScroll: true }); }
         else if (full) setFull(false);
         else return;
         e.preventDefault();
