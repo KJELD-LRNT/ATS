@@ -808,6 +808,7 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .wp-sel-summary { font-weight: 600; margin: 0 0 6px; }
 .wp-zone-set { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
 .wp-zone-set .hint { margin: 0; }
+.wp-sel-summary[hidden] + .wp-selected[hidden] + .wp-zone-set { margin-top: 0; border-top: 0; padding-top: 0; }
 .wp-zones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .wp-zone-show { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: 0; padding: 6px 4px;
     border-radius: var(--radius); cursor: pointer; font: inherit; color: inherit; }
@@ -920,15 +921,18 @@ button.wp-stat:hover { background: var(--ground); }
 .wp-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 .wp-palette .searchbox { margin-bottom: 6px; }
 .wp-palette-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; }
-.wp-pal-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius);
-    background: var(--surface); font: inherit; color: inherit; text-align: left; cursor: grab; touch-action: none; min-height: 0; }
+/* Every row the same way: icon, name, muted second line, all left-aligned (a button centres its content by default). */
+.wp-pal-item { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 6px 10px; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); font: inherit; color: inherit; text-align: left; cursor: grab; touch-action: none;
+    min-height: 48px; white-space: normal; }
 .wp-pal-item:hover { border-color: var(--accent); background: var(--accent-tint); }
 .wp-pal-item:active { cursor: grabbing; }
 .wp-pal-icon { width: 26px; height: 26px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; }
 .wp-pal-icon--person { background: #1F4E79; }
 .wp-pal-icon--desktop { background: #334155; }
 .wp-pal-icon--screen { background: #0E7490; }
-.wp-pal-text { display: flex; flex-direction: column; min-width: 0; }
+.wp-pal-text { display: flex; flex-direction: column; align-items: flex-start; flex: 1 1 auto; min-width: 0; text-align: left; }
+.wp-pal-text strong, .wp-pal-text span { max-width: 100%; }
 .wp-pal-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wp-pal-text span { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wp-pal-empty { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
@@ -939,12 +943,48 @@ button.wp-stat:hover { background: var(--ground); }
 /* The selected seat: who and what is there. */
 .wp-spot-kind { font-size: 13px; color: var(--ink-3); }
 .wp-items { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.wp-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); }
-.wp-item[data-drag] { cursor: grab; touch-action: none; }
-.wp-item-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.wp-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.wp-item[data-drag-kind] { cursor: grab; touch-action: none; }
+/* The name gets the width it needs; Replace and Release go to a line of their own when the panel is narrow. */
+.wp-item-text { display: flex; flex-direction: column; flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; }
+.wp-item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; flex: 0 0 auto; margin-left: auto; }
+.wp-item-actions .btn--sm { min-height: 32px; padding: 0 10px; }
 .wp-item-text .muted { font-size: 13px; }
 .wp-item-empty { color: var(--ink-3); border-style: dashed; }
 .wp-flags--spot { margin-top: 8px; }
+.wp-flags--spot[hidden] { display: none; }
+
+/* The desk view: one desk, its person, desktop and screens, each a slot with a search box. */
+.wp-desk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wp-desk-head h2 { margin: 0; }
+.wp-desk-close { min-height: 36px; min-width: 36px; padding: 0; }
+.wp-box .wp-desk-place { font-weight: 600; margin: 0 0 4px; overflow-wrap: anywhere; }
+.wp-slot { margin-top: 12px; }
+.wp-slot[hidden] { display: none; }
+.wp-slot-h { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.wp-slot .wp-items { margin-bottom: 6px; }
+/* In the desk view a name or tag keeps its own line; the buttons drop below it when the panel is narrow. */
+.wp-slot .wp-item-text { flex-basis: 170px; overflow-wrap: normal; }
+.wp-slot .wp-items[hidden] { display: none; }
+.wp-slot-find[hidden] { display: none; }
+.wp-slot-find .searchbox { padding-right: 4px; }
+.wp-slot-find .searchbox input[type="search"] { min-height: 38px; flex: 1 1 auto; min-width: 0; }
+/* The suggestions open over the slots below (in the flow they would move the buttons away from a click that closes them). */
+.wp-slot .combo-list { max-height: min(340px, 55vh); overflow-y: auto; }
+.combo-group { padding: 8px 12px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.combo-option.wp-cand { align-items: flex-start; min-height: 0; gap: 10px; }
+.wp-cand .wp-pal-icon { margin-top: 2px; }
+.wp-cand-text { display: flex; flex-direction: column; min-width: 0; }
+.wp-cand-where { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+.wp-cand-where--elsewhere { color: var(--accent); font-weight: 500; }
+.wp-cand-where--here { color: var(--ok-fg); font-weight: 500; }
+.wp-cand-where--blocked { color: var(--ink-3); }
+.wp-desk-keys { margin: 10px 0 0; }
+.wp-desk-nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+
+/* "Place from a list": the second way to place, collapsed by default. */
+.wp-palette > summary { cursor: pointer; font-size: 15px; font-weight: 600; list-style: revert; }
+.wp-palette[open] > summary { margin-bottom: 10px; }
 .wp-more { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
 .wp-more summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .wp-form-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

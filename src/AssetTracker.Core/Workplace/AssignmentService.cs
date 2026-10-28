@@ -39,6 +39,28 @@ public sealed record PlaceCandidate(string Kind, int Id, string Title, string? S
 
 public sealed record PlaceInfo(int FloorId, string FloorName, string SiteKey, int WorkspotId, string Place);
 
+/// <summary>A suggestion in a slot of the desk view.</summary>
+/// <param name="Kind"><c>person</c>, <c>desktop</c> or <c>screen</c>.</param>
+/// <param name="Subtitle">Job title (or user name) of a person; model and description of an asset.</param>
+/// <param name="Group"><c>free</c> (not placed anywhere), <c>elsewhere</c> (at another desk: picking moves it here),
+/// <c>here</c> (already at this desk) or <c>blocked</c> (cannot be placed here, see <paramref name="Reason"/>).</param>
+/// <param name="Place">Where it is now ("Floor 2 · Sales") when it is at another desk.</param>
+/// <param name="Inactive">A person who is no longer in the directory.</param>
+public sealed record DeskCandidate(string Kind, int Id, string Title, string? Subtitle, string? SiteKey, string Group, string? Place,
+    string? Reason, bool Inactive)
+{
+    public bool CanPick => Group is DeskGroups.Free or DeskGroups.Elsewhere;
+}
+
+/// <summary>The groups of <see cref="DeskCandidate.Group"/>, in the order the desk view lists them.</summary>
+public static class DeskGroups
+{
+    public const string Free = "free";
+    public const string Elsewhere = "elsewhere";
+    public const string Here = "here";
+    public const string Blocked = "blocked";
+}
+
 /// <summary>
 /// Places people, desktops and screens at desks. This is <b>location only</b>: it is separate from loans (who is
 /// responsible for an item). A person and an asset are in one place at a time (placing them elsewhere moves them, and
@@ -51,6 +73,8 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
 {
     public const int SearchLimit = 6;
     public const int PaletteLimit = 40;
+    public const int DeskSearchLimit = 12;
+    public const int DeskBrowseLimit = 30;
 
     // ---- reading ---------------------------------------------------------------------------------------------
 
@@ -262,6 +286,103 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
         return result;
     }
 
+    /// <summary>
+    /// The suggestions of one slot of the desk view (<paramref name="kind"/>: <c>person</c>, <c>desktop</c> or
+    /// <c>screen</c>) for a desk. Without text: what is not placed anywhere yet at the floor's site (like the palette).
+    /// With text: people of every site (they may visit) and desktops or screens of every site, matched like
+    /// <see cref="SearchAsync"/> (never by a sensitive field). Ranked in the query: not placed yet at this site, not placed
+    /// yet from another site (people only), placed at another desk (with where, picking moves it), already at this desk,
+    /// and last what cannot be placed here (a person no longer in the directory, an asset of another site). Only types that
+    /// are desktops or screens on floor plans. Editors only; never uses loans.
+    /// </summary>
+    public async Task<IReadOnlyList<DeskCandidate>> DeskSearchAsync(int floorId, int workspotId, string kind, string? term, CancellationToken ct = default)
+    {
+        scope.EnsureWorkplaceEditor();
+        var spot = await db.Workspots.AsNoTracking().Include(w => w.Floor)
+                       .SingleOrDefaultAsync(w => w.Id == workspotId && w.FloorId == floorId, ct)
+                   ?? throw new DomainException("workspot.not-found", "Workspot not found.");
+        await scope.EnsureCanReadWorkplaceSiteAsync(spot.Floor!.SiteId, ct);
+        var siteId = spot.Floor.SiteId;
+        term = term?.Trim();
+        var browse = string.IsNullOrEmpty(term);
+        var limit = browse ? DeskBrowseLimit : DeskSearchLimit;
+        var open = db.WorkspotAssignments.Where(a => a.ReleasedAt == null);
+
+        List<(DeskCandidate Row, int Rank)> found;
+        if (kind == "person")
+        {
+            var people = db.People.AsNoTracking();
+            if (browse)
+                people = people.Where(p => p.IsActive && p.SiteId == siteId && !open.Any(a => a.PersonId == p.Id));
+            else
+            {
+                var pattern = Paging.ContainsPattern(term!);
+                people = people.Where(p => EF.Functions.Like(p.DisplayName, pattern, @"\") || EF.Functions.Like(p.Username, pattern, @"\") ||
+                                           (p.JobTitle != null && EF.Functions.Like(p.JobTitle, pattern, @"\")));
+            }
+            var rows = await people
+                .Select(p => new
+                {
+                    p.Id, p.DisplayName, p.Username, p.JobTitle, SiteKey = p.Site == null ? null : p.Site.Key, p.IsActive,
+                    Rank = !p.IsActive ? 4
+                        : open.Any(a => a.PersonId == p.Id && a.WorkspotId == workspotId) ? 3
+                        : open.Any(a => a.PersonId == p.Id) ? 2
+                        : p.SiteId == siteId ? 0 : 1,
+                })
+                .OrderBy(p => p.Rank).ThenBy(p => p.DisplayName).ThenBy(p => p.Id).Take(limit).ToListAsync(ct);
+            found = rows.Select(p => (new DeskCandidate("person", p.Id, p.DisplayName, p.JobTitle ?? p.Username, p.SiteKey, GroupOf(p.Rank), null,
+                p.IsActive ? null : "No longer in the directory", !p.IsActive), p.Rank)).ToList();
+        }
+        else
+        {
+            var role = kind switch
+            {
+                "desktop" => WorkspotRole.Desktop,
+                "screen" => WorkspotRole.Screen,
+                _ => throw new DomainException("palette.kind", "Choose people, desktops or screens."),
+            };
+            var assets = db.Assets.AsNoTracking().Where(a => a.RetiredAt == null && a.Type!.WorkspotRole == role);
+            assets = browse
+                ? assets.Where(a => a.SiteId == siteId && !open.Any(x => x.AssetId == a.Id))
+                : AssetService.MatchingTerm(assets, term!, includeSensitive: false);
+            var rows = await assets
+                .Select(a => new
+                {
+                    a.Id, a.Tag, Model = a.Model == null ? null : a.Model.Name, a.Description, SiteKey = a.Site!.Key,
+                    Rank = a.SiteId != siteId ? 4
+                        : open.Any(x => x.AssetId == a.Id && x.WorkspotId == workspotId) ? 3
+                        : open.Any(x => x.AssetId == a.Id) ? 2
+                        : 0,
+                })
+                .OrderBy(a => a.Rank).ThenBy(a => a.Tag).ThenBy(a => a.Id).Take(limit).ToListAsync(ct);
+            found = rows.Select(a => (new DeskCandidate(kind, a.Id, a.Tag,
+                string.Join(" · ", new[] { a.Model, a.Description }.Where(s => !string.IsNullOrEmpty(s))) is { Length: > 0 } sub ? sub : null,
+                a.SiteKey, GroupOf(a.Rank), null, a.Rank == 4 ? $"Belongs to site {a.SiteKey}: transfer it first" : null, false), a.Rank)).ToList();
+        }
+
+        // Where the ones at another desk are now ("Floor 2 · Sales"); only for the page of results.
+        var elsewhere = found.Where(f => f.Row.Group == DeskGroups.Elsewhere || (f.Row.Group == DeskGroups.Blocked && kind != "person"))
+            .Select(f => f.Row.Id).ToList();
+        if (elsewhere.Count == 0) return found.Select(f => f.Row).ToList();
+        var places = await open.AsNoTracking()
+            .Where(a => kind == "person" ? a.PersonId != null && elsewhere.Contains(a.PersonId.Value) : a.AssetId != null && elsewhere.Contains(a.AssetId.Value))
+            .Select(a => new { Id = kind == "person" ? a.PersonId!.Value : a.AssetId!.Value, Floor = a.Workspot!.Floor!.Name,
+                Zone = a.Workspot.Zone == null ? null : a.Workspot.Zone.Name, Room = a.Workspot.RoomName ?? a.Workspot.RoomId })
+            .ToListAsync(ct);
+        var at = places.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First());
+        return found.Select(f => at.TryGetValue(f.Row.Id, out var p)
+            ? f.Row with { Place = Workspot.Place(p.Zone, p.Room) is { Length: > 0 } where ? $"{p.Floor} · {where}" : p.Floor }
+            : f.Row).ToList();
+
+        static string GroupOf(int rank) => rank switch
+        {
+            0 or 1 => DeskGroups.Free,
+            2 => DeskGroups.Elsewhere,
+            3 => DeskGroups.Here,
+            _ => DeskGroups.Blocked,
+        };
+    }
+
     // ---- changing ---------------------------------------------------------------------------------------------
 
     private async Task<Workspot> LoadDeskAsync(int workspotId, CancellationToken ct)
@@ -328,6 +449,91 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
                 throw new ConflictException("assignment.desktop-taken", $"This desk already has desktop {other.Asset!.Tag}. Release it first.");
         }
         return await PlaceAsync(spot, current, new WorkspotAssignment { AssetId = assetId, Kind = kind }, asset.Tag, ct);
+    }
+
+    /// <summary>
+    /// Replaces the person (<paramref name="kind"/> <c>person</c>) or the desktop (<c>desktop</c>) of a desk in one
+    /// transaction: the current one is released, the incoming one is taken from where it is now (if anywhere) and placed
+    /// here. Audited as <c>assignment.release</c> (with <c>ReplacedBy</c>) and <c>assignment.assign</c> (with
+    /// <c>MovedFrom</c>). Screens are not replaced, only added. With nobody (or no desktop) at the desk it simply places.
+    /// </summary>
+    public async Task<string> ReplaceAsync(int workspotId, string kind, int targetId, CancellationToken ct = default)
+    {
+        var spot = await LoadDeskAsync(workspotId, ct);
+        PlacementKind placement;
+        string name;
+        if (kind == "person")
+        {
+            var person = await db.People.SingleOrDefaultAsync(p => p.Id == targetId, ct)
+                         ?? throw new DomainException("assignment.person", "Person not found.");
+            if (!person.IsActive) throw new DomainException("assignment.person-inactive", $"{person.DisplayName} is no longer in the directory.");
+            placement = PlacementKind.Person;
+            name = person.DisplayName;
+        }
+        else if (kind == "desktop")
+        {
+            var asset = await db.Assets.Include(a => a.Site).Include(a => a.Type).SingleOrDefaultAsync(a => a.Id == targetId, ct)
+                        ?? throw new DomainException("assignment.asset", "Asset not found.");
+            if (asset.Type!.WorkspotRole != WorkspotRole.Desktop)
+                throw new DomainException("assignment.asset-type", $"{asset.Tag} is a {asset.Type.Name}, not a desktop.");
+            if (asset.RetiredAt != null) throw new DomainException("assignment.asset-retired", $"{asset.Tag} is retired.");
+            if (asset.SiteId != spot.Floor!.SiteId)
+                throw new DomainException("assignment.asset-site", $"{asset.Tag} belongs to site {asset.Site!.Key}, this floor is at another site. Transfer the asset first.");
+            placement = PlacementKind.Desktop;
+            name = asset.Tag;
+        }
+        else throw new DomainException("assignment.replace-kind", "Only the person and the desktop of a desk are replaced; screens are added.");
+
+        var occupant = await db.WorkspotAssignments.Include(a => a.Person).Include(a => a.Asset)
+            .FirstOrDefaultAsync(a => a.WorkspotId == workspotId && a.Kind == placement && a.ReleasedAt == null, ct);
+        if (occupant is not null && (placement == PlacementKind.Person ? occupant.PersonId : occupant.AssetId) == targetId)
+            return $"{name} is already at this desk.";
+        var incoming = await db.WorkspotAssignments.Include(a => a.Workspot).ThenInclude(w => w!.Floor)
+            .Include(a => a.Workspot).ThenInclude(w => w!.Zone)
+            .FirstOrDefaultAsync(a => a.ReleasedAt == null && (placement == PlacementKind.Person ? a.PersonId == targetId : a.AssetId == targetId), ct);
+
+        var now = clock.UtcNow;
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            string? oldName = null;
+            if (occupant is not null)
+            {
+                occupant.ReleasedAt = now;
+                occupant.ReleasedBy = user.Name;
+                oldName = occupant.Person?.DisplayName ?? occupant.Asset?.Tag ?? "";
+                audit.Record("assignment.release", nameof(WorkspotAssignment), occupant.Id, spot.Floor!.SiteId,
+                    details: new { Kind = occupant.Kind.ToString(), Name = oldName, Workspot = spot.Label, Floor = spot.Floor.Name, ReplacedBy = name });
+            }
+            string? movedFrom = null;
+            if (incoming is not null)
+            {
+                incoming.ReleasedAt = now;
+                incoming.ReleasedBy = user.Name;
+                var old = incoming.Workspot!;
+                movedFrom = old.Place(old.Zone?.Name) is { Length: > 0 } from ? $"{old.Floor!.Name} · {from}" : old.Floor!.Name;
+            }
+            // The filtered unique indexes must see both old rows closed before the new one is inserted.
+            await db.SaveChangesAsync(ct);
+            var fresh = new WorkspotAssignment
+            {
+                WorkspotId = spot.Id, Kind = placement, AssignedAt = now, AssignedBy = user.Name,
+                PersonId = placement == PlacementKind.Person ? targetId : null,
+                AssetId = placement == PlacementKind.Person ? null : targetId,
+            };
+            db.WorkspotAssignments.Add(fresh);
+            await db.SaveChangesAsync(ct);
+            audit.Record("assignment.assign", nameof(WorkspotAssignment), fresh.Id, spot.Floor!.SiteId,
+                details: new { Kind = placement.ToString(), Name = name, Workspot = spot.Label, Floor = spot.Floor.Name, MovedFrom = movedFrom });
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            var placed = movedFrom is null ? $"{name} placed at {ADesk(spot)}" : $"{name} moved from {movedFrom} to {ADesk(spot)}";
+            return oldName is null ? placed + "." : $"Released {oldName}; {placed}.";
+        }
+        catch (DbUpdateException)
+        {
+            throw new ConflictException("assignment.changed", "This desk or what you picked was changed by someone else just now. Look again and retry.");
+        }
     }
 
     /// <summary>Takes a person, desktop or screen away from a desk. The row stays as history.</summary>
