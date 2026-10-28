@@ -70,6 +70,17 @@ public class FloorModel(FloorService floors, WorkspotService spots, ZoneService 
     public async Task<IActionResult> OnGetPaletteAsync(int id, string? kind, string? q, CancellationToken ct) =>
         new JsonResult(await assignments.PaletteAsync(id, kind ?? "person", q, ct));
 
+    /// <summary>
+    /// The suggestions of one slot of the desk view (<c>kind</c>: person, desktop or screen) for a desk: with an empty
+    /// <paramref name="q"/> what is not placed yet at this site, else a search, ranked (JSON, IT and facility).
+    /// </summary>
+    public async Task<IActionResult> OnGetDeskSearchAsync(int id, int workspotId, string? kind, string? q, CancellationToken ct) =>
+        new JsonResult(await assignments.DeskSearchAsync(id, workspotId, kind ?? "person", q, ct));
+
+    /// <summary>Replaces the person or the desktop of a desk in one step (desk view, IT and facility).</summary>
+    public Task<IActionResult> OnPostReplaceAsync(int id, int workspotId, string? kind, int targetId, CancellationToken ct) =>
+        RunAsync(id, () => assignments.ReplaceAsync(workspotId, kind ?? "", targetId, ct), ct, $"ws:{workspotId}");
+
     /// <summary>Places a person (<c>person</c>) or a desktop or screen (<c>desktop</c>, <c>screen</c>, <c>asset</c>) at a desk.</summary>
     public Task<IActionResult> OnPostAssignAsync(int id, int workspotId, string? kind, int targetId, CancellationToken ct) =>
         RunAsync(id, () => kind switch
