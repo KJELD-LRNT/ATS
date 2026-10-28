@@ -13,8 +13,11 @@ namespace AssetTracker.Tests.Demo;
 /// </summary>
 public class DemoAppFactory : WebApplicationFactory<Program>
 {
-    public string DataDirectory { get; } =
+    public string DataDirectory { get; init; } =
         Path.Combine(Path.GetTempPath(), "ats_demo_test_" + Guid.NewGuid().ToString("N"));
+
+    /// <summary>Leave the data folder on dispose (a test starts a second app on the same folder).</summary>
+    public bool KeepDataDirectory { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -38,6 +41,7 @@ public class DemoAppFactory : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
         SqliteConnection.ClearAllPools();
+        if (KeepDataDirectory) return;
         try { System.IO.Directory.Delete(DataDirectory, recursive: true); } catch { /* best effort */ }
     }
 }

@@ -44,7 +44,7 @@ The `Demo` launch profile sets `ASPNETCORE_ENVIRONMENT=Development` and `Demo__E
 
 The exact folder is shown on the **Demo controls** page (`/Demo`). It contains `demo.db` (the SQLite database), `mail/` (the demo mailbox, one `.eml` file per message, which any mail program can open) and `keys/` (the encryption keys for the SMTP password field on the settings page). To use another folder, start with `Demo__DataDirectory=<path>` set in the environment.
 
-**To reset**, use **Reset demo data** on `/Demo`. It deletes all data and mail, sets the clock back to now and seeds the fictional data again. You can also stop the app and delete the folder; the next start recreates everything. A demo database created by an older version of the app does not have the asset catalog tables (the demo schema is not migrated): delete the folder once after updating. The same goes for the floor-plan zones (called *teams* before): a demo database from before that rename has the old table, so delete the folder (or just `demo.db`) once. The dense floor (AMS *Floor 3*) is only seeded into an empty database too: delete `demo.db` once more to get it.
+**To reset**, use **Reset demo data** on `/Demo`. It deletes all data and mail, sets the clock back to now and seeds the fictional data again. You can also stop the app and delete the folder; the next start recreates everything. **After updating the app** you no longer need to delete anything: the demo stores a schema version in `demo.db`, and when it differs from the app's (a new table or column), the app rebuilds `demo.db` from scratch on start-up, seeds it again and empties the demo mailbox. The console logs *"The demo database … was made by another version of the app; rebuilding it."* when that happens.
 
 ## 4. What is simulated
 
@@ -71,6 +71,7 @@ Open **Switch role / time travel / reset** in the banner (`/Demo`):
 - The default identity is `DEMO\you` with roles **IT + Admin**.
 - **Time travel** moves the demo clock forward. Due dates, the overdue rule, reports and reminders all follow it. After a jump, a directory sync and a reminder pass run straight away.
 - **Reset demo data** starts over.
+- **Super admin (not an AD account):** the panel shows the demo super admin's sign-in: `/superadmin`, username `superadmin`, password **`demo-superadmin-2026`**. This password exists only in the demo; the setup command on a server and the password change in the app refuse it.
 
 Your choice is kept in a cookie, so each browser (or private window) can act as a different user at the same time.
 
@@ -189,6 +190,19 @@ Switch to **Admin** only.
 - [ ] **Directory sync with issues** (Stage 1, D7). *Directory sync → Run sync now*. **Expected:** a *Succeeded* run with *fetched 151, quarantined 2*. The issue list shows `duplicate-id` (demo-duplicate-0001) and two `unmapped-site` values. The 3 disabled accounts are inactive.
 - [ ] **Anonymize an inactive person** (privacy). *Privacy*: search `kai.demoson` or `frankie.sampleton` (inactive, no open loans), enter a reason, tick *I confirm* and click *Anonymize*. **Expected:** the person becomes `anonymized-<id>` and the action is audited. `alex.testwell` is refused until their open loan is returned.
 
+### Super admin (account outside AD)
+
+Open `/superadmin` (the link is on `/Demo`). Signing in replaces the demo identity in this browser until you sign out.
+
+- [ ] **Sign in.** Username `superadmin`, password `demo-superadmin-2026`. **Expected:** you land on *Admin → Settings*; every page shows the banner *Signed in as the super admin (not an AD account)*; the user card says `superadmin (local)` with role *Admin*.
+- [ ] **Admin pages work.** *Settings*, *System roles*, *Sites*, *Directory sync* (including *Run sync now*), *Grants*, *Asset types*, *Vendors*, *Models*, *Overview tiles* and *Privacy* open and save. Changes are audited as `superadmin (local)` (switch to IT later to read the audit log).
+- [ ] **No IT pages.** `/Assets`, `/Loans`, `/Reports`, `/Workplace`, `/Ops` and `/Audit` return *Forbidden* (403); the sidebar has no links to them.
+- [ ] **Wrong password.** Sign out, then try a wrong password. **Expected:** *Sign-in failed. Check the username and password…*, never which part was wrong. After **5** wrong tries the account is locked for 15 minutes: even the right password then gives the same message, and the demo mailbox gets one *"the super admin account is locked"* mail. *Reset demo data* (or waiting 15 minutes, or *+1 day*) clears it. More than 10 tries from one browser within 15 minutes give *Too many sign-in attempts*.
+- [ ] **Sign-in mail.** Each successful sign-in puts *"Asset Tracker: the super admin signed in"* in the demo mailbox (with the IP address).
+- [ ] **Change the password.** *Account and password* in the banner: the current password is required, the new one needs 16+ characters and cannot be the demo password. You stay signed in; a second browser signed in as the super admin is signed out.
+- [ ] **Sign out.** *Sign out* in the banner returns to `/superadmin` and this browser is the demo user again.
+- [ ] **Session limits.** *+1 day* on `/Demo` (while signed in as the super admin) ends the session: the next page asks you to sign in again (30 minutes idle and 8 hours at most).
+
 ### No role
 
 - [ ] Untick all roles. **Expected:** the home page says you have no access, and every inventory, admin and audit URL returns *Forbidden* or *Not found*. `/Demo` stays reachable so you can switch back.
@@ -251,7 +265,8 @@ These run in `dotnet test` (all tests run against a real relational database):
 - A failed or rejected directory sync and its IT alert (D6): `SponsorDecisionSyncTests`. The demo directory always answers.
 - A stale or stopped worker (D3): `HealthEndpointTests`. In the demo the jobs run in-process.
 - DST transitions and timezone edge cases (D4): `OverdueReminderTests`, `SiteCalendarTests`.
-- Windows sign-in, Kerberos over VPN, SQL Server, IIS, the real relay and AD: only on a real server (below).
+- Parallel super admin sign-in attempts (only 5 ever reach the password check), the per-IP limit, a password reset or disable ending open sessions, the 30-minute and 8-hour session limits, and the setup command (`hash`, `apply` for every action, the requester from the file owner): `tests/AssetTracker.Tests/Security/`.
+- Windows sign-in, Kerberos over VPN, SQL Server, IIS (anonymous + Windows authentication for `/superadmin`), the setup script's scheduled task under the gMSA, the real relay and AD: only on a real server (below, and runbook §15).
 
 ## 8. Testing on a real Windows server
 

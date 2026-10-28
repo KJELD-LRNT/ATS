@@ -21,7 +21,7 @@ monitor, release, roll back, back up/restore and troubleshoot the Asset Tracker 
 
 | Component | Runs as | Notes |
 | --- | --- | --- |
-| IIS site `AssetTracker` (ASP.NET Core in-process) | App pool identity `DOMAIN\gmsa-ats$` (gMSA) | Windows Authentication; anonymous only for `/health*`. |
+| IIS site `AssetTracker` (ASP.NET Core in-process) | App pool identity `DOMAIN\gmsa-ats$` (gMSA) | Windows Authentication plus anonymous access site-wide; the app requires sign-in everywhere except `/superadmin` and `/health*` (§15). |
 | Windows service `AssetTrackerWorker` | `DOMAIN\gmsa-ats$` (may be a separate gMSA) | AD sync, mail outbox sender, per-site daily overdue reminders, heartbeat. |
 | SQL Server Express database `AssetTracker` | SQL service account | No SQL Agent: all scheduling is in the worker. |
 | Internal mail relay | client | Worker submits mail; relay forwards to Microsoft 365. |
@@ -122,13 +122,16 @@ in the database (machine DPAPI, so they only work on this server); back the fold
    `DOMAIN\gmsa-ats$` (no password), Start Mode `AlwaysRunning`, idle time-out 0 (optional).
 3. Site `AssetTracker`: physical path as above, HTTPS binding for `<INTERNAL-DNS-NAME>` with the certificate.
 4. NTFS: app pool identity gets Read & Execute on the folder; Modify only on `logs\` if stdout logging is enabled.
-5. `deploy\web.config` (already in the publish output) enables Windows Authentication and disables anonymous access
-   except for `/health` and `/health/ready`.
+5. `deploy\web.config` (already in the publish output) enables Windows Authentication **and** anonymous
+   authentication for the whole site. Anonymous must be on site-wide so the super admin page `/superadmin` works from a
+   browser without a domain account; the application itself still requires sign-in on every page except `/superadmin`
+   and `/health*`, and its 401 makes IIS send the Windows challenge. Do the IIS smoke test in §15.2 before go-live.
 6. Firewall: allow 443 only from approved LAN/VPN ranges.
 
 ### 5.5 Worker
 1. Copy `worker\` to e.g. `D:\Apps\AssetTracker\Worker`; create `appsettings.Production.json` from
-   `deploy\worker.appsettings.Production.template.json`.
+   `deploy\worker.appsettings.Production.template.json`. The super admin setup command (§15) uses the same folder
+   and settings.
 2. `deploy\Install-Worker.ps1 -InstallPath 'D:\Apps\AssetTracker\Worker' -Account 'DOMAIN\gmsa-ats$'`
    (service `AssetTrackerWorker`, delayed automatic start, restart on failure after 1/1/5 minutes).
 3. Logs: Windows Event Log → Application, source `AssetTracker Worker`.
@@ -145,6 +148,7 @@ sync safety thresholds and schedule, mail relay, notifications, default time zon
 ## 7. First-run checklist
 
 1. [ ] `GET https://<INTERNAL-DNS-NAME>/health` → `Healthy` (anonymous).
+   - [ ] Set the super admin password (§15.1), store it in the password safe, and do the IIS smoke test (§15.2).
 2. [ ] Sign in as a member of the admin AD group → header shows `(Admin)`.
 3. [ ] **Admin → Settings** (in this order; each section has its own *Save* button):
        - *Default time zone* (`Clock:TimeZoneId`).
@@ -337,3 +341,85 @@ Note: SMTP cannot guarantee exactly-once delivery; a mail accepted by the relay 
 | Sync `Rejected` | Safety check (low count / mass deactivation) | See §10. Do not disable the check. |
 | Sync `Failed` | AD unreachable, gMSA lacks rights, wrong `SearchRoot` | Worker event log; test the LDAP path as the gMSA. |
 | `/health/ready` `worker` Unhealthy right after install | Worker has never started | Start the service; verify `Ops:WorkerHeartbeatInterval` equals `Worker:HeartbeatInterval`. |
+| Browser without a domain account gets a credentials prompt on `/superadmin` | Anonymous authentication is off in IIS (or the section is locked) | Unlock `anonymousAuthentication` (§2 step 5) and redeploy `deploy\web.config`; check *Authentication* on the site in IIS Manager. |
+| Domain users are not signed in automatically | Windows Authentication off, or the app's 401 is not turned into a challenge | IIS Manager → site → *Authentication*: Windows **and** Anonymous enabled; providers Negotiate, NTLM. Repeat §15.2. |
+| `Set-SuperAdmin.ps1`: "No result after … seconds" | The gMSA cannot run the task (no *Log on as a batch job*), cannot read the worker folder, or cannot reach SQL Server | Grant the right (§15.1), check NTFS on the worker folder, read the Application event log and *Task Scheduler → History*. |
+| Super admin: "Sign-in failed" with the right password | Account locked (5 failures, 15 minutes) or switched off | `Set-SuperAdmin.ps1 -Action status`, then `-Action unlock` or `-Action set-password`. IT can check the audit log for `superadmin.*` rows. |
+| Super admin: 429 "Too many sign-in attempts" | More than 10 sign-in attempts from this IP address in 15 minutes | Wait 15 minutes, or sign in from another workstation. |
+
+## 15. Super admin (account outside AD)
+
+One built-in account, username **`superadmin`**, signs in with a password on **`https://<INTERNAL-DNS-NAME>/superadmin`**
+(sponsor decision D12). It gets the **Admin** role only: Admin → Settings (AD and mail), roles and grants, sites,
+directory sync, asset types, vendors, models, overview tiles and Privacy. It cannot open inventory, loans, reports, floor
+plans, Ops or the audit log. While it is signed in, every page shows *Signed in as the super admin (not an AD account)*.
+Sessions end after 30 minutes without activity and 8 hours after sign-in. Five wrong passwords lock it for 15 minutes; one
+IP address gets 10 attempts per 15 minutes. Every sign-in, lockout and sign-out is audited with the IP address, and each
+sign-in and each lockout mails the IT mailbox. The app never ships with a password: until one is set, the account is off.
+
+### 15.1 Setting the password (setup script)
+
+The database only accepts the gMSA, so the change runs as a one-off scheduled task under the gMSA. The password never
+leaves the administrator's console: only its hash goes to the task.
+
+Once per server: give the worker's gMSA **Log on as a batch job** (Local Security Policy → *User Rights Assignment*,
+or the server's GPO), so Task Scheduler can run a task as it.
+
+On the server, in a normal **elevated** Windows PowerShell console (not the ISE, not a remote session), from the
+`deploy` folder of the release:
+
+```powershell
+.\Set-SuperAdmin.ps1 -Action set-password        # asks twice, no echo; at least 16 characters
+.\Set-SuperAdmin.ps1 -Action generate-password   # random 24 characters, shown once: put it in the password safe
+.\Set-SuperAdmin.ps1 -Action unlock              # clears a lockout
+.\Set-SuperAdmin.ps1 -Action disable             # switches the account off and ends its sessions
+.\Set-SuperAdmin.ps1 -Action status              # on/off, locked, password date, last sign-in time and IP
+```
+
+Defaults: `-WorkerPath` = the `AssetTrackerWorker` service's folder; `-ServiceAccount` = the account that service runs
+as; `-RequestFolder` = `SuperAdmin-Requests` next to the Data Protection key folder (`DataProtection:KeyPath`), else
+`%ProgramData%\AssetTracker\SuperAdmin-Requests`. The script:
+
+1. refuses the demo password and passwords shorter than 16 characters;
+2. runs `AssetTracker.Worker.exe superadmin hash` in your session (no database);
+3. writes a request file (action and hash) into the request folder (ACL: Administrators and the gMSA only) and makes
+   you the file's owner;
+4. registers and starts a one-off task `AssetTracker super admin <id>` under the gMSA
+   (`AssetTracker.Worker.exe superadmin apply <file>`), waits for the result file, prints it, and removes the task and
+   the files.
+
+The audit log names **the Windows account that owns the request file** (you) as the actor of `superadmin.password-set`,
+`superadmin.unlock`, `superadmin.disable` or `superadmin.status`. `set-password`, `generate-password` and `disable` end
+any open super admin session.
+
+The signed-in super admin can also change its own password on `/superadmin/account` (current password required, same
+rules). Nobody can see or reset the password inside the app, and no admin can remove the account.
+
+### 15.2 IIS smoke test (before go-live and after IIS changes)
+
+The test host cannot cover IIS authentication, so check by hand:
+
+1. From a domain-joined workstation: open `https://<INTERNAL-DNS-NAME>/`. You are signed in with Windows without a
+   prompt, and the header shows your account.
+2. From a browser without a domain account (or with automatic intranet sign-in switched off): open `/superadmin`. The
+   sign-in page appears without a credentials prompt.
+3. Sign in as `superadmin`. You land on Admin → Settings with the banner; `/Assets` and `/Audit` give 403.
+4. *Sign out*. You are back on `/superadmin`; `/Admin/Settings` asks for sign-in again.
+5. `GET /health` and `/health/ready` still answer anonymously.
+6. The IT mailbox received the sign-in mail; as IT, the audit log shows `superadmin.signin` and `superadmin.signout`.
+
+### 15.3 Recovery: locked out, or AD settings broken
+
+Use this when no AD account can get in as an admin: for example after wrong AD/LDAP settings on Admin → Settings, a lost
+admin group membership, broken mail settings or a failed directory sync.
+
+1. If the super admin password is unknown, or the account is off or locked: run `Set-SuperAdmin.ps1 -Action
+   set-password` (or `generate-password`, or `unlock`) on the server (§15.1).
+2. Open `https://<INTERNAL-DNS-NAME>/superadmin` and sign in as `superadmin`.
+3. Fix the cause on **Admin → Settings** (directory search root, site attribute, mail relay, IT mailbox) and use
+   *Test directory query* and *Send test email*; check **Admin → Directory sync** and rerun it.
+4. Sign out. If the password was shared during the incident, set a new one afterwards (§15.1).
+
+**Limit:** this does **not** cover a full domain outage. The app reaches SQL Server with its gMSA, which needs Active
+Directory: if no domain controller is reachable, the app (and the setup task) cannot start or read the database at all.
+Restore AD first; the super admin only helps once the domain is back.

@@ -44,4 +44,7 @@ public static class Policies
 
     /// <summary>IT or facility: import floor plans and change workspots and zones.</summary>
     public const string WorkplaceEdit = "WorkplaceEdit";
+
+    /// <summary>Only the signed-in built-in super admin (its account page).</summary>
+    public const string SuperAdminOnly = "SuperAdminOnly";
 }

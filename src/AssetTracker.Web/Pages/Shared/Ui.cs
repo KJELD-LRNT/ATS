@@ -103,7 +103,7 @@ public static class Ui
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
         var n = name[(name.LastIndexOf('\\') + 1)..];
-        var parts = n.Split([' ', '.', '_', '-'], StringSplitOptions.RemoveEmptyEntries);
+        var parts = n.Split([' ', '.', '_', '-', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
         var s = parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}" : n.Length >= 2 ? n[..2] : n;
         return s.ToUpperInvariant();
     }

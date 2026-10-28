@@ -65,6 +65,8 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<OpsOptions>();
         services.AddScoped<OpsStatusService>();
         services.AddScoped<PrivacyService>();
+        // Super admin sign-in and password change (the setup command's SuperAdminSetupService is registered by the worker only).
+        services.AddScoped<SuperAdminService>();
         return services;
     }
 }

@@ -33,6 +33,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NotificationOutbox> Outbox => Set<NotificationOutbox>();
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
+    public DbSet<LocalAccount> LocalAccounts => Set<LocalAccount>();
 
     /// <summary>Entities whose rows may only ever be inserted (audit trail and event ledgers).</summary>
     private static readonly Type[] AppendOnlyTypes = [typeof(AuditEvent), typeof(LoanEvent), typeof(StockEvent)];
@@ -349,6 +350,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Key).HasMaxLength(100);
             e.Property(x => x.Value).HasMaxLength(2000);
             e.Property(x => x.UpdatedBy).HasMaxLength(256);
+        });
+
+        b.Entity<LocalAccount>(e =>
+        {
+            e.Property(x => x.UserName).HasMaxLength(64);
+            e.Property(x => x.PasswordHash).HasMaxLength(512);
+            e.Property(x => x.LastSignInIp).HasMaxLength(64);
+            e.Property(x => x.SecurityStamp).HasMaxLength(64);
+            e.HasIndex(x => x.UserName).IsUnique();
         });
     }
 }

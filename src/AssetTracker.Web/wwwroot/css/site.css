@@ -689,6 +689,12 @@ code.details { font-size: 12px; word-break: break-all; color: var(--ink-2); disp
     border-bottom: 2px solid #9A6700; color: var(--ink); font-size: 13px; }
 .demo-banner-title { font-size: 13px; letter-spacing: 0.04em; color: #6E1B00; font-weight: 700; }
 .demo-banner a { color: #0B3D91; font-weight: 600; display: inline-flex; align-items: center; min-height: 32px; }
+/* Super admin: a banner on every page while the built-in account (not an AD account) is signed in. */
+.superadmin-banner { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; padding: 6px 16px;
+    background: var(--bad-bg); border-bottom: 2px solid var(--bad-line); color: var(--bad-text); font-size: 13px; }
+.superadmin-banner a { color: var(--bad-text); font-weight: 600; display: inline-flex; align-items: center; min-height: 32px; }
+.superadmin-banner-form { display: inline-flex; margin-left: auto; }
+.signin-card { max-width: 440px; }
 .demo-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 18px 20px;
     display: flex; flex-direction: column; gap: 14px; }
 .demo-panel .table-wrap { border: 1px solid var(--line); }
@@ -747,7 +753,7 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 
 /* ------------------------------------------------------------------ print */
 @media print {
-    .sidebar, .demo-banner, .skip-link, .page-actions, .filters { display: none !important; }
+    .sidebar, .demo-banner, .superadmin-banner, .skip-link, .page-actions, .filters { display: none !important; }
     body { background: #FFFFFF; }
     .main { padding: 0; }
 }

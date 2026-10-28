@@ -15,6 +15,7 @@
     <!-- Local demo mode only (WP5.1): SQLite file database; production uses SQL Server. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.14" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.14" />
     <PackageReference Include="System.DirectoryServices" Version="10.0.14" />
   </ItemGroup>

@@ -1,0 +1,62 @@
+@page "/superadmin/account"
+@model AssetTracker.Web.Pages.Local.SuperAdminAccountModel
+@{
+    ViewData["Title"] = "Super admin account";
+}
+<header class="page-header">
+    <div class="page-heading">
+        <h1>Super admin account</h1>
+        <p class="page-subtitle">The built-in account outside AD. It has the Admin role: settings, roles and grants, sites,
+            directory sync, the catalogue, overview tiles and privacy. It cannot see inventory, loans, reports, floor plans
+            or the audit log.</p>
+    </div>
+</header>
+
+@if (Model.Message is not null)
+{
+    <div class="alert alert--success" role="status" id="superadmin-message">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+}
+@if (Model.Error is not null)
+{
+    <div class="alert alert--error" role="alert" id="superadmin-error">@Ui.Icon("error", 18, 2.2)<div class="alert-body">@Model.Error</div></div>
+}
+
+<div class="columns">
+    <section class="card col-side" aria-labelledby="state-h">
+        <h2 id="state-h">This session</h2>
+        <dl class="dl-grid">
+            <dt>Username</dt><dd class="mono">@AssetTracker.Core.Security.SuperAdmin.UserName</dd>
+            <dt>Signed in</dt><dd>@(Model.SignedInAt?.ToString("yyyy-MM-dd HH:mm") ?? "-") UTC</dd>
+            <dt>Session ends</dt><dd>after 30 minutes without activity, and 8 hours after sign-in at the latest</dd>
+            <dt>Password set</dt><dd>@(Model.Status.PasswordChangedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-") UTC</dd>
+            <dt>Last sign-in from</dt><dd>@(Model.Status.LastSignInIp ?? "-")</dd>
+        </dl>
+        <form method="post" asp-page="/Local/SuperAdminSignOut">
+            <button type="submit" id="superadmin-signout-account">Sign out</button>
+        </form>
+    </section>
+
+    <section class="card col-main" aria-labelledby="password-h">
+        <h2 id="password-h">Change the password</h2>
+        <p class="hint">At least @AssetTracker.Core.Security.SuperAdmin.MinimumPasswordLength characters. Changing it ends every
+            other super admin session; you stay signed in here. If the password is lost, an IT administrator sets a new one with
+            the setup command on the server.</p>
+        <form method="post" class="stack" autocomplete="off">
+            <div class="field">
+                <label for="CurrentPassword">Current password</label>
+                <input id="CurrentPassword" name="CurrentPassword" type="password" autocomplete="current-password" required maxlength="256" />
+            </div>
+            <div class="field">
+                <label for="NewPassword">New password</label>
+                <input id="NewPassword" name="NewPassword" type="password" autocomplete="new-password" required
+                       minlength="@AssetTracker.Core.Security.SuperAdmin.MinimumPasswordLength" maxlength="256" />
+            </div>
+            <div class="field">
+                <label for="ConfirmPassword">New password again</label>
+                <input id="ConfirmPassword" name="ConfirmPassword" type="password" autocomplete="new-password" required
+                       minlength="@AssetTracker.Core.Security.SuperAdmin.MinimumPasswordLength" maxlength="256" />
+            </div>
+            <div class="form-actions"><button type="submit" class="btn--primary" id="superadmin-change-password">Change password</button></div>
+        </form>
+    </section>
+</div>

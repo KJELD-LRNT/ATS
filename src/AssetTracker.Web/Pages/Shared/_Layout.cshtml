@@ -28,6 +28,17 @@
 <a class="skip-link" href="#main">Skip to content</a>
 @* Local demo mode only (renders nothing otherwise). *@
 @await Component.InvokeAsync("DemoBanner")
+@if (AssetTracker.Web.Security.SuperAdminPrincipal.Is(User))
+{
+    @* On every page while the super admin is signed in (never for Windows users). *@
+    <div class="superadmin-banner" role="note" id="superadmin-banner">
+        <strong>Signed in as the super admin (not an AD account).</strong>
+        <a asp-page="/Local/SuperAdminAccount">Account and password</a>
+        <form method="post" asp-page="/Local/SuperAdminSignOut" class="superadmin-banner-form">
+            <button type="submit" class="btn--sm" id="superadmin-signout">Sign out</button>
+        </form>
+    </div>
+}
 <div class="app">
     <nav class="sidebar" aria-label="Main">
         <a class="brand" href="@Url.Page("/Index")">

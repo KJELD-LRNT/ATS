@@ -14,12 +14,20 @@ namespace AssetTracker.Core.Auditing;
 public class AuditWriter(AppDbContext db, ICurrentUser user, IClock clock)
 {
     public AuditEvent Record(string action, string entityType, object? entityId, int? siteId,
+        string? reason = null, object? details = null) =>
+        RecordAs(user.Name, action, entityType, entityId, siteId, reason, details);
+
+    /// <summary>
+    /// Same as <see cref="Record"/> with an explicit actor, for events that happen before the request has a signed-in
+    /// user (super admin sign-in attempts are recorded as <c>superadmin (local)</c>, not as <c>anonymous</c>).
+    /// </summary>
+    public AuditEvent RecordAs(string actor, string action, string entityType, object? entityId, int? siteId,
         string? reason = null, object? details = null)
     {
         var e = new AuditEvent
         {
             OccurredAt = clock.UtcNow,
-            Actor = user.Name,
+            Actor = actor,
             Action = action,
             EntityType = entityType,
             EntityId = entityId?.ToString(),
