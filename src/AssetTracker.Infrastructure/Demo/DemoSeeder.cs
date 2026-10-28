@@ -88,20 +88,27 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         // 2b. Catalog: tag patterns for the tagged types, plus a few vendors and models to pick from.
         var models = await RunAsync(Ago(120), sp => SetUpCatalogAsync(sp.GetRequiredService<CatalogService>(), ct));
 
-        // 3. People: a directory sync from the historical snapshot (the leaver is still enabled), then the manager grant.
+        // 3. People: a directory sync from the historical snapshot (the leaver is still enabled), then the roles (all
+        // given in the app: "you" IT + Admin, the demo manager Manager with a grant for AMS) and the manager grant.
         await DemoDirectorySource.RunWithHistoricalSnapshotAsync(() =>
             RunAsync(Ago(120), sp => sp.GetRequiredService<DirectorySyncService>().RunAsync(DemoDefaults.SeedActor, ct)));
         var people = await WithDbAsync(db => db.People.AsNoTracking().ToDictionaryAsync(p => p.Username, p => p.Id, ct));
         int P(int index) => people[DemoDirectorySource.Username(index)];
-        await RunAsync(Ago(119), sp =>
-            sp.GetRequiredService<AdminService>().AddGrantAsync(people[DemoDefaults.ManagerUsername], sites.Ams, ct));
+        await RunAsync(Ago(119), async sp =>
+        {
+            var roles = sp.GetRequiredService<RoleAssignmentService>();
+            foreach (var role in RoleAssignmentService.Assignable.Where(r => DemoDefaults.DefaultRoles.HasFlag(r)))
+                await roles.AssignAsync(people[DemoDefaults.YouUsername], role, ct);
+            await roles.AssignAsync(people[DemoDefaults.ManagerUsername], AppRoles.Manager, ct);
+            return await sp.GetRequiredService<AdminService>().AddGrantAsync(people[DemoDefaults.ManagerUsername], sites.Ams, ct);
+        });
 
         // 4. Tagged assets and pools.
         var assets = await RunAsync(Ago(118), sp => CreateAssetsAsync(sp.GetRequiredService<AssetService>(), sites, models, ct));
         var pools = await RunAsync(Ago(118), sp => CreatePoolsAsync(sp.GetRequiredService<PoolService>(), sites, ct));
 
-        // 4b. Floor plans (imported like a real drawing), a few zones, and the Facility role for one person (it lives in
-        // the application, not in an AD group: use "Act as person" on /Demo to sign in as them).
+        // 4b. Floor plans (imported like a real drawing), a few zones, and the Facility role for one person (use "Act as
+        // person" on /Demo to sign in as them).
         await RunAsync(Ago(117), async sp =>
         {
             var floors = sp.GetRequiredService<Core.Workplace.FloorService>();

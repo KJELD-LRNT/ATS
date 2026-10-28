@@ -15,8 +15,8 @@ public sealed record SiteAccess(bool AllSites, IReadOnlySet<int> SiteIds)
 
 /// <summary>
 /// Resolves site-level read access. Must be used by every inventory/report/export query path.
-/// IT → all sites. Manager → granted sites (grants only count while in the manager group and while the granted
-/// person is active in the directory snapshot; sponsor decision D9 keeps the grant row but it then has no effect).
+/// IT → all sites. Manager → granted sites (grants only count while the person has the Manager role and is active in
+/// the directory snapshot; sponsor decision D9 keeps the grant row when either ends, but it then has no effect).
 /// Admin role alone → nothing.
 /// </summary>
 public class AccessScope(AppDbContext db, ICurrentUser user)

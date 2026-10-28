@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using System.Text.Json;
 using AssetTracker.Core.Common;
@@ -141,7 +142,7 @@ public class DeskViewTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Search_is_for_editors_within_the_floor_and_never_finds_by_a_sensitive_field()
     {
-        var manager = new TestUser(@"CORP\mgr.dv08", "S-1-5-21-1000-1000-1000-3951", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.dv08", "S-1-5-21-1000-1000-1000-3951", AppRoles.Manager);
         var s = await NewFloorAsync("DV08");
         var other = await NewFloorAsync("DV09");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
@@ -249,7 +250,7 @@ public class DeskViewTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Only_it_and_facility_replace_and_inactive_or_not_desk_seats_are_refused()
     {
-        var manager = new TestUser(@"CORP\mgr.dv14", "S-1-5-21-1000-1000-1000-3954", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.dv14", "S-1-5-21-1000-1000-1000-3954", AppRoles.Manager);
         var s = await NewFloorAsync("DV14");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         await WorkplaceSeed.FacilityAsync(_f, TestUser.Facility);
@@ -269,7 +270,7 @@ public class DeskViewTests : IClassFixture<AppFactory>
     [Fact]
     public async Task The_desk_search_endpoint_serves_editors_and_hides_from_managers()
     {
-        var manager = new TestUser(@"CORP\mgr.dv15", "S-1-5-21-1000-1000-1000-3955", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.dv15", "S-1-5-21-1000-1000-1000-3955", AppRoles.Manager);
         var s = await NewFloorAsync("DV15");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         await WorkplaceSeed.FacilityAsync(_f, TestUser.Facility);
@@ -297,7 +298,7 @@ public class DeskViewTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Replace_and_release_post_from_the_desk_view_and_managers_cannot()
     {
-        var manager = new TestUser(@"CORP\mgr.dv17", "S-1-5-21-1000-1000-1000-3957", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.dv17", "S-1-5-21-1000-1000-1000-3957", AppRoles.Manager);
         var s = await NewFloorAsync("DV17");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         var (anna, bob) = await _f.WithDbAsync(async db => (await Seed.PersonAsync(db, "dv17.anna", s.Site), await Seed.PersonAsync(db, "dv17.bob", s.Site)));

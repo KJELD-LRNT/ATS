@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Inventory;
@@ -218,7 +219,7 @@ public class AssignmentTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Only_it_and_facility_change_placements_and_managers_read_their_sites_only()
     {
-        var manager = new TestUser(@"CORP\mgr.as15", "S-1-5-21-1000-1000-1000-3815", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.as15", "S-1-5-21-1000-1000-1000-3815", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var a = await Seed.SiteAsync(db, "AS15");
@@ -398,7 +399,7 @@ public class AssignmentTests : IClassFixture<AppFactory>
     [Fact]
     public async Task The_location_of_an_asset_follows_the_scope()
     {
-        var manager = new TestUser(@"CORP\mgr.as25", "S-1-5-21-1000-1000-1000-3825", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.as25", "S-1-5-21-1000-1000-1000-3825", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var a = await Seed.SiteAsync(db, "AS25");

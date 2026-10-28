@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using AssetTracker.Core.Domain;
 using AssetTracker.Tests.Infrastructure;
@@ -33,7 +34,7 @@ public class InventoryPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manager_reads_granted_site_but_gets_404_for_other_sites()
     {
-        var manager = new TestUser(@"CORP\mgr.ip01", "S-1-5-21-1000-1000-1000-3101", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ip01", "S-1-5-21-1000-1000-1000-3101", AppRoles.Manager);
         var (mine, theirs, pool, otherPool) = await _f.WithDbAsync(async db =>
         {
             var granted = await Seed.SiteAsync(db, "IP01");

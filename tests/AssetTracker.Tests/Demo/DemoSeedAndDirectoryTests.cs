@@ -1,7 +1,9 @@
 using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Domain;
+using AssetTracker.Core.Security;
 using AssetTracker.Infrastructure.Demo;
+using AssetTracker.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -146,6 +148,37 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
         Assert.Equal(before, await FingerprintAsync());
     }
 
+    [Fact]
+    public async Task Seed_gives_the_personas_their_roles_in_the_app_and_the_switcher_replaces_them_until_a_reset()
+    {
+        Task<Dictionary<string, AppRoles>> RolesAsync() => _f.WithDbAsync(async db =>
+            (await db.RoleAssignments.AsNoTracking()
+                .Join(db.People, r => r.PrincipalDirectoryId, p => p.DirectoryId, (r, p) => new { p.Username, r.Role })
+                .ToListAsync())
+            .GroupBy(x => x.Username).ToDictionary(g => g.Key, g => g.Aggregate(AppRoles.None, (a, x) => a | x.Role)));
+
+        var seeded = await RolesAsync();
+        Assert.Equal(AppRoles.It | AppRoles.Admin, seeded[DemoDefaults.YouUsername]);
+        Assert.Equal(AppRoles.Manager, seeded[DemoDefaults.ManagerUsername]);
+        Assert.Equal(AppRoles.Facility, seeded[DemoDefaults.FacilityUsername]);
+        Assert.Equal(3, seeded.Count);
+
+        // The ticks replace the roles of the person you act as (here the default user), audited as the switcher.
+        var client = _f.CreateDemoClient();
+        var res = await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Roles", ("manager", "true"), ("facility", "true"));
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, res.StatusCode);
+        Assert.Equal(AppRoles.Manager | AppRoles.Facility, (await RolesAsync())[DemoDefaults.YouUsername]);
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, (await client.GetAsync("/Admin/Settings")).StatusCode);
+        Assert.Equal(4, await _f.WithDbAsync(db => db.AuditEvents.CountAsync(a =>
+            a.Actor == DemoDefaults.SwitcherActor && (a.Action == "role.assign" || a.Action == "role.remove"))));
+
+        // Reset demo data (open to a user without the Admin role): the default IT + Admin roles are back.
+        res = await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Reset");
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, res.StatusCode);
+        Assert.Equal(seeded, await RolesAsync());
+        Assert.Equal(System.Net.HttpStatusCode.OK, (await client.GetAsync("/Admin/Settings")).StatusCode);
+    }
+
     /// <summary>Everything except timestamps (which follow the current date).</summary>
     private Task<List<string>> FingerprintAsync() => _f.WithDbAsync(async db =>
     {
@@ -157,6 +190,7 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
         rows.AddRange(await db.Pools.Select(p => $"pool {p.Id} {p.Sku} {p.SiteId} {p.Available} {p.Outstanding}").ToListAsync());
         rows.AddRange(await db.Loans.Select(l => $"loan {l.Id} {l.AssetId} {l.PoolId} {l.HolderId} {l.Quantity} {l.ReturnedQuantity} {l.DueDate} {l.ClosedAt != null}").ToListAsync());
         rows.AddRange(await db.ManagerSiteGrants.Select(g => $"grant {g.PrincipalDirectoryId} {g.SiteId}").ToListAsync());
+        rows.AddRange(await db.RoleAssignments.Select(r => $"role {r.PrincipalDirectoryId} {r.Role}").ToListAsync());
         rows.Add($"events {await db.LoanEvents.CountAsync()} stock {await db.StockEvents.CountAsync()} sync {await db.SyncRuns.CountAsync()}");
         rows.Sort(StringComparer.Ordinal);
         return rows;

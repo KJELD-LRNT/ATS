@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetTracker.Tests.Workplace;
 
-/// <summary>The Facility role lives in the application, not in an AD group.</summary>
+/// <summary>The Facility role (like every role) is given in the application.</summary>
 public class RoleAssignmentTests : IClassFixture<AppFactory>
 {
     private readonly AppFactory _f;
@@ -81,10 +81,11 @@ public class RoleAssignmentTests : IClassFixture<AppFactory>
     }
 
     [Fact]
-    public async Task The_role_adds_to_ad_roles()
+    public async Task The_role_adds_to_other_roles()
     {
         // An IT user who is also assigned Facility keeps IT access to inventory.
-        var person = await _f.WithDbAsync(db => Seed.PersonAsync(db, "it.user", sid: TestUser.It.Sid));
+        await _f.EnsureUserAsync(TestUser.It);
+        var person = await _f.WithDbAsync(db => db.People.AsNoTracking().SingleAsync(p => p.Sid == TestUser.It.Sid));
         await AsAdmin(s => s.AssignAsync(person.Id, AppRoles.Facility));
         Assert.Equal(HttpStatusCode.OK, await StatusAsync(TestUser.It, "/Assets"));
         Assert.Equal(HttpStatusCode.OK, await StatusAsync(TestUser.It, "/Workplace/Import"));
@@ -102,9 +103,9 @@ public class RoleAssignmentTests : IClassFixture<AppFactory>
             await Assert.ThrowsAsync<AccessDeniedException>(() =>
                 _f.RunAsAsync(other, sp => sp.GetRequiredService<RoleAssignmentService>().ListAsync()));
         }
-        // AD-derived roles cannot be given here
-        await Assert.ThrowsAsync<DomainException>(() => AsAdmin(s => s.AssignAsync(person.Id, AppRoles.It)));
-        await Assert.ThrowsAsync<DomainException>(() => AsAdmin(s => s.AssignAsync(person.Id, AppRoles.Admin)));
+        // one known role at a time
+        await Assert.ThrowsAsync<DomainException>(() => AsAdmin(s => s.AssignAsync(person.Id, AppRoles.It | AppRoles.Admin)));
+        await Assert.ThrowsAsync<DomainException>(() => AsAdmin(s => s.AssignAsync(person.Id, (AppRoles)64)));
         await Assert.ThrowsAsync<DomainException>(() => AsAdmin(s => s.AssignAsync(987654, AppRoles.Facility)));
 
         var inactive = await PersonAsync(NoGroups("fac.six", 6), active: false);
@@ -127,17 +128,19 @@ public class RoleAssignmentTests : IClassFixture<AppFactory>
         Assert.Equal(HttpStatusCode.Forbidden, await StatusAsync(TestUser.It, "/Admin/SystemRoles"));
 
         var html = await admin.GetStringAsync("/Admin/SystemRoles?q=fac.eight");
-        Assert.Contains("Give Facility role", html);
+        Assert.Contains("aria-label=\"Facility for fac.eight\"", html);
 
-        var add = await FormHelper.PostFormAsync(admin, "/Admin/SystemRoles?q=fac.eight", "/Admin/SystemRoles?handler=Add&q=fac.eight",
-            ("personId", person.Id.ToString()));
+        var add = await FormHelper.PostFormAsync(admin, "/Admin/SystemRoles?q=fac.eight", "/Admin/SystemRoles?handler=Save&q=fac.eight",
+            ("directoryId", person.DirectoryId), ("roles", "Facility"));
         Assert.Equal(HttpStatusCode.Redirect, add.StatusCode);
         Assert.Equal(HttpStatusCode.OK, await StatusAsync(user, "/Workplace"));
         Assert.Contains("fac.eight", await admin.GetStringAsync("/Admin/SystemRoles"));
 
-        var id = await _f.WithDbAsync(db => db.RoleAssignments.Where(r => r.PrincipalName == "fac.eight").Select(r => r.Id).SingleAsync());
-        var remove = await FormHelper.PostFormAsync(admin, "/Admin/SystemRoles", $"/Admin/SystemRoles?handler=Remove&id={id}");
+        // Saving the row with the box unticked removes the role.
+        var remove = await FormHelper.PostFormAsync(admin, "/Admin/SystemRoles", "/Admin/SystemRoles?handler=Save",
+            ("directoryId", person.DirectoryId));
         Assert.Equal(HttpStatusCode.Redirect, remove.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, await StatusAsync(user, "/Workplace"));
+        Assert.False(await _f.WithDbAsync(db => db.RoleAssignments.AnyAsync(r => r.PrincipalDirectoryId == person.DirectoryId)));
     }
 }

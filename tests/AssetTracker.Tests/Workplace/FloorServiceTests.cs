@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Workplace;
@@ -62,7 +63,7 @@ public class FloorServiceTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Managers_see_the_floors_of_granted_sites_only_and_not_archived_ones()
     {
-        var manager = new TestUser(@"CORP\mgr.fs05", "S-1-5-21-1000-1000-1000-3501", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.fs05", "S-1-5-21-1000-1000-1000-3501", AppRoles.Manager);
         var (mine, theirs) = await _f.WithDbAsync(async db =>
         {
             var granted = await Seed.SiteAsync(db, "FS05");

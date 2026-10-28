@@ -50,7 +50,7 @@ The exact folder is shown on the **Demo controls** page (`/Demo`). It contains `
 
 | Production | Demo mode |
 | --- | --- |
-| Windows Authentication (Kerberos), roles from AD group SIDs | A demo sign-in that issues the same claims (name, user SID, group SIDs) for the identity you choose on `/Demo`. The real role mapping, policies and site scoping run unchanged. |
+| Windows Authentication (Kerberos); roles given in the app (Admin → System roles) | A demo sign-in that issues the same claims (name, user SID) for the person you choose on `/Demo`. Roles come from the same `RoleAssignments` table as in production, so the real role lookup, policies and site scoping run unchanged. |
 | SQL Server | SQLite file `demo.db` (same data model) |
 | Active Directory (paged LDAP query) | A fixed fictional directory of 151 entries (see §6) |
 | SMTP relay to Microsoft 365 | The **demo mailbox** (`/Demo/Mailbox`). Mail is written as `.eml` files and shown as plain text. |
@@ -66,9 +66,9 @@ Demo defaults: default timezone `Europe/Amsterdam`, reminder time 08:00 site tim
 
 Open **Switch role / time travel / reset** in the banner (`/Demo`):
 
-- **Roles:** tick any combination of *IT / editor*, *Manager / viewer* and *Application admin*, or none. These simulate membership of the three AD groups.
-- **Act as person:** the person you are signed in as. This matters for managers, because manager grants are linked to a person. **Demo Manager (AMS)** (`DEMO\manager.ams`) has a grant for Amsterdam only. **Demo You** (`DEMO\you`, the default) has no grant.
-- The default identity is `DEMO\you` with roles **IT + Admin**.
+- **Roles:** tick any combination of *IT*, *Manager*, *Admin* and *Facility*, or none, and *Save roles*. The ticks **replace** the roles of the person you act as, in the demo database (the same roles Admin → System roles shows). They take effect on the next page.
+- **Act as person:** the person you are signed in as; their roles and manager sites come with them. **Demo Manager (AMS)** (`DEMO\manager.ams`) has the Manager role and the Amsterdam site. **Max Demoson** has the Facility role. **Demo You** (`DEMO\you`, the default) has IT + Admin and no site.
+- **Reset demo data** gives `DEMO\you` the roles **IT + Admin** again (with everything else).
 - **Time travel** moves the demo clock forward. Due dates, the overdue rule, reports and reminders all follow it. After a jump, a directory sync and a reminder pass run straight away.
 - **Reset demo data** starts over.
 - **Super admin (not an AD account):** the panel shows the demo super admin's sign-in: `/superadmin`, username `superadmin`, password **`demo-superadmin-2026`**. This password exists only in the demo; the setup command on a server and the password change in the app refuse it.
@@ -131,11 +131,11 @@ All names are made up, for example `Alex Demoson` or `Jules Sampleton`. All addr
 
 **Closed history:** `AMS-LT-007` has two closed loans. `NYC-LT-007` was loaned to Billie Demoson at New York, returned, and then **moved to Amsterdam**. `NYC-LT-008` was returned damaged. A Singapore mouse loan was returned.
 
-**Floor plans (Workplace):** AMS *Floor 1* (four offices, boardroom, canteen, print room; zones *Finance*, *Engineering*, *Service desk*), AMS *Floor 2*, NYC *Floor 1* and the dense AMS *Floor 3*, drawn from the fictional SVGs in `DemoFloorplans`, with a few people, desktops and screens placed at desks of AMS *Floor 1* (and things to check: desks without a desktop or a screen, and the leaver) and three people in *Operations* on NYC *Floor 1*. *Floor 3* is crowded on purpose, to check labels: an *Open plan* of twelve 8-seat tables close together (six zones, two tables each), with 86 people, 48 desktops and 30 screens, three of them people with long names (*Maximiliana van den Berghe-Oosterhuis*, *Christopher Montgomery-Fictaway*, *Anne-Sophie Demoulin-Placeholt*), a *Focus room* with four people and a *Huddle* room. `max.demoson` has the **Facility** role, given inside the app (Admin → System roles), not by an AD group.
+**Floor plans (Workplace):** AMS *Floor 1* (four offices, boardroom, canteen, print room; zones *Finance*, *Engineering*, *Service desk*), AMS *Floor 2*, NYC *Floor 1* and the dense AMS *Floor 3*, drawn from the fictional SVGs in `DemoFloorplans`, with a few people, desktops and screens placed at desks of AMS *Floor 1* (and things to check: desks without a desktop or a screen, and the leaver) and three people in *Operations* on NYC *Floor 1*. *Floor 3* is crowded on purpose, to check labels: an *Open plan* of twelve 8-seat tables close together (six zones, two tables each), with 86 people, 48 desktops and 30 screens, three of them people with long names (*Maximiliana van den Berghe-Oosterhuis*, *Christopher Montgomery-Fictaway*, *Anne-Sophie Demoulin-Placeholt*), a *Focus room* with four people and a *Huddle* room. `max.demoson` has the **Facility** role. All roles are given inside the app (Admin → System roles): `you` has IT + Admin and `manager.ams` has Manager with the AMS site.
 
 ## 7. Scenario checklist
 
-Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6, "Stage n") or the sponsor decision (`docs/decisions.md`, D1–D11) that it demonstrates. Unless a scenario says otherwise, use the default identity (IT + Admin as `DEMO\you`). Switch identities on `/Demo`.
+Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6, "Stage n") or the sponsor decision (`docs/decisions.md`, D1–D11) that it demonstrates. Unless a scenario says otherwise, use the default identity (IT + Admin as `DEMO\you`). Switch persons and roles on `/Demo`.
 
 ### IT / editor
 
@@ -163,27 +163,28 @@ Each scenario names the acceptance gate of the MVP plan (`docs/mvp-plan.md` §6,
 - [ ] **Reports and CSV** (Stage 3). *Reports → Inventory / Current loans / Overdue / History* each have filters, paging and *Export CSV*. Export the inventory and open it in a spreadsheet. **Expected:** the `AMS-LT-009` description starts with `'=HYPERLINK(` (neutralized; no formula runs). Each export is recorded in the audit log.
 - [ ] **Audit log is IT only** (D2). *Audit* lists every change (checkout, return, correction, settings, exports, directory sync) with actor and time. There are no edit or delete actions.
 - [ ] **Ops dashboard and mail queue** (Stage 3). *Ops* shows the app version, directory sync status, outbox counts and the worker heartbeat. *Mail queue* shows skipped and failed mail with reasons and a requeue action.
-- [ ] **Directory sync history, read-only for IT** (D7). With IT only (untick Admin), *Directory sync* shows the history but no *Run sync now* button.
+- [ ] **Directory sync history, read-only for IT** (D7). With IT only (untick Admin on `/Demo` and save), *Directory sync* shows the history but no *Run sync now* button.
 
 ### Manager / viewer
 
-Switch to **Demo Manager (AMS)** with only the **Manager** role.
+On `/Demo`, act as **Demo Manager (AMS)** (they have only the **Manager** role).
 
 - [ ] **Sees only granted sites** (Stage 1). *Assets*, *Pools*, *Loans* and *Reports* show AMS only. `NYC-LT-001` and `SIN-LT-001` are not listed, and opening their URLs directly returns *Not found*. CSV exports contain AMS only.
 - [ ] **Sees prior holders after an asset moved** (plan §1, intentional disclosure). Open `NYC-LT-007` (now at AMS). **Expected:** its full history, including the New York holder *Billie Demoson*.
 - [ ] **Read only** (Stage 1). There are no check out, return, correct or edit actions, and those URLs return *Forbidden*.
 - [ ] **No audit** (D2). `/Audit` returns *Forbidden*.
-- [ ] **Grants belong to a person and need the manager group** (D9). Act as `DEMO\you` with the Manager role. **Expected:** the inventory pages open but are empty (no grant). Act as Demo Manager (AMS) without any role (as if removed from the manager group). **Expected:** no inventory at all; the grant is kept and works again when the role comes back.
+- [ ] **Grants belong to a person and need the Manager role** (D9). As `DEMO\you`, tick only Manager. **Expected:** the inventory pages open but are empty (no site). Act as Demo Manager (AMS) and untick Manager (as if an admin removed the role). **Expected:** no inventory at all; the AMS site stays on their row in Admin → System roles and works again when the role comes back.
 
 ### Application admin
 
-Switch to **Admin** only.
+On `/Demo`, as `DEMO\you`, tick **Admin** only.
 
 - [ ] **Admin alone sees no inventory** (Stage 1). There are no Assets, Loans or Reports links, and their URLs return *Forbidden*.
 - [ ] **Tag generator and type-specific forms.** *Assets → New asset*, choose *Laptop* and a site. **Expected:** the form previews the next tag (for example `AMS-LT-011`); leaving the tag empty creates the asset with it. Choose *Phone*: vendor and model dropdowns and two IMEI fields. Choose *Phone number*: only the phone number, provider, SIM type, SIM status, SIM number and PUC (marked IT only).
 - [ ] **Asset types, fields, vendors and models** (admin). *Asset types → Phone number*: switch standard fields, change the tag pattern (the example updates), add a custom field (for example a *Choice*), move it up or down and open a new asset form to see it. *Vendors* and *Models*: add a vendor and a model for *Laptop*, then pick it on a new laptop (choosing a vendor narrows the models). Deactivating a model removes it from new forms but not from existing assets. *Sites → Tag code* sets the `{SITE}` part of generated tags.
 - [ ] **Overview tiles per role** (admin). *Overview tiles* is a table of tiles with a column for IT and one for managers. Untick *Inventory by type* for IT and *Pool stock* for managers, save, then switch role (*Demo*) and reload *Overview*: the tile is gone for that role only. "Needs attention" cannot be given to managers (greyed out). *Reset to defaults* brings everything back; both actions are audited.
-- [ ] **Sites and grants**. *Sites*: edit a site's timezone or directory value. *Grants*: grant `Demo Manager (AMS)` access to NYC, then switch to the manager and see NYC appear. Remove the grant again.
+- [ ] **Sites and grants**. *Sites*: edit a site's timezone or directory value. *System roles*: tick NYC on the row of `Demo Manager (AMS)` and save, then act as the manager and see NYC appear. Untick it again. (*Admin → Grants* is gone: old links open System roles.)
+- [ ] **System roles.** One row per person with a role or site; tick boxes for IT, Manager, Admin and Facility, and the manager's sites on the same row. *Add a person*: search `billie`, tick *Manager* and *AMS*, save: they get a row. A person without a Windows account can only get sites. Filters: by role, by site, *Show inactive people*. Your own Admin box is greyed out, and the server refuses removing your own Admin role. Every change is audited (`role.assign`, `role.remove`, `grant.add`, `grant.remove`).
 - [ ] **Settings: test directory query** (WP4.1). *Settings → Test directory query*. **Expected:** "Fetched 151 entries: 149 valid, 2 would be quarantined … 2 have an unmapped site value … 3 are disabled", plus a sample. Nothing is synced.
 - [ ] **Settings: test email**. Enter an address (for example `you@demo.example`) and click *Send test email*. **Expected:** success, and the message is in the demo mailbox.
 - [ ] **Settings: save and audit**. Change, for example, *Overdue reminder time* or *Include phone numbers in mail* (D5), then save. **Expected:** the change applies without a restart and is audited as `setting.update` (visible to IT). The SMTP password field is write-only.
@@ -195,7 +196,8 @@ Switch to **Admin** only.
 Open `/superadmin` (the link is on `/Demo`). Signing in replaces the demo identity in this browser until you sign out.
 
 - [ ] **Sign in.** Username `superadmin`, password `demo-superadmin-2026`. **Expected:** you land on *Admin → Settings*; every page shows the banner *Signed in as the super admin (not an AD account)*; the user card says `superadmin (local)` with role *Admin*.
-- [ ] **Admin pages work.** *Settings*, *System roles*, *Sites*, *Directory sync* (including *Run sync now*), *Grants*, *Asset types*, *Vendors*, *Models*, *Overview tiles* and *Privacy* open and save. Changes are audited as `superadmin (local)` (switch to IT later to read the audit log).
+- [ ] **Admin pages work.** *Settings*, *System roles*, *Sites*, *Directory sync* (including *Run sync now*), *Asset types*, *Vendors*, *Models*, *Overview tiles* and *Privacy* open and save. Changes are audited as `superadmin (local)` (switch to IT later to read the audit log).
+- [ ] **Last admin.** On *System roles*, untick *Admin* on the row of Demo You (the only admin) and save. **Expected:** the warning *Nobody has the Admin role any more. From now on only the super admin can give roles.* Tick it again (or *Reset demo data*).
 - [ ] **No IT pages.** `/Assets`, `/Loans`, `/Reports`, `/Workplace`, `/Ops` and `/Audit` return *Forbidden* (403); the sidebar has no links to them.
 - [ ] **Wrong password.** Sign out, then try a wrong password. **Expected:** *Sign-in failed. Check the username and password…*, never which part was wrong. After **5** wrong tries the account is locked for 15 minutes: even the right password then gives the same message, and the demo mailbox gets one *"the super admin account is locked"* mail. *Reset demo data* (or waiting 15 minutes, or *+1 day*) clears it. More than 10 tries from one browser within 15 minutes give *Too many sign-in attempts*.
 - [ ] **Sign-in mail.** Each successful sign-in puts *"Asset Tracker: the super admin signed in"* in the demo mailbox (with the IP address).
@@ -205,7 +207,7 @@ Open `/superadmin` (the link is on `/Demo`). Signing in replaces the demo identi
 
 ### No role
 
-- [ ] Untick all roles. **Expected:** the home page says you have no access, and every inventory, admin and audit URL returns *Forbidden* or *Not found*. `/Demo` stays reachable so you can switch back.
+- [ ] Untick all roles on `/Demo` and save. **Expected:** the home page says you have no access, and every inventory, admin and audit URL returns *Forbidden* or *Not found*. `/Demo` stays reachable so you can switch back.
 
 ### Workplace (floor plans)
 
@@ -240,7 +242,7 @@ Delete the old demo database first (`%LOCALAPPDATA%\AssetTrackerDemo`): this mod
 - [ ] **Print to PDF.** Open *Print / PDF* above the map and choose *The whole floor*. **Expected:** a new tab with an A4 landscape sheet (the plan itself, without the paper margins of the drawing; legend; header with floor, counts, paper size and who printed it) opens the browser's print dialog; *Save as PDF* gives the map on page 1 and the desk list on the next pages: **grouped by zone, then room** (person, desktop, screens, note), with the free desks of a room on one line (*Open plan: 2 free*); desks in no zone come last. On the map every name and tag is at least 7 pt on paper, shortened where needed, and nothing overlaps. Zoom into a part and choose *What you see now*; select some seats and choose *The selected seats*; choose *Draw an area…* and drag a rectangle: each prints only that section and lists only its desks.
 - [ ] **A4 or A3.** The print page has *Paper: A4 | A3* (A4 by default); the hint names the chosen size (*A4 landscape* / *A3 landscape*). Press *A3*: the sheet becomes larger, the labels get more room, and *Save as PDF* gives an A3 landscape page in Chrome and Edge (in Safari choose A3 in the print dialog yourself: the hint says so). When names only fit as numbers on A4 (a print whose area is much larger than the floor shows it, for example `/Workplace/Print/{id}?area=-600,-300,1800,900` for AMS *Floor 3*), A4 shows *This floor is easier to read on A3* with a link to switch, and a key to the numbers under the map. It never switches to A3 by itself.
 - [ ] **Facility and manager.** As *Max Demoson* (Facility role) you can drag, place and release. As *Demo Manager (AMS)* you see the map, names, status and can print; clicking a desk opens the same desk view **read only** (cards, no search boxes, no *Replace* or *Release*), and there is no *Place from a list* or seat settings.
-- [ ] **Facility role, given in the app.** As the demo admin open *Admin → System roles*: *Max Demoson* has the Facility role. On `/Demo` choose *Max Demoson (… Facility role)*, untick every role and apply. **Expected:** the menu shows only *Overview* and *Floor plans*; floors can be imported and edited; Assets, Loans, Reports and Admin return *Forbidden*. Back as admin remove the role: Max loses access at once. Give it again to someone else by searching their name.
+- [ ] **Facility role, given in the app.** As the demo admin open *Admin → System roles*: *Max Demoson* has the Facility role. On `/Demo` act as *Max Demoson (… roles: Facility)*. **Expected:** the menu shows only *Overview* and *Floor plans*; floors can be imported and edited; Assets, Loans, Reports and Admin return *Forbidden*. Back as admin remove the role: Max loses access at once. Give it again to someone else by searching their name.
 - [ ] **Manager (read only).** As *Demo Manager (AMS)* with only the Manager role: the floors of Amsterdam are listed and can be searched, but there is no *Import*, *Replace* or zone editing, and the New York floor is *Not found*.
 
 ### Time, overdue and reminders (D4)

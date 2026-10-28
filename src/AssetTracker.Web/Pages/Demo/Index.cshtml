@@ -2,7 +2,7 @@
 @model AssetTracker.Web.Pages.Demo.IndexModel
 @{
     ViewData["Title"] = "Demo controls";
-    var roles = Model.Current.Roles;
+    var roles = Model.CurrentRoles;
 }
 <header class="page-header">
     <div class="page-heading">
@@ -22,15 +22,20 @@
     <section class="demo-panel" id="demo-identity" aria-labelledby="demo-identity-h">
         <h2 id="demo-identity-h">Who am I?</h2>
         <p>Currently <strong>@Model.Current.UserName</strong> with roles
-            <strong>@(roles == AppRoles.None ? "none" : roles.ToString())</strong>.
-            Roles come from simulated AD group SIDs, exactly like Windows sign-in; the person decides which manager grants apply.</p>
-        <form method="post" asp-page-handler="Identity" class="stack">
+            <strong id="demo-current-roles">@IndexModel.RoleNames(roles)</strong>.
+            Roles are given in the app, exactly like on a server (Admin → System roles); the person decides which manager sites apply.</p>
+        <form method="post" asp-page-handler="Roles" class="stack" id="demo-roles-form">
             <fieldset class="demo-roles">
-                <legend>Roles (any combination, including none)</legend>
-                <label class="check"><input type="checkbox" name="it" value="true" checked="@roles.HasFlag(AppRoles.It)" /> IT / editor</label>
-                <label class="check"><input type="checkbox" name="manager" value="true" checked="@roles.HasFlag(AppRoles.Manager)" /> Manager / viewer</label>
-                <label class="check"><input type="checkbox" name="admin" value="true" checked="@roles.HasFlag(AppRoles.Admin)" /> Application admin</label>
+                <legend>Roles of @Model.Current.UserName (any combination, including none)</legend>
+                <label class="check"><input type="checkbox" name="it" value="true" checked="@roles.HasFlag(AppRoles.It)" /> IT</label>
+                <label class="check"><input type="checkbox" name="manager" value="true" checked="@roles.HasFlag(AppRoles.Manager)" /> Manager</label>
+                <label class="check"><input type="checkbox" name="admin" value="true" checked="@roles.HasFlag(AppRoles.Admin)" /> Admin</label>
+                <label class="check"><input type="checkbox" name="facility" value="true" checked="@roles.HasFlag(AppRoles.Facility)" /> Facility</label>
             </fieldset>
+            <p class="hint">The ticks replace this person's roles in the demo database. <em>Reset demo data</em> gives the demo user IT and Admin again.</p>
+            <div class="form-actions"><button type="submit" id="demo-apply-roles" class="btn--primary">Save roles</button></div>
+        </form>
+        <form method="post" asp-page-handler="Identity" class="stack" id="demo-person-form">
             <div class="field">
                 <label for="personSid">Act as person</label>
                 <select id="personSid" name="personSid">
@@ -40,9 +45,9 @@
                     }
                 </select>
             </div>
-            <p class="hint">Tip: <em>Demo Manager (AMS)</em> + only the Manager role shows what a site manager with a grant
-                for Amsterdam sees. The Facility role is not an AD group: it is given to a person inside the app (Admin → System roles), so pick the person marked <em>Facility role</em> and untick every role to see the Facility view.</p>
-            <div class="form-actions"><button type="submit" id="demo-apply-identity" class="btn--primary">Apply</button></div>
+            <p class="hint">Tip: <em>Demo Manager (AMS)</em> has the Manager role and the Amsterdam site, so acting as them shows what a
+                site manager sees. The person marked <em>roles: Facility</em> shows the Facility view (floor plans only).</p>
+            <div class="form-actions"><button type="submit" id="demo-apply-identity">Act as this person</button></div>
         </form>
     </section>
 

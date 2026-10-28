@@ -1,8 +1,9 @@
 namespace AssetTracker.Core.Security;
 
 /// <summary>
-/// Application roles. It, Manager and Admin are derived from AD security groups; Facility is assigned inside the
-/// application (Admin → System roles, table <c>RoleAssignments</c>). Overlap is a union; Admin implies nothing else.
+/// Application roles. All of them are given to people inside the application (Admin → System roles, table
+/// <c>RoleAssignments</c>); the built-in super admin always has exactly Admin. Overlap is a union; Admin implies nothing
+/// else.
 /// </summary>
 [Flags]
 public enum AppRoles
@@ -12,7 +13,7 @@ public enum AppRoles
     Manager = 2,
     Admin = 4,
 
-    /// <summary>Facility / operations: works with the Workplace floor plans. Assigned by an admin in the application.</summary>
+    /// <summary>Facility / operations: works with the Workplace floor plans only.</summary>
     Facility = 8,
 }
 

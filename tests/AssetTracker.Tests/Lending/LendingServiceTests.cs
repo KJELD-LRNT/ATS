@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Lending;
@@ -100,7 +101,7 @@ public class LendingServiceTests : IClassFixture<AppFactory>
         var holder = await _f.PersonAsync("ls05.holder", site);
         var asset = await _f.AssetAsync("LS-0005", site);
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db,
-            new TestUser(@"CORP\mgr.ls05", "S-1-5-21-1000-1000-1000-3501", TestGroups.Manager), site));
+            new TestUser(@"CORP\mgr.ls05", "S-1-5-21-1000-1000-1000-3501", AppRoles.Manager), site));
 
         foreach (var user in new[] { TestUser.Manager, TestUser.Admin, TestUser.Nobody })
         {
