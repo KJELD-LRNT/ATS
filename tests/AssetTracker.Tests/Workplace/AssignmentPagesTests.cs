@@ -266,6 +266,10 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         var part = await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=60,70,40,30&what=Window+side");
         Assert.Contains("Window side", part);
         Assert.Contains("viewBox=\"60 70 40 30\"", part);
+        // the map is clipped to the area, so the letterbox around it shows no desks outside the printed list
+        Assert.Contains("<clipPath id=\"fp-print-area\"><rect x=\"60\" y=\"70\" width=\"40\" height=\"30\" /></clipPath>", part);
+        Assert.Contains("clip-path=\"url(#fp-print-area)\"", part);
+        Assert.DoesNotContain("fp-print-area", whole);
         Assert.Contains("ap11.anna", part);
         // a bad area prints the whole floor
         Assert.Contains("Whole floor", await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=nonsense"));

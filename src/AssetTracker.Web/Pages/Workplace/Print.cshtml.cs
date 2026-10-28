@@ -67,7 +67,7 @@ public class PrintModel(FloorService floors, AssignmentService assignments, ICur
 
         var states = await assignments.StatesAsync(view.Spots, ct);
         // The whole floor prints the plan itself, not the empty paper around it in the drawing.
-        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Zones, states, PrintArea ?? FloorplanRenderer.Content(view.Floor, view.Spots));
+        Svg = FloorplanRenderer.Render(view.Floor, view.Spots, view.Zones, states, PrintArea ?? FloorplanRenderer.Content(view.Floor, view.Spots), clipToViewBox: PrintArea is not null);
 
         var centers = FloorplanRenderer.Centers(view.Floor, view.Spots);
         var zoneNames = view.Zones.ToDictionary(t => t.Id, t => t.Name);

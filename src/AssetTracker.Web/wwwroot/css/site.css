@@ -1022,7 +1022,9 @@ button.wp-stat:hover { background: var(--ground); }
 .print-sheet { width: 1047px; max-width: 100%; margin: 0 auto; background: #FFFFFF; padding: 0; color: #111827; page: floorplan; }
 .print-sheet--a3 { width: 1512px; page: floorplan-a3; }
 .print-body:has(.print-sheet--a3) .print-bar { max-width: 1512px; }
-.print-page { display: flex; flex-direction: column; aspect-ratio: 277 / 186; }
+/* min-height: 0 keeps the sheet at its paper size: with aspect-ratio alone a tall map (a narrow area) grows the box
+   past one page instead of being fitted into it. */
+.print-page { display: flex; flex-direction: column; aspect-ratio: 277 / 186; min-height: 0; overflow: hidden; }
 .print-sheet--a3 .print-page { aspect-ratio: 400 / 273; }
 .print-head { display: flex; flex-direction: column; gap: 2px; padding: 0 0 6px; border-bottom: 2px solid #111827; margin-bottom: 8px; flex: none; }
 .print-head h1 { font-size: 20px; margin: 0; }
