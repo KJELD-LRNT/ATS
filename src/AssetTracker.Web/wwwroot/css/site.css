@@ -963,6 +963,8 @@ button.wp-stat:hover { background: var(--ground); }
 .wp-slot[hidden] { display: none; }
 .wp-slot-h { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .wp-slot .wp-items { margin-bottom: 6px; }
+/* In the desk view a name or tag keeps its own line; the buttons drop below it when the panel is narrow. */
+.wp-slot .wp-item-text { flex-basis: 170px; overflow-wrap: normal; }
 .wp-slot .wp-items[hidden] { display: none; }
 .wp-slot-find[hidden] { display: none; }
 .wp-slot-find .searchbox { padding-right: 4px; }
