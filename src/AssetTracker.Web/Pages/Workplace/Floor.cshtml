@@ -39,17 +39,13 @@
 
 <div class="wp" data-floor-map data-floor-id="@floor.Id" data-editable="@(Model.CanEdit ? "true" : "false")" data-focus="@string.Join(',', Model.FocusIds)"
      data-map-url="@Url.Page("Floor", "Map", new { id = floor.Id })" data-status-url="@Url.Page("Floor", "Status", new { id = floor.Id })"
-     data-print-url="@Url.Page("Print", new { id = floor.Id })">
+     data-print-url="@Url.Page("Print", new { id = floor.Id })" data-tag-prefix="@(Model.View.SiteKey)-">
     <section class="wp-stage card" aria-label="Floor plan">
         <div class="wp-toolbar">
             <div class="wp-find">@await Html.PartialAsync("_FindBox", "wp-q")</div>
             <div class="wp-tools" role="group" aria-label="Map tools">
                 <label class="check wp-toggle"><input type="checkbox" data-layer="zones" checked /> Zones</label>
                 <label class="check wp-toggle"><input type="checkbox" data-layer="names" checked /> Names</label>
-                <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
-                <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
-                <button type="button" data-zoom="fit">Fit</button>
-                <button type="button" data-area aria-pressed="false" title="Drag on the map to select an area (or hold Shift)">Select area</button>
                 <details class="wp-print">
                     <summary class="btn">@Ui.Icon("download", 16, 2) Print / PDF</summary>
                     <div class="wp-print-menu" role="group" aria-label="Print">
@@ -62,11 +58,27 @@
                 </details>
             </div>
         </div>
-        <div class="wp-canvas" data-canvas tabindex="0" aria-label="Floor plan of @floor.Name. Use the search box to find a seat, person or desktop, or zoom and click.">
-            @await Html.PartialAsync("_FloorMap", Model.Svg)
+        <div class="wp-canvas-wrap" data-canvas-wrap>
+            <div class="wp-canvas" data-canvas tabindex="0" aria-label="Floor plan of @floor.Name. Use the search box to find a seat, person or desktop, or zoom and click. Arrow keys move the map, plus and minus zoom, 0 shows the whole floor.">
+                @await Html.PartialAsync("_FloorMap", Model.Svg)
+            </div>
+            <div class="wp-mapctl" role="group" aria-label="Zoom and view">
+                <span class="wp-zoom-level" data-zoom-level title="Zoom (100% = the whole floor)">100%</span>
+                <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">@Ui.Icon("plus", 16, 2)</button>
+                <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (−)">@Ui.Icon("minus", 16, 2)</button>
+                <button type="button" data-zoom="fit" title="Show the whole floor (0)">@Ui.Icon("fit", 16, 2) <span>Fit</span></button>
+                <button type="button" data-area aria-pressed="false" title="Drag on the map to select an area (or hold Shift)">@Ui.Icon("area", 16, 2) <span data-ctl-label>Select area</span></button>
+                <button type="button" data-fullscreen aria-pressed="false" title="Full screen">@Ui.Icon("expand", 16, 2) <span data-ctl-label data-fullscreen-label>Full screen</span></button>
+            </div>
+            <div class="wp-callouts" data-callout-box hidden>
+                <details>
+                    <summary>Numbers on the map (<span data-callout-count>0</span>)</summary>
+                    <ol class="wp-callout-key" data-callout-key></ol>
+                </details>
+            </div>
         </div>
         @await Html.PartialAsync("_Legend")
-        <p class="hint wp-hint">Scroll to zoom, drag to move; names and desktop tags appear once you zoom in. Click a seat to select it; Shift-click adds more, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
+        <p class="hint wp-hint">Scroll to zoom, drag to move, double-click a room to zoom to it. Names and desktop tags are shortened to fit; where even that does not fit, the desk gets a number (see <em>Numbers on the map</em>). Click a seat to select it; Shift-click adds more, a table or room selects all its seats.@if (Model.CanEdit) { <text> Drag people, desktops and screens from the list onto a desk.</text> }</p>
     </section>
 
     <aside class="wp-panel" aria-label="Status, placing and selection">

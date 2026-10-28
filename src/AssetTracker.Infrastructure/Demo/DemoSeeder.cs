@@ -28,6 +28,12 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
     public const string TransferredAssetTag = "NYC-LT-007";
     public const string CorrectedAssetTag = "AMS-LT-006";
 
+    /// <summary>Desktops placed on the dense demo floor (AMS Floor 3, "Open plan").</summary>
+    public const int DenseFloorDesktops = 48;
+
+    /// <summary>Screens placed on the dense demo floor (at the first desks that have a desktop).</summary>
+    public const int DenseFloorScreens = 30;
+
     /// <summary>Seeds when the database has no sites yet. Returns true when it seeded.</summary>
     public async Task<bool> SeedIfEmptyAsync(CancellationToken ct = default)
     {
@@ -100,7 +106,7 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             var floors = sp.GetRequiredService<Core.Workplace.FloorService>();
             var ams1 = await floors.ImportAsync(sites.Ams, "Floor 1", DemoFloorplans.Amsterdam1(), ct);
             await floors.ImportAsync(sites.Ams, "Floor 2", DemoFloorplans.Amsterdam2(), ct);
-            await floors.ImportAsync(sites.Nyc, "Floor 1", DemoFloorplans.NewYork1(), ct);
+            var nyc1 = await floors.ImportAsync(sites.Nyc, "Floor 1", DemoFloorplans.NewYork1(), ct);
 
             var db = sp.GetRequiredService<AppDbContext>();
             var zones = sp.GetRequiredService<Core.Workplace.ZoneService>();
@@ -134,6 +140,41 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             await assign.AssignPersonAsync(engineering[0], people[DemoDirectorySource.LeaverUsername], ct);
             await assign.AssignPersonAsync(engineering[1], P(43), ct);
             await assign.AssignAssetAsync(engineering[1], assets["AMS-SC-005"], ct);
+
+            // Floor 3: a dense open plan (twelve 8-seat tables) full of people and desktops, a few with long names, to
+            // see how names and tags are shortened, spread and numbered on the map and in the PDF.
+            var ams3 = await floors.ImportAsync(sites.Ams, "Floor 3", DemoFloorplans.Amsterdam3(), ct);
+            async Task<List<int>> SeatsOn(int floorId, string room) =>
+                await db.Workspots.Where(w => w.FloorId == floorId && w.RoomId == room).OrderBy(w => w.ElementId)
+                    .Select(w => w.Id).ToListAsync(ct);
+            var open = await SeatsOn(ams3.Floor.Id, "3.01");
+            var focus = await SeatsOn(ams3.Floor.Id, "3.02");
+            string[] denseZones = ["Sales", "Marketing and communications", "Customer success", "Product", "Data", "People and culture"];
+            for (var z = 0; z < denseZones.Length; z++)
+                await zones.CreateAsync(denseZones[z], open.Skip(z * 16).Take(16).ToList(), ct);
+            var queue = new Queue<int>(Enumerable.Range(44, 100).Select(P));
+            var longNames = DemoDirectorySource.LongNameUsernames.Select(u => people[u]).ToList();
+            var desktop = 5;
+            var screen = 7;
+            for (var i = 0; i < open.Count; i++)
+            {
+                if (i % 9 == 8) continue; // a free desk now and then
+                var who = i switch { 1 => longNames[0], 10 => longNames[1], 27 => longNames[2], _ => queue.Dequeue() };
+                await assign.AssignPersonAsync(open[i], who, ct);
+                if (desktop > 4 + DenseFloorDesktops || i % 5 == 3) continue;
+                await assign.AssignAssetAsync(open[i], assets[$"AMS-DT-{desktop++:000}"], ct);
+                if (screen <= 6 + DenseFloorScreens) await assign.AssignAssetAsync(open[i], assets[$"AMS-SC-{screen++:000}"], ct);
+            }
+            foreach (var seat in focus.Take(4)) await assign.AssignPersonAsync(seat, queue.Dequeue(), ct);
+
+            // New York Floor 1: three people in Operations, two with a desktop, one with a screen too.
+            var operations = await SeatsOn(nyc1.Floor.Id, "1.01");
+            await assign.AssignPersonAsync(operations[0], P(1), ct);
+            await assign.AssignAssetAsync(operations[0], assets["NYC-DT-001"], ct);
+            await assign.AssignAssetAsync(operations[0], assets["NYC-SC-001"], ct);
+            await assign.AssignPersonAsync(operations[1], P(4), ct);
+            await assign.AssignAssetAsync(operations[1], assets["NYC-DT-002"], ct);
+            await assign.AssignPersonAsync(operations[3], P(7), ct);
 
             await sp.GetRequiredService<RoleAssignmentService>()
                 .AssignAsync(people[DemoDefaults.FacilityUsername], AppRoles.Facility, ct);
@@ -295,7 +336,8 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
         // Per site: laptops, desktops, phones, phone numbers, screens.
         var counts = new Dictionary<string, (int Lt, int Dt, int Ph, int Pn, int Sc)>
         {
-            ["AMS"] = (10, 4, 3, 2, 6),
+            // AMS-DT-005 and up and AMS-SC-007 and up are on the dense Floor 3; AMS-DT-004 stays spare.
+            ["AMS"] = (10, 4 + DenseFloorDesktops, 3, 2, 6 + DenseFloorScreens),
             ["NYC"] = (8, 2, 2, 1, 2),
             ["SIN"] = (5, 3, 2, 1, 1),
         };

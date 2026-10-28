@@ -13,39 +13,65 @@
 <div class="print-bar">
     <button type="button" class="btn--primary" data-print-now>Print / Save as PDF</button>
     <a class="btn" asp-page="Floor" asp-route-id="@floor.Id">Back to the floor</a>
-    <span class="hint">In the print dialog choose <strong>Save as PDF</strong> as the printer, landscape.</span>
+    <span class="print-paper" role="group" aria-label="Paper size">
+        <span class="print-paper-label">Paper</span>
+        <a class="btn btn--sm" asp-page="Print" asp-all-route-data="@Model.RouteFor("a4")" aria-current="@(Model.IsA3 ? null : "true")" data-paper-switch="a4">A4</a>
+        <a class="btn btn--sm" asp-page="Print" asp-all-route-data="@Model.RouteFor("a3")" aria-current="@(Model.IsA3 ? "true" : null)" data-paper-switch="a3">A3</a>
+    </span>
+    <span class="hint" data-paper-hint>In the print dialog choose <strong>Save as PDF</strong> as the printer, <strong>@Model.PaperName landscape</strong>.@if (Model.IsA3) { <text> Safari does not take the paper size from the page: choose A3 in its print dialog yourself.</text> }</span>
+    <p class="alert alert--info print-a3-hint" role="status" data-a3-hint hidden>
+        <span class="alert-body">This floor is easier to read on A3: some names only fit as numbers on A4.
+            <a asp-page="Print" asp-all-route-data="@Model.RouteFor("a3")">Switch to A3</a>. In Safari, also choose A3 in the print dialog.</span>
+    </p>
 </div>
 
-<article class="print-sheet" data-print-sheet data-autoprint="@(Model.Auto ? "true" : "false")">
-    <header class="print-head">
-        <h1>@floor.Name <span class="print-site">@Model.View.SiteKey – @Model.View.SiteName</span></h1>
-        <p>@(Model.What ?? (Model.PrintArea is null ? "Whole floor" : "Part of the floor")) · @taken taken, @free free · printed @Model.PrintedAt.ToString("yyyy-MM-dd HH:mm") by @Model.PrintedBy</p>
-    </header>
-    <div class="print-map" data-print-map>
-        @Html.Raw(Model.Svg)
+<article class="print-sheet@(Model.IsA3 ? " print-sheet--a3" : "")" data-print-sheet data-paper="@(Model.IsA3 ? "a3" : "a4")" data-tag-prefix="@(Model.View.SiteKey)-" data-autoprint="@(Model.Auto ? "true" : "false")">
+    <div class="print-page">
+        <header class="print-head">
+            <h1>@floor.Name <span class="print-site">@Model.View.SiteKey – @Model.View.SiteName</span></h1>
+            <p>@(Model.What ?? (Model.PrintArea is null ? "Whole floor" : "Part of the floor")) · @taken taken, @free free · @Model.PaperName · printed @Model.PrintedAt.ToString("yyyy-MM-dd HH:mm") by @Model.PrintedBy</p>
+        </header>
+        <div class="print-map" data-print-map>
+            @Html.Raw(Model.Svg)
+        </div>
+        <section class="print-callouts" data-callout-box aria-label="Numbers on the map" hidden>
+            <ol class="wp-callout-key" data-callout-key></ol>
+        </section>
+        @await Html.PartialAsync("_Legend")
     </div>
-    @await Html.PartialAsync("_Legend")
 
     @if (Model.List && Model.Rows.Count > 0)
     {
         <section class="print-list" aria-labelledby="print-list-h">
             <h2 id="print-list-h">Desks @(Model.PrintArea is null ? "on this floor" : "in this part")</h2>
-            <table>
-                <thead><tr><th scope="col">Zone</th><th scope="col">Room</th><th scope="col">Person</th><th scope="col">Desktop</th><th scope="col" class="num">Screens</th><th scope="col">Note</th></tr></thead>
-                <tbody>
-                @foreach (var r in Model.Rows)
-                {
-                    <tr>
-                        <td>@r.Zone</td>
-                        <td>@r.Room</td>
-                        <td>@r.Person@if (r.PersonLeft) { <span class="badge badge--muted">Left</span> }</td>
-                        <td class="mono">@r.Desktop</td>
-                        <td class="num">@(r.Screens == 0 ? "" : r.Screens.ToString())</td>
-                        <td>@r.Note</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
+            @foreach (var zone in Model.Groups)
+            {
+                <section class="print-zone">
+                    <h3>@(zone.Zone is null ? "No zone" : "Zone " + zone.Zone)</h3>
+                    <table>
+                        <thead><tr><th scope="col">Person</th><th scope="col">Desktop</th><th scope="col" class="num">Screens</th><th scope="col">Note</th></tr></thead>
+                        @foreach (var room in zone.Rooms)
+                        {
+                            <tbody class="print-room">
+                                <tr class="print-room-h"><th scope="rowgroup" colspan="4">@(room.Room ?? "No room")</th></tr>
+                                @foreach (var r in room.Desks)
+                                {
+                                    <tr>
+                                        <td>@r.Person@if (r.PersonLeft) { <span class="badge badge--muted">Left</span> }</td>
+                                        <td class="mono">@r.Desktop</td>
+                                        <td class="num">@(r.Screens == 0 ? "" : r.Screens.ToString())</td>
+                                        <td>@r.Note</td>
+                                    </tr>
+                                }
+                                @if (room.Free > 0)
+                                {
+                                    <tr class="print-free"><td colspan="4">@(room.Room ?? "No room"): @room.Free free</td></tr>
+                                }
+                            </tbody>
+                        }
+                    </table>
+                </section>
+            }
         </section>
     }
 </article>

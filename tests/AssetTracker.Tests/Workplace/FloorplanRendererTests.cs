@@ -123,6 +123,23 @@ public class FloorplanRendererTests
     }
 
     [Fact]
+    public void The_content_box_covers_rooms_tables_and_seats_but_not_the_paper_around_them()
+    {
+        var (floor, spots) = Build();
+        var svg = FloorplanRenderer.Render(floor, spots, []);
+
+        // the room is 10,10 280 × 180 (the hatched 'not fitted' block at x 300 and the 400 × 200 paper are left out),
+        // plus a margin of 2.5% of its longest side
+        Assert.Contains("data-content=\"3 3 294 194\"", svg);
+        Assert.Equal(new Area(3, 3, 294, 194), FloorplanRenderer.Content(floor, spots));
+        Assert.Contains("viewBox=\"0 0 400 200\"", svg); // the drawing itself is unchanged
+
+        // a plain drawing without rooms or seats has no content box (the map falls back to the viewBox)
+        var plain = FloorplanImporter.Parse(WorkplaceSeed.Plain());
+        Assert.Null(FloorplanRenderer.Content(new Floor { Svg = plain.Svg, ViewBox = plain.ViewBox }, []));
+    }
+
+    [Fact]
     public void A_switched_off_seat_is_marked_and_is_not_coloured_by_its_zone()
     {
         var (floor, spots) = Build();

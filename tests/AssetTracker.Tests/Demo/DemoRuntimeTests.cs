@@ -165,7 +165,9 @@ public class DemoRuntimeTests : IClassFixture<DemoAppFactory>
 
         // Manager with a grant for AMS only: AMS inventory, nothing from NYC or SIN.
         var assets = await (await client.GetAsync("/Assets")).Content.ReadAsStringAsync();
-        Assert.Contains("AMS-LT-001", assets);
+        Assert.Contains("AMS-DT-001", assets);
+        // (the dense floor's desktops fill page 1 of the list, so laptops are looked up)
+        Assert.Contains("AMS-LT-001", await (await client.GetAsync("/Assets?q=AMS-LT-001")).Content.ReadAsStringAsync());
         // moved to AMS (last by tag, so on page 2 of the list)
         Assert.Contains(DemoSeeder.TransferredAssetTag, await (await client.GetAsync("/Assets?q=" + DemoSeeder.TransferredAssetTag)).Content.ReadAsStringAsync());
         Assert.DoesNotContain("NYC-LT-001", assets);

@@ -119,9 +119,35 @@ public static class FloorplanRenderer
 
         AddZoneLayer(root, geometry.Unit(spots.Where(s => s.IsActive).Select(s => s.ElementId), floor), zoneById, zoneBounds);
         root.Add(markers, labels);
+        // The box around the rooms, tables and seats (not the paper margins of the drawing): the map fits this.
+        if (ContentOf(root, spots) is { } content) root.SetAttributeValue("data-content", content.ToString());
         root.AddFirst(new XElement(Svg + "defs", XElement.Parse("<x xmlns=\"http://www.w3.org/2000/svg\">" + Icons + "</x>").Elements()));
         if (viewBox is { } vb) root.SetAttributeValue("viewBox", vb.ToString());
         return root.ToString(SaveOptions.DisableFormatting);
+    }
+
+    /// <summary>
+    /// The box around what matters in the drawing (its rooms, tables and seats), with a small margin, in drawing units;
+    /// null when the drawing has none of them. The map's <em>Fit</em> and a printed whole floor use it instead of the
+    /// drawing's viewBox, which usually has empty paper around the plan.
+    /// </summary>
+    public static Area? Content(Floor floor, IReadOnlyCollection<Workspot> spots) => ContentOf(XElement.Parse(floor.Svg), spots);
+
+    private static Area? ContentOf(XElement root, IReadOnlyCollection<Workspot> spots)
+    {
+        var seatIds = new HashSet<string>(spots.Select(s => s.ElementId), StringComparer.Ordinal);
+        SvgBox? box = null;
+        foreach (var e in root.DescendantsAndSelf())
+        {
+            if (e.Name.LocalName is "defs" or "symbol" || e.Ancestors().Any(a => a.Name.LocalName is "defs" or "symbol")) continue;
+            var kind = (string?)e.Attribute("data-kind");
+            var isPart = kind is "room" or "table" or "seat" || ((string?)e.Attribute("id") is { } id && seatIds.Contains(id));
+            if (!isPart || SvgGeometry.Bounds(e) is not { } b || b.Width <= 0 && b.Height <= 0) continue;
+            box = box is { } a ? a.Union(b) : b;
+        }
+        if (box is not { } c) return null;
+        var pad = Math.Max(c.Width, c.Height) * 0.025;
+        return new Area(c.MinX - pad, c.MinY - pad, c.Width + 2 * pad, c.Height + 2 * pad);
     }
 
     /// <summary>The centre of each seat (for picking the seats of a printed area).</summary>
@@ -310,7 +336,7 @@ public static class FloorplanRenderer
             foreach (var cls in new[] { "zone-halo", $"zone-label zc-{zone.ColorIndex}" })
                 layer.Add(new XElement(Svg + "text", new XAttribute("class", cls),
                     new XAttribute("x", Num(x)), new XAttribute("y", Num(y)), new XAttribute("text-anchor", anchor),
-                    new XAttribute("font-size", Num(font)), zone.Name));
+                    new XAttribute("font-size", Num(font)), new XAttribute("data-zone", room.Key.Zone.ToString(CultureInfo.InvariantCulture)), zone.Name));
         }
         root.Add(layer);
     }

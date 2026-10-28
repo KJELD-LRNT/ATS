@@ -476,19 +476,511 @@ document.querySelectorAll("[data-find-lookup]").forEach(function (root) {
     });
 })();
 
-// Workplace labels (name and desktop tag next to a seat) are drawn in "screen pixels": each label group is scaled so one
-// of its units is one pixel at the current zoom, and labels are only shown once desks are far enough apart for them to
-// fit (or always, on the print page). `force`: true = always, false = never, null = when they fit.
-function layoutLabels(svg, host, force) {
-    var ctm = svg.getScreenCTM();
-    if (!ctm || !ctm.a) return;
-    if (svg.wpSpacing === undefined) svg.wpSpacing = seatSpacing(svg);
-    var visible = force === true || (force !== false && svg.wpSpacing * ctm.a >= 58);
-    host.classList.toggle("show-labels", visible);
-    if (!visible) return;
-    var k = (1 / ctm.a).toFixed(5);
-    Array.prototype.forEach.call(svg.querySelectorAll(".fp-label"), function (g) {
-        g.setAttribute("transform", "translate(" + g.getAttribute("data-ax") + " " + g.getAttribute("data-ay") + ") scale(" + k + ")");
+// ---------------------------------------------------------------------------------------------------------------
+// Workplace label engine (floor page and print page). The server writes each label (the person's name and the desktop
+// tag, beside the seat away from its table) as a fallback; this fits them to the space there is, so they never overlap:
+//  1. once per drawing, every labelled desk gets a slot in drawing units on its outside, as wide as the gap to the
+//     neighbouring desks on that side (all of the gap when the neighbour has no label, half of it when it has one);
+//  2. when the zoom changes enough the text is fitted again: shrunk down to `minPx` (10 px on screen, 7 pt on paper);
+//  3. shortened: "Gabi Demoson" → "Gabi D." → "GD", "AMS-DT-001" → "DT-001" (the header names the site);
+//  4. labels in one row are spread within their slots, and a last pass hides what still touches something: the tag
+//     first, then the name becomes a numbered callout (never hidden) listed in a key;
+//  5. zone names step aside (upwards) when a label is where they are.
+// Labels are drawn in screen pixels: each label group is scaled so one of its units is one pixel. Only SVG attributes
+// and element.style properties are set (the CSP forbids inline style attributes).
+var WP_LABEL = { name: 12, tag: 11, halo: 3, gap: 4 };
+
+function wpNameVariants(name) {
+    var full = String(name || "").trim().replace(/\s+/g, " ");
+    if (!full) return [];
+    var parts = full.split(" ");
+    var out = [full];
+    if (parts.length >= 2) {
+        var last = parts[parts.length - 1];
+        out.push(parts[0] + " " + last.charAt(0).toUpperCase() + ".");
+        out.push((parts[0].charAt(0) + last.charAt(0)).toUpperCase());
+    } else if (full.length > 3) {
+        out.push(full.slice(0, 2));
+    }
+    return out.filter(function (v, i) { return out.indexOf(v) === i; });
+}
+
+function wpTagVariants(tag, prefix) {
+    var full = String(tag || "").trim();
+    if (!full) return [];
+    var out = [full];
+    if (prefix && full.toUpperCase().indexOf(prefix.toUpperCase()) === 0 && full.length > prefix.length) out.push(full.slice(prefix.length));
+    return out;
+}
+
+function createLabelEngine(svg, options) {
+    var o = options || {};
+    var NS = "http://www.w3.org/2000/svg";
+    var ctx = document.createElement("canvas").getContext("2d");
+    var widths = {};
+    var items = [], obstacles = [], zones = [], spacing = 1, ready = false, lastK = 0, lastMin = 0, result = { callouts: 0, key: [], labels: 0, hiddenTags: 0 };
+
+    function all(sel) { return Array.prototype.slice.call(svg.querySelectorAll(sel)); }
+    function fontOf(el) { var cs = getComputedStyle(el); return cs.fontStyle + " " + cs.fontWeight + " {px} " + cs.fontFamily; }
+    // Width of `text` at 100 px, measured once per text and font (text is never re-measured while zooming).
+    function measure(text, font) {
+        var key = font + "|" + text;
+        if (widths[key] === undefined) { ctx.font = font.replace("{px}", "100px"); widths[key] = ctx.measureText(text).width; }
+        return widths[key];
+    }
+    // Ascent and descent of a font as a share of its size (the box the browser draws the text in).
+    var fontMetrics = {};
+    function metricsOf(font) {
+        if (!fontMetrics[font]) {
+            ctx.font = font.replace("{px}", "100px");
+            var m = ctx.measureText("Hg");
+            var asc = m.fontBoundingBoxAscent, desc = m.fontBoundingBoxDescent;
+            fontMetrics[font] = asc > 0 && desc >= 0 ? { asc: asc / 100, desc: desc / 100 } : { asc: 0.97, desc: 0.26 };
+        }
+        return fontMetrics[font];
+    }
+    function overlaps(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+    function scaled(b, k) { return { x0: b.x * k, y0: b.y * k, x1: (b.x + b.w) * k, y1: (b.y + b.h) * k, seat: b.seat }; }
+
+    function prepare() {
+        ready = true;
+        var seats = all("[data-ws]").map(function (el) {
+            var b = userBox(svg, el);
+            return { el: el, id: el.getAttribute("data-ws"), x: b.x + b.w / 2, y: b.y + b.h / 2, r: Math.max(b.w, b.h) / 2, box: b, desk: el.hasAttribute("data-desk"), labelled: false };
+        });
+        var byId = {};
+        seats.forEach(function (st) { byId[st.id] = st; });
+        // Typical distance between neighbouring desks.
+        var desks = seats.filter(function (st) { return st.desk; }).slice(0, 600);
+        var near = desks.map(function (a) {
+            var best = Infinity;
+            desks.forEach(function (b) { if (a !== b) best = Math.min(best, Math.hypot(a.x - b.x, a.y - b.y)); });
+            return best;
+        }).filter(isFinite).sort(function (a, b) { return a - b; });
+        spacing = near.length ? near[Math.floor(near.length / 2)] : 20;
+
+        var nameFont = null, tagFont = null;
+        items = all(".fp-label").map(function (g) {
+            var seat = byId[g.getAttribute("data-label-for")];
+            var m = /fp-label-(up|down|left|right)/.exec(g.getAttribute("class") || "");
+            if (!seat || !m) return null;
+            var nameEl = g.querySelector(".fp-label-name"), tagEl = g.querySelector(".fp-label-tag");
+            if (nameEl && !nameFont) nameFont = fontOf(nameEl);
+            if (tagEl && !tagFont) tagFont = fontOf(tagEl);
+            seat.labelled = true;
+            return {
+                g: g, seat: seat, side: m[1], ax: parseFloat(g.getAttribute("data-ax")), ay: parseFloat(g.getAttribute("data-ay")),
+                nameEl: nameEl, tagEl: tagEl, person: seat.el.getAttribute("data-person"), desktop: seat.el.getAttribute("data-desktop"),
+                names: nameEl ? wpNameVariants(seat.el.getAttribute("data-person") || nameEl.textContent) : [],
+                tags: tagEl ? wpTagVariants(seat.el.getAttribute("data-desktop") || tagEl.textContent, o.prefix) : []
+            };
+        }).filter(Boolean);
+        items.forEach(function (it) { it.nameFont = nameFont; it.tagFont = tagFont; });
+
+        // The slot of each label: along its row (up/down labels) or column (left/right), up to the neighbouring desks.
+        var cap = spacing * 1.6;
+        items.forEach(function (it) {
+            var st = it.seat, along = it.side === "up" || it.side === "down", lo = cap, hi = cap;
+            seats.forEach(function (other) {
+                if (other === st) return;
+                var d = along ? other.x - st.x : other.y - st.y;
+                var perp = along ? other.y - st.y : other.x - st.x;
+                if (Math.abs(perp) > Math.max(st.r, other.r) * 1.5 || d === 0) return;
+                var room = other.labelled ? Math.abs(d) / 2 : Math.abs(d) - other.r * 1.3;
+                if (d < 0) lo = Math.min(lo, room); else hi = Math.min(hi, room);
+            });
+            it.lo = Math.max(lo, st.r);
+            it.hi = Math.max(hi, st.r);
+        });
+
+        // Things a label must not cover: the seats and the drawing's own text (room names and the like).
+        obstacles = seats.map(function (st) { var b = st.box; return { x: b.x, y: b.y, w: b.w, h: b.h, seat: st }; });
+        all("text").forEach(function (t) {
+            if (t.closest(".fp-labels, .zone-layer, defs, symbol, title") || !t.textContent.trim()) return;
+            var b = userBox(svg, t);
+            if (b.w > 0 && b.h > 0) obstacles.push(b);
+        });
+        // Zone names (a halo and the coloured text at the same spot) may move up out of the way.
+        var byPos = {};
+        all(".zone-layer text").forEach(function (t) {
+            var key = t.getAttribute("x") + "|" + t.getAttribute("y");
+            (byPos[key] = byPos[key] || []).push(t);
+        });
+        var outlines = all(".zone-outline").map(function (r) { var b = userBox(svg, r); b.zone = r.getAttribute("data-zone"); return b; });
+        zones = Object.keys(byPos).map(function (key) {
+            var els = byPos[key], b = userBox(svg, els[els.length - 1]);
+            var x = parseFloat(els[0].getAttribute("x")), y = parseFloat(els[0].getAttribute("y"));
+            var size = parseFloat(els[0].getAttribute("font-size")) || b.h;
+            // Below the zone's tables in this column, the other place its name can go.
+            var column = outlines.filter(function (o) {
+                return o.zone === els[0].getAttribute("data-zone") && (Math.abs(o.x - x) < size * 0.2 || Math.abs(o.x + o.w - x) < size * 0.2);
+            });
+            var bottom = column.length ? Math.max.apply(null, column.map(function (o) { return o.y + o.h; })) : null;
+            return { els: els, y: y, box: b, dy: 0, hidden: false, below: bottom === null ? null : bottom + size * 1.05 - y };
+        });
+    }
+
+    function line(text, font, size, w) {
+        var m = metricsOf(font);
+        return { text: text, size: size, w: w * size + WP_LABEL.halo, asc: m.asc * size, h: (m.asc + m.desc) * size };
+    }
+
+    // The largest variant that fits `limit` px at a size between `max` and `min` px; null when none does.
+    function pick(variants, font, max, min, limit) {
+        for (var i = 0; i < variants.length; i++) {
+            var w = measure(variants[i], font) / 100;
+            var size = Math.min(max, (limit - WP_LABEL.halo) / w);
+            if (size >= min) return line(variants[i], font, size, w);
+        }
+        return null;
+    }
+
+    // The box of a label's lines relative to its anchor, in px.
+    function boxOf(it, lines) {
+        var w = 0, h = 0;
+        lines.forEach(function (l) { w = Math.max(w, l.w); h += l.h; });
+        var b;
+        if (it.side === "up") b = { x0: -w / 2, x1: w / 2, y0: -2 - h, y1: -2 };
+        else if (it.side === "down") b = { x0: -w / 2, x1: w / 2, y0: 2, y1: 2 + h };
+        else if (it.side === "left") b = { x0: -w, x1: 0, y0: -h / 2, y1: h / 2 };
+        else b = { x0: 0, x1: w, y0: -h / 2, y1: h / 2 };
+        b.w = w; b.h = h;
+        return b;
+    }
+
+    function absBox(it, k) {
+        // Half the gap on each side, so two labels never end up touching.
+        var b = it.rel, g = b.w > 0 ? WP_LABEL.gap / 2 : 0;
+        return { x0: it.ax * k + it.shift + b.x0 - g, x1: it.ax * k + it.shift + b.x1 + g, y0: it.ay * k + b.y0, y1: it.ay * k + b.y1 };
+    }
+
+    function linesOf(it) { return [it.name, it.tag].filter(Boolean); }
+
+    // The box of a callout number, relative to the label's anchor: a small dark circle right next to the desk on the
+    // label's side (over the desktop and screen badges, which are too small to read at such a zoom anyway).
+    function calloutBox(it, minPx, k) {
+        var r = Math.max(6.5, minPx * 0.66), st = it.seat, gap = st.r * k + r + 1;
+        var cx = (st.x - it.ax) * k, cy = (st.y - it.ay) * k;
+        if (it.side === "up") cy -= gap; else if (it.side === "down") cy += gap; else if (it.side === "left") cx -= gap; else cx += gap;
+        return { x0: cx - r, x1: cx + r, y0: cy - r, y1: cy + r, cx: cx, cy: cy, r: r };
+    }
+
+    function fit(k, minPx) {
+        var hiddenTags = 0;
+        // 1. Text and size per label: the longest form that fits its slot at minPx or more.
+        items.forEach(function (it) {
+            var along = it.side === "up" || it.side === "down";
+            var limit = along ? (it.lo + it.hi) * k - WP_LABEL.gap : spacing * 1.6 * k;
+            it.fitName = it.names.length ? pick(it.names, it.nameFont, WP_LABEL.name, minPx, limit) : null;
+            it.fitTag = it.tags.length ? pick(it.tags, it.tagFont, WP_LABEL.tag, minPx, limit) : null;
+            if (!along && it.fitName && it.fitTag && it.fitName.h + it.fitTag.h > (it.lo + it.hi) * k) it.fitTag = null;
+            it.forced = it.names.length ? !it.fitName : !it.fitTag;
+            if (!along && it.fitName && it.fitName.h > (it.lo + it.hi) * k) it.forced = true;
+        });
+
+        var obs = obstacles.map(function (b) { return scaled(b, k); });
+        var order = items.slice().sort(function (a, b) { return (b.names.length - a.names.length) || (a.ay - b.ay) || (a.ax - b.ax); });
+        var placed, circles;
+
+        function blocked(it, box, ignore) {
+            return obs.some(function (b) { return b.seat !== it.seat && overlaps(box, b); }) ||
+                circles.some(function (c) { return c.it !== it && overlaps(box, c.box); }) ||
+                placed.some(function (p) { return p !== ignore && overlaps(box, p.box); });
+        }
+        // Where a label may go: its place after spreading first, then further along its row, but never so far that it
+        // no longer covers its own desk.
+        function tryPlace(it, ignore) {
+            var base = it.shift, shifts = [base];
+            if (it.side === "up" || it.side === "down") {
+                var range = Math.min(Math.max(it.lo, it.hi) * k, it.rel.w / 2 - 2), step = Math.max(1.5, range / 16);
+                for (var d = -range; d <= range; d += step) shifts.push(d);
+                shifts.sort(function (x, y) { return Math.abs(x - base) - Math.abs(y - base); });
+            }
+            for (var i = 0; i < shifts.length; i++) {
+                it.shift = shifts[i];
+                var box = absBox(it, k);
+                if (!blocked(it, box, ignore)) return box;
+            }
+            it.shift = base;
+            return null;
+        }
+        function circleOf(it) {
+            var c = calloutBox(it, minPx, k);
+            return { it: it, box: { x0: it.ax * k + c.x0, x1: it.ax * k + c.x1, y0: it.ay * k + c.y0, y1: it.ay * k + c.y1 } };
+        }
+
+        // 2. Names first (they matter most). Each label has a list of forms, from its best fit down to the shortest
+        // form at minPx. Rows are spread within their slots, then labels are placed one by one from the top left, each
+        // in the first form that touches no seat, drawing text, other label or callout. When one cannot be placed, the
+        // labels in its way step down a form and the pass runs again; what still cannot be placed becomes a callout.
+        items.forEach(function (it) {
+            it.level = 0;
+            it.cands = [];
+            var list = it.names.length ? it.names : it.tags, font = it.names.length ? it.nameFont : it.tagFont;
+            var max = it.names.length ? WP_LABEL.name : WP_LABEL.tag, first = it.names.length ? it.fitName : it.fitTag;
+            if (!first) return;
+            for (var i = list.indexOf(first.text); i < list.length; i++) {
+                var w = measure(list[i], font) / 100;
+                var best = i === list.indexOf(first.text) ? first.size : Math.min(max, first.size);
+                [best, minPx].forEach(function (size, j) {
+                    if (j === 1 && size >= best) return;
+                    it.cands.push(line(list[i], font, size, w));
+                });
+            }
+        });
+        function setForm(it, c) {
+            if (it.names.length) { it.name = c; it.tag = null; } else { it.name = null; it.tag = c; }
+            it.rel = boxOf(it, linesOf(it));
+        }
+        for (var round = 0; round < 10; round++) {
+            items.forEach(function (it) {
+                it.callout = it.forced || !it.cands.length;
+                it.shift = 0;
+                if (it.callout) { it.name = it.tag = null; it.rel = boxOf(it, []); } else setForm(it, it.cands[Math.min(it.level, it.cands.length - 1)]);
+            });
+            var rows = {};
+            items.forEach(function (it) {
+                if (it.callout || (it.side !== "up" && it.side !== "down")) return;
+                var key = it.side + ":" + Math.round(it.ay * k / 4);
+                (rows[key] = rows[key] || []).push(it);
+            });
+            Object.keys(rows).forEach(function (key) {
+                var row = rows[key].sort(function (x, y) { return x.ax - y.ax; });
+                row.forEach(function (it) {
+                    var half = it.rel.w / 2;
+                    it.min = -it.lo * k + half;
+                    it.max = it.hi * k - half;
+                    if (it.min > it.max) it.min = it.max = (it.hi - it.lo) * k / 2;
+                    it.pos = it.ax * k + Math.max(it.min, Math.min(it.max, 0));
+                });
+                for (var i = 1; i < row.length; i++) {
+                    var need = row[i - 1].pos + row[i - 1].rel.w / 2 + WP_LABEL.gap + row[i].rel.w / 2;
+                    if (row[i].pos < need) row[i].pos = Math.min(need, row[i].ax * k + row[i].max);
+                }
+                for (var j = row.length - 2; j >= 0; j--) {
+                    var room = row[j + 1].pos - row[j + 1].rel.w / 2 - WP_LABEL.gap - row[j].rel.w / 2;
+                    if (row[j].pos > room) row[j].pos = Math.max(room, row[j].ax * k + row[j].min);
+                }
+                row.forEach(function (it) { it.shift = it.pos - it.ax * k; });
+            });
+            placed = [];
+            circles = items.filter(function (it) { return it.callout; }).map(circleOf);
+            var changed = false;
+            order.forEach(function (it) {
+                if (it.callout) return;
+                for (var c = Math.min(it.level, it.cands.length - 1); c < it.cands.length; c++) {
+                    setForm(it, it.cands[c]);
+                    var box = tryPlace(it, null);
+                    if (box) { it.used = c; placed.push({ it: it, box: box }); return; }
+                }
+                // In the way: labels placed before that overlap this one's shortest form wherever it could go.
+                var probe = { x0: it.ax * k - (it.lo * k), x1: it.ax * k + it.hi * k, y0: it.ay * k + it.rel.y0, y1: it.ay * k + it.rel.y1 };
+                var blockers = placed.filter(function (p) { return overlaps(probe, p.box) && p.it.used < p.it.cands.length - 1; });
+                if (blockers.length && round < 9) {
+                    blockers.forEach(function (p) { p.it.level = p.it.used + 1; });
+                    changed = true;
+                    setForm(it, it.cands[it.cands.length - 1]);
+                    return;
+                }
+                it.callout = true;
+                it.name = it.tag = null;
+                it.rel = boxOf(it, []);
+                circles.push(circleOf(it));
+                if (round < 9) changed = true;
+            });
+            if (!changed) break;
+            // A label that became a callout keeps it in the next pass (as a fixed circle).
+            items.forEach(function (it) { if (it.callout) it.forced = true; });
+        }
+
+        // 3. Then the tags, where they fit next to the names without touching anything.
+        placed.forEach(function (p) {
+            var it = p.it;
+            if (!it.names.length || !it.fitTag) return;
+            var keepShift = it.shift, keepRel = it.rel;
+            it.tag = it.fitTag;
+            it.rel = boxOf(it, linesOf(it));
+            var box = tryPlace(it, p);
+            if (box) { p.box = box; return; }
+            it.tag = null; it.shift = keepShift; it.rel = keepRel; hiddenTags++;
+        });
+        items.forEach(function (it) { if (it.callout && it.tags.length) hiddenTags++; });
+
+        // 4. A zone name that is where labels are moves above them or below its tables; else the labels drop their
+        // tags if that is enough; else the zone name is left out (its colour and the panel still show the zone).
+        var zoneBoxes = [];
+        zones.forEach(function (z) {
+            z.dy = 0; z.hidden = false;
+            var zb = scaled(z.box, k);
+            var hits = placed.filter(function (p) { return overlaps(zb, p.box); });
+            var circleHits = circles.filter(function (c) { return overlaps(zb, c.box); });
+            if (!hits.length && !circleHits.length) { zoneBoxes.push(zb); return; }
+            var top = Math.min.apply(null, hits.concat(circleHits).map(function (p) { return p.box.y0; }));
+            var cands = [top - WP_LABEL.gap - zb.y1];
+            if (z.below !== null) cands.push(z.below * k);
+            for (var i = 0; i < cands.length; i++) {
+                var dy = cands[i];
+                var moved = { x0: zb.x0, x1: zb.x1, y0: zb.y0 + dy, y1: zb.y1 + dy };
+                var clear = !placed.some(function (p) { return overlaps(moved, p.box); }) && !circles.some(function (c) { return overlaps(moved, c.box); }) &&
+                    !obs.some(function (b) { return overlaps(moved, b); }) && !zoneBoxes.some(function (b) { return overlaps(moved, b); });
+                if (clear) { z.dy = dy / k; zoneBoxes.push(moved); return; }
+            }
+            if (circleHits.length) { z.hidden = true; return; } // callout numbers are never hidden
+            var withoutTags = hits.map(function (p) {
+                var lines = p.it.name ? [p.it.name] : linesOf(p.it);
+                var rel = boxOf(p.it, lines), b = p.box;
+                return { x0: b.x0 - p.it.rel.x0 + rel.x0, x1: b.x0 - p.it.rel.x0 + rel.x1, y0: b.y0 - p.it.rel.y0 + rel.y0, y1: b.y0 - p.it.rel.y0 + rel.y1 };
+            });
+            if (!withoutTags.some(function (b) { return overlaps(zb, b); })) {
+                hits.forEach(function (p, j) {
+                    if (p.it.name && p.it.tag) { p.it.tag = null; hiddenTags++; p.it.rel = boxOf(p.it, linesOf(p.it)); }
+                    p.box = withoutTags[j];
+                });
+                zoneBoxes.push(zb);
+                return;
+            }
+            z.hidden = true;
+        });
+
+        // 5. Callout numbers that touch each other or a label slide along their row (not further than to the next
+        // desk). One that still touches another number shares that number (the key lists both desks); a label in the
+        // way of a number loses its tag, then joins the number. Nothing overlaps and no number is hidden.
+        var groups = [];
+        circles.sort(function (a, b) { return (a.it.ay - b.it.ay) || (a.it.ax - b.it.ax); });
+        circles.forEach(function (c) {
+            var it = c.it, base = calloutBox(it, minPx, k), along = it.side === "up" || it.side === "down";
+            var range = along ? Math.min(it.lo, it.hi) * k : 0, step = Math.max(1.5, base.r / 2), best = null;
+            var shifts = [0];
+            for (var d = step; d < range; d += step) shifts.push(d, -d);
+            if (range > 0) shifts.push(range, -range);
+            for (var i = 0; i < shifts.length && !best; i++) {
+                var box = { x0: c.box.x0 + shifts[i], x1: c.box.x1 + shifts[i], y0: c.box.y0, y1: c.box.y1 };
+                var hit = groups.some(function (g) { return overlaps(box, g.box); }) || placed.some(function (p) { return overlaps(box, p.box); }) ||
+                    zoneBoxes.some(function (b) { return overlaps(box, b); }) ||
+                    obs.some(function (b) { return b.seat !== it.seat && overlaps(box, b); });
+                if (!hit) best = { shift: shifts[i], box: box };
+            }
+            it.calloutShift = best ? best.shift : 0;
+            it.calloutLead = true;
+            var join = best ? null : groups.filter(function (g) { return overlaps(c.box, g.box); })[0];
+            if (join) { join.members.push(it); it.calloutLead = false; return; }
+            var group = { box: best ? best.box : c.box, members: [it] };
+            groups.push(group);
+            if (best) return;
+            placed.slice().forEach(function (p) {
+                if (!overlaps(group.box, p.box)) return;
+                var other = p.it;
+                if (other.name && other.tag) {
+                    other.tag = null; hiddenTags++;
+                    other.rel = boxOf(other, linesOf(other));
+                    p.box = absBox(other, k);
+                    if (!overlaps(group.box, p.box)) return;
+                }
+                other.name = other.tag = null;
+                other.callout = true;
+                other.calloutLead = false;
+                other.rel = boxOf(other, []);
+                placed.splice(placed.indexOf(p), 1);
+                group.members.push(other);
+            });
+        });
+
+        // 6. Callouts: numbered in reading order.
+        groups.forEach(function (g, i) { g.members.forEach(function (it) { it.number = i + 1; }); });
+        var members = [];
+        groups.forEach(function (g) { members = members.concat(g.members); });
+        result = {
+            labels: items.length, callouts: members.length, numbers: groups.length, hiddenTags: hiddenTags,
+            key: members.map(function (it) { return { n: it.number, person: it.person, desktop: it.desktop }; })
+        };
+    }
+
+    function el(tag, cls) { var n = document.createElementNS(NS, tag); if (cls) n.setAttribute("class", cls); return n; }
+
+    function render(minPx) {
+        items.forEach(function (it) {
+            var call = it.g.querySelector(".fp-callout");
+            if (it.callout) {
+                if (it.nameEl) it.nameEl.style.display = "none";
+                if (it.tagEl) it.tagEl.style.display = "none";
+                if (!it.calloutLead) { if (call) call.style.display = "none"; it.g.style.display = "none"; return; }
+                if (!call) {
+                    call = el("g", "fp-callout");
+                    call.appendChild(el("circle"));
+                    call.appendChild(el("text"));
+                    it.g.appendChild(call);
+                }
+                var cb = calloutBox(it, minPx, lastK), size = minPx, r = cb.r, cy = cb.cy, cx = cb.cx + (it.calloutShift || 0);
+                call.style.display = "";
+                it.g.style.display = "";
+                var c = call.firstChild, t = call.lastChild;
+                c.setAttribute("cx", cx.toFixed(1)); c.setAttribute("cy", cy.toFixed(1)); c.setAttribute("r", r.toFixed(1));
+                t.textContent = String(it.number);
+                t.setAttribute("x", cx.toFixed(1)); t.setAttribute("y", (cy + size * 0.36).toFixed(1));
+                t.style.fontSize = size.toFixed(1) + "px";
+                return;
+            }
+            if (call) call.style.display = "none";
+            var lines = linesOf(it), top = it.rel.y0;
+            [[it.nameEl, it.name], [it.tagEl, it.tag]].forEach(function (pair) {
+                var node = pair[0], line = pair[1];
+                if (!node) return;
+                if (!line) { node.style.display = "none"; return; }
+                node.style.display = "";
+                node.textContent = line.text;
+                node.style.fontSize = line.size.toFixed(2) + "px";
+                node.setAttribute("x", it.shift.toFixed(1));
+                node.setAttribute("y", (top + line.asc).toFixed(1));
+                top += line.h;
+            });
+            if (!lines.length) it.g.style.display = "none"; else it.g.style.display = "";
+        });
+        zones.forEach(function (z) {
+            z.els.forEach(function (t) { t.setAttribute("y", (z.y + z.dy).toFixed(2)); t.style.display = z.hidden ? "none" : ""; });
+        });
+    }
+
+    // Keeps the labels at a constant size on screen (every frame while zooming: cheap).
+    function place(k) {
+        var s = (1 / k).toFixed(5);
+        items.forEach(function (it) { it.g.setAttribute("transform", "translate(" + it.ax + " " + it.ay + ") scale(" + s + ")"); });
+    }
+
+    return {
+        // k: screen px per drawing unit; minPx: the smallest text allowed. Fits again only when the zoom changed enough.
+        layout: function (k, minPx, force) {
+            if (!k || !isFinite(k)) return result;
+            if (!ready) prepare();
+            if (force || !lastK || Math.abs(k / lastK - 1) > 0.04 || minPx !== lastMin) {
+                lastK = k; lastMin = minPx;
+                fit(k, minPx);
+                render(minPx);
+            }
+            place(k);
+            return result;
+        },
+        place: place,
+        // After the fonts have loaded: measure the text again.
+        remeasure: function () { widths = {}; lastK = 0; },
+        lastScale: function () { return lastK; },
+        // For checking in the browser's console: the labels and what they must not cover.
+        inspect: function () { return { items: items, obstacles: obstacles, zones: zones, spacing: spacing }; },
+        result: function () { return result; }
+    };
+}
+
+// The key to the callout numbers: "1  Gabi Demoson · AMS-DT-001".
+function renderCalloutKey(list, key) {
+    if (!list) return;
+    list.textContent = "";
+    key.forEach(function (k) {
+        var li = document.createElement("li");
+        var n = document.createElement("span");
+        n.className = "wp-key-n";
+        n.textContent = String(k.n);
+        li.appendChild(n);
+        li.appendChild(document.createTextNode([k.person, k.desktop].filter(Boolean).join(" · ")));
+        list.appendChild(li);
     });
 }
 
@@ -505,21 +997,6 @@ function userBox(svg, el) {
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
 }
 
-// Typical distance between neighbouring desks (median of nearest neighbours, sampled), in drawing units.
-function seatSpacing(svg) {
-    var pts = Array.prototype.slice.call(svg.querySelectorAll("[data-ws][data-desk]"), 0, 400).map(function (el) {
-        var b = userBox(svg, el);
-        return [b.x + b.w / 2, b.y + b.h / 2];
-    });
-    if (pts.length < 2) return 1e9;
-    var near = pts.map(function (p, i) {
-        var best = Infinity;
-        pts.forEach(function (q, j) { if (i !== j) best = Math.min(best, Math.hypot(p[0] - q[0], p[1] - q[1])); });
-        return best;
-    }).sort(function (a, b) { return a - b; });
-    return near[Math.floor(near.length / 2)] || 1e9;
-}
-
 // Workplace floor map: pan (drag), zoom (wheel, pinch, buttons), select seats (click, Shift-click, table or room click,
 // Shift-drag or "Select area"), highlight search results, zones, free desks and seats to check, print what you see or a
 // part, and (IT and facility) drag people, desktops and screens onto desks. A drop is posted with fetch and the map is
@@ -532,36 +1009,93 @@ function seatSpacing(svg) {
     if (!svg) return;
 
     var editable = root.getAttribute("data-editable") === "true";
+    var wrap = root.querySelector("[data-canvas-wrap]") || canvas;
     var vb = svg.viewBox.baseVal;
-    var home = { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
-    var view = { x: home.x, y: home.y, w: home.w, h: home.h };
+    // Fit shows the rooms and desks (the server measures them: data-content), not the paper around them in the drawing.
+    function parseBox(text) {
+        var v = String(text || "").split(/[\s,]+/).map(parseFloat);
+        return v.length === 4 && v.every(isFinite) && v[2] > 0 && v[3] > 0 ? { x: v[0], y: v[1], w: v[2], h: v[3] } : null;
+    }
+    var content = parseBox(svg.getAttribute("data-content")) || { x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+    var fitW = content.w;
+    var view = { x: content.x, y: content.y, w: content.w, h: content.h };
     var SHAPES = { rect: 1, circle: 1, ellipse: 1, path: 1, polygon: 1, polyline: 1, g: 1 };
     var declared = !!svg.querySelector("[data-kind=seat]");
     var areaMode = false;
     var printMode = false;
     var namesOn = true;
+    var full = false;
     var selected = []; // elements, in the order they were selected
-    var labelFrame = 0;
+    var labelFrame = 0, labelTimer = 0;
+    var prefix = root.getAttribute("data-tag-prefix") || "";
+    var engine = createLabelEngine(svg, { prefix: prefix });
+    root.wpLabels = function () { return engine; };
+    var zoomLevel = root.querySelector("[data-zoom-level]");
+    var calloutBox = root.querySelector("[data-callout-box]");
+
+    // The view always has the canvas's shape, so nothing is cut off and there are no empty bands.
+    function aspect() {
+        var r = canvas.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? r.height / r.width : content.h / content.w;
+    }
+
+    // Labels follow the zoom every frame (cheap); their text is fitted again when the zoom settles or jumps.
+    function relabel(force) {
+        canvas.classList.toggle("show-labels", namesOn);
+        var ctm = svg.getScreenCTM();
+        if (!ctm || !ctm.a) return;
+        var res = engine.layout(ctm.a, 10, force);
+        canvas.setAttribute("data-callouts", String(res.callouts));
+        if (calloutBox) {
+            calloutBox.hidden = !namesOn || res.callouts === 0;
+            renderCalloutKey(calloutBox.querySelector("[data-callout-key]"), res.key);
+            var n = calloutBox.querySelector("[data-callout-count]");
+            if (n) n.textContent = String(res.callouts);
+        }
+    }
 
     function scheduleLabels() {
         if (labelFrame) return;
         labelFrame = requestAnimationFrame(function () {
             labelFrame = 0;
-            layoutLabels(svg, canvas, namesOn ? null : false);
+            var ctm = svg.getScreenCTM(), last = engine.lastScale();
+            if (ctm && ctm.a && last && Math.abs(ctm.a / last - 1) < 0.25) engine.place(ctm.a);
+            else relabel(false);
+            clearTimeout(labelTimer);
+            labelTimer = setTimeout(function () { relabel(false); }, 160);
         });
     }
 
     function setView(x, y, w) {
-        w = Math.max(home.w / 80, Math.min(home.w * 1.5, w));
-        view = { x: x, y: y, w: w, h: w * home.h / home.w };
+        var nw = Math.max(fitW / 60, Math.min(fitW * 2, w));
+        // Zoom limits keep the centre where it was meant to be.
+        x += (w - nw) / 2;
+        var a = aspect();
+        y += (w - nw) * a / 2;
+        view = { x: x, y: y, w: nw, h: nw * a };
         svg.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
+        if (zoomLevel) zoomLevel.textContent = Math.round(fitW / view.w * 100) + "%";
         scheduleLabels();
     }
 
+    function fitView() {
+        var a = aspect();
+        fitW = Math.max(content.w, content.h / a);
+        setView(content.x + content.w / 2 - fitW / 2, content.y + content.h / 2 - fitW * a / 2, fitW);
+    }
+
     function zoomAt(factor, cx, cy) {
-        var w = view.w / factor;
-        var k = Math.max(home.w / 80, Math.min(home.w * 1.5, w)) / view.w;
-        setView(cx - (cx - view.x) * k, cy - (cy - view.y) * k, view.w * k);
+        var w = Math.max(fitW / 60, Math.min(fitW * 2, view.w / factor));
+        var k = w / view.w;
+        setView(cx - (cx - view.x) * k, cy - (cy - view.y) * k, w);
+    }
+
+    // The canvas fills the window below the top bar and the page header (at least 480 px); in full screen, all of it.
+    function sizeCanvas() {
+        var top = wrap.getBoundingClientRect().top + (full ? 0 : window.scrollY);
+        var below = full ? 12 + (root.querySelector(".wp-stage > .wp-legend") || { offsetHeight: 0 }).offsetHeight + 10 : 16;
+        var h = window.innerHeight - top - below;
+        wrap.style.height = Math.round(full ? Math.max(240, h) : Math.max(480, h)) + "px";
     }
 
     function userPoint(clientX, clientY) {
@@ -650,6 +1184,7 @@ function seatSpacing(svg) {
         show('[data-when="on"]', s.some(function (x) { return !x.classList.contains("fp-ws-off"); }));
         show('[data-when="off"]', s.some(function (x) { return x.classList.contains("fp-ws-off"); }));
         show('[data-when="el"]', e.length > 0);
+        root.classList.toggle("has-selection", selected.length > 0);
         var printSel = root.querySelector('[data-print="selection"]');
         if (printSel) printSel.disabled = selected.length === 0;
 
@@ -672,6 +1207,10 @@ function seatSpacing(svg) {
         if (elSummary) elSummary.textContent = e.length === 1 ? "1 shape selected." : e.length + " shapes selected.";
         syncZoneForm(s);
 
+        // In full screen the panel is an overlay: show the selection at once.
+        var selBox = root.querySelector('[data-when="ws"]');
+        var panel = root.querySelector(".wp-panel");
+        if (full && panel && selBox && s.length) panel.scrollTop = Math.max(0, selBox.offsetTop - panel.offsetTop - 8);
         if (s.length === 1) {
             var one = s[0];
             var fact = function (name, text) { var n = root.querySelector('[data-fact="' + name + '"]'); if (n) n.textContent = text || "–"; };
@@ -854,13 +1393,14 @@ function seatSpacing(svg) {
                 fresh.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
                 canvas.replaceChild(fresh, svg);
                 svg = fresh;
+                engine = createLabelEngine(svg, { prefix: prefix });
             }
             var host = root.querySelector("[data-status-host]");
             if (host) host.innerHTML = parts[1];
             syncHighlightButtons();
             selected = [];
             setSelection(keep.map(function (id) { return svg.querySelector('[data-ws="' + esc(id) + '"]'); }).filter(Boolean));
-            layoutLabels(svg, canvas, namesOn ? null : false);
+            relabel(true);
             if (palette) palette.reload();
         }).catch(function () { window.location.reload(); });
     }
@@ -1007,11 +1547,16 @@ function seatSpacing(svg) {
         if (list.length === 0) return;
         list.forEach(function (el) { el.classList.add("is-hit"); });
         setSelection(list);
-        var b = boundsOf(list);
-        var w = Math.max(b.w * 2.2, home.w / 8);
-        var h = Math.max(b.h * 2.2, home.h / 8);
-        w = Math.max(w, h * home.w / home.h);
-        setView(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - w * home.h / home.w / 2, w);
+        zoomTo(boundsOf(list), 2.2);
+    }
+
+    // Zooms so the box (drawing units) fills the canvas, with `room` times its size around it.
+    function zoomTo(b, room) {
+        var a = aspect();
+        var w = Math.max(b.w * room, fitW / 8);
+        var h = Math.max(b.h * room, fitW * a / 8);
+        w = Math.max(w, h / a);
+        setView(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - w * a / 2, w);
     }
 
     function focusSpec(spec) {
@@ -1053,7 +1598,7 @@ function seatSpacing(svg) {
     all("[data-layer]").forEach(function (box) {
         box.addEventListener("change", function () {
             if (box.getAttribute("data-layer") === "zones") canvas.classList.toggle("hide-zones", !box.checked);
-            else { namesOn = box.checked; layoutLabels(svg, canvas, namesOn ? null : false); }
+            else { namesOn = box.checked; relabel(true); }
         });
     });
 
@@ -1075,7 +1620,7 @@ function seatSpacing(svg) {
             else if (what === "floor") openPrint(null, null);
             else if (what === "selection" && selected.length) {
                 var bb = boundsOf(selected);
-                var pad = Math.max(bb.w, bb.h) * 0.25 + home.w / 100;
+                var pad = Math.max(bb.w, bb.h) * 0.25 + fitW / 100;
                 openPrint({ x: bb.x - pad, y: bb.y - pad, w: bb.w + 2 * pad, h: bb.h + 2 * pad }, "Selected seats");
             } else if (what === "area") {
                 printMode = true;
@@ -1123,7 +1668,7 @@ function seatSpacing(svg) {
         if (gesture.type === "pinch" && count() >= 2) {
             var ids = Object.keys(pointers), a = pointers[ids[0]], b = pointers[ids[1]];
             var factor = Math.hypot(a.x - b.x, a.y - b.y) / gesture.dist;
-            var w = Math.max(home.w / 80, Math.min(home.w * 1.5, gesture.view.w / factor));
+            var w = Math.max(fitW / 60, Math.min(fitW * 2, gesture.view.w / factor));
             var k = w / gesture.view.w;
             setView(gesture.mid.x - (gesture.mid.x - gesture.view.x) * k, gesture.mid.y - (gesture.mid.y - gesture.view.y) * k, w);
             return;
@@ -1194,17 +1739,51 @@ function seatSpacing(svg) {
         zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, p.x, p.y);
     }, { passive: false });
 
+    // Keys on the map: + / - zoom, 0 fits, the arrow keys move the map.
     canvas.addEventListener("keydown", function (e) {
         var c = centre();
+        var step = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
         if (e.key === "+" || e.key === "=") zoomAt(1.3, c.x, c.y);
         else if (e.key === "-") zoomAt(1 / 1.3, c.x, c.y);
-        else if (e.key === "0") setView(home.x, home.y, home.w);
-        else if (e.key === "Escape") {
-            setSelection([]);
-            clearHits();
-            printMode = false;
-            canvas.classList.remove("is-print-area");
+        else if (e.key === "0") fitView();
+        else if (step) setView(view.x + step[0] * view.w * 0.12, view.y + step[1] * view.h * 0.12, view.w);
+        else return;
+        e.preventDefault();
+    });
+
+    // Esc undoes one thing at a time: a search list closes itself first (it handles the key), then print-area mode,
+    // search highlights, the selection and last full screen.
+    document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape" || e.defaultPrevented) return;
+        var t = e.target instanceof Element ? e.target : null;
+        if (t && t.closest("input, textarea, select") && !t.closest("[data-workplace-find]")) return;
+        if (printMode) { printMode = false; canvas.classList.remove("is-print-area"); }
+        else if (svg.querySelector(".is-hit")) clearHits();
+        else if (selected.length) setSelection([]);
+        else if (full) setFull(false);
+        else return;
+        e.preventDefault();
+    });
+
+    // Double-click a room to zoom to it.
+    canvas.addEventListener("dblclick", function (e) {
+        var room = e.target instanceof Element ? e.target.closest("[data-kind=room]") : null;
+        if (!room || !svg.contains(room)) {
+            var seat = e.target instanceof Element ? e.target.closest("[data-ws][data-room]") : null;
+            if (seat) room = svg.querySelector('[data-kind=room][data-id="' + esc(seat.getAttribute("data-room")) + '"]');
         }
+        if (!room) {
+            // A table or another shape on top of the room: the smallest room under the pointer.
+            var p = userPoint(e.clientX, e.clientY), best = null;
+            all("[data-kind=room]", svg).forEach(function (r) {
+                var b = userBox(svg, r);
+                if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h && (!best || b.w * b.h < best.a)) best = { el: r, a: b.w * b.h };
+            });
+            room = best && best.el;
+        }
+        if (!room) return;
+        e.preventDefault();
+        zoomTo(userBox(svg, room), 1.1);
     });
 
     all("[data-zoom]").forEach(function (b) {
@@ -1212,7 +1791,7 @@ function seatSpacing(svg) {
             var c = centre(), what = b.getAttribute("data-zoom");
             if (what === "in") zoomAt(1.4, c.x, c.y);
             else if (what === "out") zoomAt(1 / 1.4, c.x, c.y);
-            else setView(home.x, home.y, home.w);
+            else fitView();
         });
     });
 
@@ -1223,26 +1802,85 @@ function seatSpacing(svg) {
         canvas.classList.toggle("is-area", areaMode);
     });
 
-    window.addEventListener("resize", scheduleLabels);
+    // Full screen inside the page (not the browser's Fullscreen API, so Esc can leave it last): the map takes the whole
+    // window, the side panel comes back as an overlay on the right while something is selected.
+    var fullButton = root.querySelector("[data-fullscreen]");
+    function setFull(on) {
+        var c = centre(), w = view.w;
+        full = on;
+        root.classList.toggle("is-full", on);
+        document.documentElement.classList.toggle("wp-full-open", on);
+        if (fullButton) {
+            fullButton.setAttribute("aria-pressed", on ? "true" : "false");
+            var label = fullButton.querySelector("[data-fullscreen-label]");
+            if (label) label.textContent = on ? "Exit full screen" : "Full screen";
+            fullButton.title = on ? "Leave full screen (Esc)" : "Full screen";
+        }
+        sizeCanvas();
+        var a = aspect();
+        setView(c.x - w / 2, c.y - w * a / 2, w);
+        canvas.focus({ preventScroll: true });
+    }
+    if (fullButton) fullButton.addEventListener("click", function () { setFull(!full); });
+
+    window.addEventListener("resize", function () {
+        var c = centre(), w = view.w;
+        sizeCanvas();
+        var a = aspect();
+        setView(c.x - w / 2, c.y - w * a / 2, w);
+    });
     root.classList.add("is-live");
+    sizeCanvas();
     updatePanel();
-    layoutLabels(svg, canvas, null);
+    fitView();
+    relabel(true);
+    // Fonts change the width of the labels: fit them again once the bundled fonts are in.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { engine.remeasure(); relabel(true); });
     var initial = (root.getAttribute("data-focus") || "").split(",").filter(Boolean)
         .map(function (id) { return svg.getElementById(id); }).filter(Boolean);
     if (initial.length) focusElements(initial);
 })();
 
-// Floor plan print page: names and tags are always shown at a readable size; the print dialog opens by itself when the
-// floor page asked for it, or with the button. "Save as PDF" in that dialog makes the PDF.
+// Floor plan print page: the label engine fits names and tags at 7 pt or more on the chosen paper (A4 or A3 landscape);
+// what does not fit gets a number and a key under the map, and on A4 the page then suggests A3. The print dialog opens
+// by itself when the floor page asked for it, or with the button. "Save as PDF" in that dialog makes the PDF.
 (function () {
     var sheet = document.querySelector("[data-print-sheet]");
     if (!sheet) return;
     var map = sheet.querySelector("[data-print-map]");
     var svg = map && map.querySelector("svg");
-    function layout() { if (svg) layoutLabels(svg, map, true); }
+    var keyBox = sheet.querySelector("[data-callout-box]");
+    var hint = document.querySelector("[data-a3-hint]");
+    var a3 = sheet.getAttribute("data-paper") === "a3";
+    // The sheet's width on paper in CSS px (96 per inch): 277 mm on A4, 400 mm on A3 (landscape, 10 mm margins).
+    var paperWidth = a3 ? 1512 : 1047;
+    var engine = svg ? createLabelEngine(svg, { prefix: sheet.getAttribute("data-tag-prefix") || "" }) : null;
+    function layout() {
+        if (!engine) return;
+        map.classList.add("show-labels");
+        var callouts = -1;
+        // The key takes room from the map, which changes the scale: settle in a few rounds.
+        for (var round = 0; round < 4; round++) {
+            var ctm = svg.getScreenCTM();
+            if (!ctm || !ctm.a) return;
+            var scale = sheet.getBoundingClientRect().width / paperWidth;
+            var res = engine.layout(ctm.a, 7 * 96 / 72 * scale, true);
+            if (keyBox) {
+                keyBox.hidden = res.callouts === 0;
+                renderCalloutKey(keyBox.querySelector("[data-callout-key]"), res.key);
+            }
+            sheet.setAttribute("data-callouts", String(res.callouts));
+            if (res.callouts === callouts) break;
+            callouts = res.callouts;
+        }
+        if (hint) hint.hidden = a3 || callouts <= 0;
+    }
     layout();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (engine) engine.remeasure(); layout(); });
     window.addEventListener("resize", layout);
-    window.addEventListener("beforeprint", layout);
+    // Lay the sheet out at its size on paper while printing, so the labels are fitted for the paper, not the window.
+    window.addEventListener("beforeprint", function () { document.body.classList.add("is-printing"); layout(); });
+    window.addEventListener("afterprint", function () { document.body.classList.remove("is-printing"); layout(); });
     var button = document.querySelector("[data-print-now]");
     if (button) button.addEventListener("click", function () { window.print(); });
     if (sheet.getAttribute("data-autoprint") === "true") {

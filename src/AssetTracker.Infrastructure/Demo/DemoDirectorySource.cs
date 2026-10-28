@@ -12,6 +12,7 @@ namespace AssetTracker.Infrastructure.Demo;
 /// <item>2 people whose site value maps to no site (<c>unmapped-site</c>);</item>
 /// <item>1 person without an email address (cannot receive new loans);</item>
 /// <item>1 pair of entries sharing a directory id (quarantined, <c>duplicate-id</c>);</item>
+/// <item>3 people with long names (<see cref="LongNameUsernames"/>), seated at the crowded tables of AMS Floor 3;</item>
 /// <item>the role switcher's people: <see cref="DemoDefaults.YouUsername"/> and <see cref="DemoDefaults.ManagerUsername"/>.</item>
 /// </list>
 /// </summary>
@@ -48,6 +49,16 @@ public sealed class DemoDirectorySource : IDirectorySource
     /// <summary>Usernames of the people whose site value is unmapped.</summary>
     public static IReadOnlyList<string> UnmappedUsernames => [Username(144), Username(145)];
 
+    /// <summary>Usernames of the people with long names (Amsterdam), for the dense demo floor.</summary>
+    public static IReadOnlyList<string> LongNameUsernames => LongNames.Select(n => n.Username).ToList();
+
+    private static readonly (string Username, string Name, string Title)[] LongNames =
+    [
+        ("maximiliana.vandenberghe", "Maximiliana van den Berghe-Oosterhuis", "Office coordinator"),
+        ("christopher.montgomery", "Christopher Montgomery-Fictaway", "Project lead"),
+        ("annesophie.demoulin", "Anne-Sophie Demoulin-Placeholt", "Designer"),
+    ];
+
     /// <summary>Username of the regular person with the given index (0-based).</summary>
     public static string Username(int index) =>
         $"{FirstNames[index % FirstNames.Length]}.{Surnames[index / FirstNames.Length]}".ToLowerInvariant();
@@ -73,7 +84,7 @@ public sealed class DemoDirectorySource : IDirectorySource
     /// <summary>The full directory. <paramref name="historical"/>: the seeding snapshot, in which the leaver is still enabled.</summary>
     public static IReadOnlyList<DirectoryEntry> Entries(bool historical = false)
     {
-        var list = new List<DirectoryEntry>(RegularCount + 9)
+        var list = new List<DirectoryEntry>(RegularCount + 12)
         {
             new("demo-you", DemoDefaults.YouSid, DemoDefaults.YouUsername, "Demo You", "Service desk engineer",
                 $"you@{DemoDefaults.EmailDomain}", AmsValue, true),
@@ -85,6 +96,10 @@ public sealed class DemoDirectorySource : IDirectorySource
             var enabled = !DisabledIndexes.Contains(i) || (historical && Username(i) == LeaverUsername);
             list.Add(Person(i, SiteValueOf(i), enabled));
         }
+        // Long names, to see how the floor plan shortens them.
+        for (var i = 0; i < LongNames.Length; i++)
+            list.Add(new DirectoryEntry($"demo-long-{i + 1:0000}", DemoDefaults.SidPrefix + (2200 + i), LongNames[i].Username, LongNames[i].Name,
+                LongNames[i].Title, $"{LongNames[i].Username}@{DemoDefaults.EmailDomain}", AmsValue, true));
         // Site values that match no site: synced without a site and reported as unmapped-site.
         list.Add(Person(144, "Utopia Office", true));
         list.Add(Person(145, "Remote", true));

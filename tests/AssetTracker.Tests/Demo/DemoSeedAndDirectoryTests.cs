@@ -25,12 +25,13 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
         var b = await new DemoDirectorySource().FetchAllUsersAsync(CancellationToken.None);
 
         Assert.Equal(a, b);
-        Assert.Equal(151, a.Count);
+        Assert.Equal(154, a.Count);
         Assert.Equal(3, a.Count(e => !e.Enabled));
         Assert.Single(a, e => e.Email is null);
         Assert.Equal(2, a.Count(e => e.DirectoryId == "demo-duplicate-0001"));
         Assert.Equal(2, a.Count(e => e.SiteValue is "Utopia Office" or "Remote"));
         Assert.All(a.Where(e => e.Email is not null), e => Assert.EndsWith("@demo.example", e.Email));
+        Assert.Equal(3, a.Count(e => e.DisplayName?.Length > 28)); // long names for the dense floor
         Assert.Contains(a, e => e.Username == DemoDefaults.YouUsername && e.Sid == DemoDefaults.YouSid);
         Assert.Contains(a, e => e.Username == DemoDefaults.ManagerUsername && e.Sid == DemoDefaults.ManagerSid);
         // The historical snapshot differs only in the leaver being enabled.
@@ -45,11 +46,11 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
         await _f.WithDbAsync(async db =>
         {
             Assert.Equal(["AMS", "NYC", "SIN"], await db.Sites.OrderBy(s => s.Key).Select(s => s.Key).ToListAsync());
-            Assert.Equal(149, await db.People.CountAsync()); // 151 entries minus the quarantined duplicate pair
-            Assert.Equal(146, await db.People.CountAsync(p => p.IsActive));
+            Assert.Equal(152, await db.People.CountAsync()); // 154 entries minus the quarantined duplicate pair
+            Assert.Equal(149, await db.People.CountAsync(p => p.IsActive));
             Assert.Equal(2, await db.People.CountAsync(p => p.SiteId == null));
 
-            Assert.Equal(52, await db.Assets.CountAsync()); // 42, a spare AMS desktop and 9 screens
+            Assert.Equal(52 + DemoSeeder.DenseFloorDesktops + DemoSeeder.DenseFloorScreens, await db.Assets.CountAsync()); // 42, a spare AMS desktop, 9 screens and the dense floor's desktops and screens
             Assert.Equal(2, await db.Assets.CountAsync(a => a.State == AssetState.Retired));
             Assert.Equal(1, await db.Assets.CountAsync(a => a.State == AssetState.Unavailable));
             var imeis = await db.FieldValues.Where(v => v.Field!.Kind == FieldKind.Imei).Select(v => v.Value).ToListAsync();
@@ -92,13 +93,38 @@ public class DemoSeedAndDirectoryTests : IClassFixture<DemoAppFactory>
     }
 
     [Fact]
+    public async Task The_demo_has_four_floors_including_a_dense_open_plan_with_people_and_desktops()
+    {
+        await _f.WithDbAsync(async db =>
+        {
+            var floors = await db.Floors.Include(f => f.Site).OrderBy(f => f.Id).Select(f => f.Site!.Key + " " + f.Name).ToListAsync();
+            Assert.Equal(["AMS Floor 1", "AMS Floor 2", "NYC Floor 1", "AMS Floor 3"], floors);
+
+            var dense = await db.Floors.Include(f => f.Site).SingleAsync(f => f.Site!.Key == "AMS" && f.Name == "Floor 3");
+            var open = await db.Workspots.Where(w => w.FloorId == dense.Id && w.RoomName == "Open plan").ToListAsync();
+            Assert.Equal(96, open.Count);                                   // twelve tables of 8
+            Assert.Equal(12, open.Select(w => w.TableId).Distinct().Count());
+            Assert.All(open, w => Assert.True(w.IsDesk));
+            var ids = open.Select(w => w.Id).ToList();
+            var placed = await db.WorkspotAssignments.Where(a => ids.Contains(a.WorkspotId) && a.ReleasedAt == null).ToListAsync();
+            Assert.Equal(86, placed.Count(a => a.Kind == PlacementKind.Person));
+            Assert.Equal(DemoSeeder.DenseFloorDesktops, placed.Count(a => a.Kind == PlacementKind.Desktop));
+            Assert.Equal(DemoSeeder.DenseFloorScreens, placed.Count(a => a.Kind == PlacementKind.Screen));
+            var longNames = await db.People.Where(p => DemoDirectorySource.LongNameUsernames.Contains(p.Username)).Select(p => p.Id).ToListAsync();
+            Assert.Equal(3, placed.Count(a => a.Kind == PlacementKind.Person && longNames.Contains(a.PersonId!.Value)));
+            Assert.Equal(6, await db.FloorZones.CountAsync(z => z.FloorId == dense.Id));
+            return 0;
+        });
+    }
+
+    [Fact]
     public async Task Sync_history_reports_quarantined_unmapped_and_disabled_entries()
     {
         await _f.WithDbAsync(async db =>
         {
             var last = await db.SyncRuns.OrderByDescending(r => r.Id).FirstAsync();
             Assert.Equal(SyncRunStatus.Succeeded, last.Status);
-            Assert.Equal(151, last.Fetched);
+            Assert.Equal(154, last.Fetched);
             Assert.Equal(2, last.Quarantined);
             var issues = DirectorySyncService.ParseIssues(last.IssuesJson);
             Assert.Contains(issues, i => i.Code == "duplicate-id" && i.DirectoryId == "demo-duplicate-0001");
