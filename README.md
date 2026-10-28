@@ -12,4 +12,4 @@ A browser-based internal asset tracker for tagged devices and site quantity pool
 - **Deployment artifacts and configuration reference:** [`deploy/README.md`](deploy/README.md); build with `build/publish.ps1`
 - **Status:** tracked in the [MVP epic issue](https://github.com/KJELD-LRNT/ATS/issues/1)
 
-> Not authorized for deployment. Production values (AD, SMTP, timezone, group SIDs) come from Stage 0 client preflight (issue #2).
+> Not authorized for deployment. Production values (AD, SMTP, timezone) come from Stage 0 client preflight (issue #2).

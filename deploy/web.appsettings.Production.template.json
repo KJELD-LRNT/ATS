@@ -3,11 +3,6 @@
   "ConnectionStrings": {
     "AssetTracker": "Server=<SQL-HOST>\\SQLEXPRESS;Database=AssetTracker;Integrated Security=True;Encrypt=True"
   },
-  "Roles": {
-    "ItGroupSids": [ "<IT-GROUP-SID>" ],
-    "ManagerGroupSids": [ "<MANAGER-GROUP-SID>" ],
-    "AdminGroupSids": [ "<ADMIN-GROUP-SID>" ]
-  },
   "DataProtection": {
     "KeyPath": "<DATA-PROTECTION-KEY-FOLDER>"
   },

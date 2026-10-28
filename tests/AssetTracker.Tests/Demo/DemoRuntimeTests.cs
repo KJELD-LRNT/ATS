@@ -3,6 +3,7 @@ using AssetTracker.Core.Abstractions;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Lending;
 using AssetTracker.Core.Notifications;
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Time;
 using AssetTracker.Infrastructure.Demo;
 using AssetTracker.Tests.Infrastructure;
@@ -151,8 +152,8 @@ public class DemoRuntimeTests : IClassFixture<DemoAppFactory>
     public async Task Role_switcher_cookie_drives_claims_roles_and_manager_site_scope()
     {
         var client = _f.CreateDemoClient();
-        var res = await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Identity",
-            ("manager", "true"), ("personSid", DemoDefaults.ManagerSid));
+        // The demo manager has the Manager role (seeded in RoleAssignments) and a grant for AMS.
+        var res = await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Identity", ("personSid", DemoDefaults.ManagerSid));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var setCookie = string.Join(";", res.Headers.GetValues("Set-Cookie"));
         Assert.Contains("ats_demo_identity=", setCookie);
@@ -175,15 +176,29 @@ public class DemoRuntimeTests : IClassFixture<DemoAppFactory>
         // D2: audit is IT only.
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/Audit")).StatusCode);
 
-        // No roles at all: no inventory.
+        // Back to the default user (IT + Admin); the ticks replace its roles. No roles at all: no inventory.
         await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Identity", ("personSid", DemoDefaults.YouSid));
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/Assets")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Demo")).StatusCode); // the switcher stays reachable
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Assets")).StatusCode);
+        try
+        {
+            res = await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Roles");
+            Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/Assets")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Demo")).StatusCode); // the switcher stays reachable
 
-        // Admin only: settings yes, inventory no.
-        await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Identity", ("admin", "true"), ("personSid", DemoDefaults.YouSid));
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Admin/Settings")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/Loans")).StatusCode);
+            // Admin only: settings yes, inventory no; the Admin menu is there.
+            await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Roles", ("admin", "true"));
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/Admin/Settings")).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/Loans")).StatusCode);
+            Assert.Equal([AppRoles.Admin], await _f.WithDbAsync(db => db.RoleAssignments.AsNoTracking()
+                .Join(db.People, r => r.PrincipalDirectoryId, p => p.DirectoryId, (r, p) => new { r.Role, p.Sid })
+                .Where(x => x.Sid == DemoDefaults.YouSid).Select(x => x.Role).ToListAsync()));
+        }
+        finally
+        {
+            // Other tests of this class use the default IT + Admin.
+            await FormHelper.PostFormAsync(client, "/Demo", "/Demo?handler=Roles", ("it", "true"), ("admin", "true"));
+        }
     }
 
     [Theory]
@@ -192,7 +207,7 @@ public class DemoRuntimeTests : IClassFixture<DemoAppFactory>
     [InlineData("/Demo/Mailbox")]
     [InlineData("/Loans/Checkout?tag=AMS-LT-008&who=Alex")]
     [InlineData("/Admin/Sites")]
-    [InlineData("/Admin/Grants")]
+    [InlineData("/Admin/SystemRoles?q=demo")]
     [InlineData("/Pools/Create")]
     public async Task Pages_have_no_inline_styles_or_scripts_blocked_by_the_csp(string url)
     {

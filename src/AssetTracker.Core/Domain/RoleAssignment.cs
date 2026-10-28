@@ -3,9 +3,9 @@ using AssetTracker.Core.Security;
 namespace AssetTracker.Core.Domain;
 
 /// <summary>
-/// A role given to a person inside the application (not from an AD group): today only <see cref="AppRoles.Facility"/>.
-/// Like manager grants it points at the person's stable directory id and only counts while that person is active in
-/// the directory snapshot.
+/// A role (IT, Manager, Admin or Facility) given to a person inside the application (Admin → System roles). Like manager
+/// grants it points at the person's stable directory id and only counts while that person is active in the directory
+/// snapshot.
 /// </summary>
 public class RoleAssignment
 {

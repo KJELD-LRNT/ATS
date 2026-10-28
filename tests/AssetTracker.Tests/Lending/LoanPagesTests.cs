@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Inventory;
@@ -88,8 +89,8 @@ public class LoanPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manager_sees_full_history_of_an_asset_at_a_granted_site_even_from_before_a_move()
     {
-        var managerA = new TestUser(@"CORP\mgr.lp03a", "S-1-5-21-1000-1000-1000-3301", TestGroups.Manager);
-        var managerB = new TestUser(@"CORP\mgr.lp03b", "S-1-5-21-1000-1000-1000-3302", TestGroups.Manager);
+        var managerA = new TestUser(@"CORP\mgr.lp03a", "S-1-5-21-1000-1000-1000-3301", AppRoles.Manager);
+        var managerB = new TestUser(@"CORP\mgr.lp03b", "S-1-5-21-1000-1000-1000-3302", AppRoles.Manager);
         var siteA = await _f.SiteAsync("LP03A");
         var siteB = await _f.SiteAsync("LP03B");
         await _f.WithDbAsync(async db =>
@@ -120,7 +121,7 @@ public class LoanPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manager_loan_list_is_scoped_to_granted_sites()
     {
-        var manager = new TestUser(@"CORP\mgr.lp04", "S-1-5-21-1000-1000-1000-3401", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.lp04", "S-1-5-21-1000-1000-1000-3401", AppRoles.Manager);
         var granted = await _f.SiteAsync("LP04G");
         var other = await _f.SiteAsync("LP04X");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, granted));

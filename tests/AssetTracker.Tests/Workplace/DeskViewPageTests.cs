@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Domain;
 using AssetTracker.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,7 @@ public class DeskViewPageTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Managers_get_the_desk_view_without_search_boxes_or_forms()
     {
-        var manager = new TestUser(@"CORP\mgr.dv19", "S-1-5-21-1000-1000-1000-3959", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.dv19", "S-1-5-21-1000-1000-1000-3959", AppRoles.Manager);
         var s = await NewFloorAsync("DV19");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         var html = await _f.CreateClientAs(manager).GetStringAsync($"/Workplace/Floor/{s.Floor.Id}");

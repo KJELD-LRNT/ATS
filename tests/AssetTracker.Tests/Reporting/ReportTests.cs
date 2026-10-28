@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -62,7 +63,7 @@ public class ReportTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manager_sees_only_granted_sites_in_every_report_and_export()
     {
-        var manager = new TestUser(@"CORP\mgr.rs", "S-1-5-21-1000-1000-1000-4101", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.rs", "S-1-5-21-1000-1000-1000-4101", AppRoles.Manager);
         var s = await SeedTwoSitesAsync("RS", manager);
         var client = _f.CreateClientAs(manager);
 
@@ -102,7 +103,7 @@ public class ReportTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manipulated_site_filter_does_not_leak_ungranted_site()
     {
-        var manager = new TestUser(@"CORP\mgr.ru", "S-1-5-21-1000-1000-1000-4102", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ru", "S-1-5-21-1000-1000-1000-4102", AppRoles.Manager);
         var s = await SeedTwoSitesAsync("RU", manager);
         var client = _f.CreateClientAs(manager);
 
@@ -123,7 +124,7 @@ public class ReportTests : IClassFixture<AppFactory>
     [Fact]
     public async Task It_sees_all_sites()
     {
-        var manager = new TestUser(@"CORP\mgr.rt", "S-1-5-21-1000-1000-1000-4103", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.rt", "S-1-5-21-1000-1000-1000-4103", AppRoles.Manager);
         await SeedTwoSitesAsync("RT", manager);
         var client = _f.CreateClientAs(TestUser.It);
 
@@ -177,8 +178,8 @@ public class ReportTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Manager_of_new_site_sees_prior_holders_after_asset_moved_in_but_old_site_manager_does_not()
     {
-        var mgrA = new TestUser(@"CORP\mgr.rva", "S-1-5-21-1000-1000-1000-4104", TestGroups.Manager);
-        var mgrB = new TestUser(@"CORP\mgr.rvb", "S-1-5-21-1000-1000-1000-4105", TestGroups.Manager);
+        var mgrA = new TestUser(@"CORP\mgr.rva", "S-1-5-21-1000-1000-1000-4104", AppRoles.Manager);
+        var mgrB = new TestUser(@"CORP\mgr.rvb", "S-1-5-21-1000-1000-1000-4105", AppRoles.Manager);
         await _f.WithDbAsync(async db =>
         {
             var a = await Seed.SiteAsync(db, "RVA");
@@ -307,7 +308,7 @@ public class ReportTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Export_writes_audit_event_with_filters_and_row_count()
     {
-        var manager = new TestUser(@"CORP\mgr.ra", "S-1-5-21-1000-1000-1000-4106", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ra", "S-1-5-21-1000-1000-1000-4106", AppRoles.Manager);
         var s = await SeedTwoSitesAsync("RA", manager);
         var client = _f.CreateClientAs(manager);
 

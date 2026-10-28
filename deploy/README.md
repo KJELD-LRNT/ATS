@@ -29,15 +29,15 @@ page removes the override, so the file value or built-in default applies again. 
 effective value and its source (database / config file / default). Changes apply without a restart: immediately in
 the web app, and in the worker within `Settings:ReloadInterval`. The files keep only bootstrap settings, which the
 app needs before it can read the database or which must not be changeable from inside the app (connection string,
-role group SIDs).
+Data Protection key folder). **Roles are not configured in a file:** an admin (or the super admin) gives them to people
+on **Admin → System roles**. The old `Roles:ItGroupSids` / `Roles:ManagerGroupSids` / `Roles:AdminGroupSids` keys are
+ignored; if the file still has them, the web app logs a warning at start-up and Admin → Settings shows a notice. Remove
+them.
 
 | Setting | Where | App | Required | Default | Description |
 | --- | --- | --- | --- | --- | --- |
 | `ConnectionStrings:AssetTracker` | File | Both | Yes | none | SQL Server connection. Integrated security as the app pool / worker gMSA. `Encrypt=True`; add `TrustServerCertificate=True` only if the SQL certificate cannot be trusted. |
 | `AllowedHosts` | File | Web | Recommended | `*` | The internal DNS name(s) of the site, `;`-separated. Rejects requests with other `Host` headers. |
-| `Roles:ItGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for IT/editor. |
-| `Roles:ManagerGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for managers/viewers (site access via grants). |
-| `Roles:AdminGroupSids` | File | Web | Yes | `[]` | SIDs of the AD group(s) for application admins (settings, grants, sync rerun, privacy). |
 | `DataProtection:KeyPath` | File | Both | Yes (Production) | none | Folder holding the Data Protection key ring, **the same folder for web and worker** (e.g. `D:\AppData\AssetTracker\DataProtection-Keys`, outside the web root). Keys are encrypted with machine DPAPI, so the folder only works on this server. Both service accounts need Modify on it. Startup fails in Production when it is not set. |
 | `Settings:ReloadInterval` | File | Both | No | `00:00:30` | How often each app re-reads database settings. `00:00:00` disables periodic reloads (the web app still reloads after each save). |
 | `Ops:WorkerHeartbeatInterval` | File | Web | No | `00:01:00` | Must equal the worker's `Worker:HeartbeatInterval`. |

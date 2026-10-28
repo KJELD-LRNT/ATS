@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using System.Text.Json;
 using AssetTracker.Core.Domain;
@@ -29,7 +30,7 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task The_spot_endpoint_returns_what_sits_there_for_readers_within_scope()
     {
-        var manager = new TestUser(@"CORP\mgr.ap01", "S-1-5-21-1000-1000-1000-3901", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ap01", "S-1-5-21-1000-1000-1000-3901", AppRoles.Manager);
         var s = await NewFloorAsync("AP01");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         var other = await NewFloorAsync("AP02");
@@ -213,7 +214,7 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Managers_see_no_forms_to_place_things_and_cannot_post()
     {
-        var manager = new TestUser(@"CORP\mgr.ap05", "S-1-5-21-1000-1000-1000-3905", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ap05", "S-1-5-21-1000-1000-1000-3905", AppRoles.Manager);
         var s = await NewFloorAsync("AP05");
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, s.Site));
         var html = await _f.CreateClientAs(manager).GetStringAsync($"/Workplace/Floor/{s.Floor.Id}");
@@ -271,7 +272,7 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         // a bad area prints the whole floor
         Assert.Contains("Whole floor", await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=nonsense"));
 
-        var manager = new TestUser(@"CORP\mgr.ap11", "S-1-5-21-1000-1000-1000-3911", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.ap11", "S-1-5-21-1000-1000-1000-3911", AppRoles.Manager);
         Assert.Equal(HttpStatusCode.NotFound, (await _f.CreateClientAs(manager).GetAsync($"/Workplace/Print/{s.Floor.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await _f.CreateClientAs(TestUser.Nobody).GetAsync($"/Workplace/Print/{s.Floor.Id}")).StatusCode);
     }

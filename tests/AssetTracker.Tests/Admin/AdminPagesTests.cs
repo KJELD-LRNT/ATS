@@ -15,7 +15,7 @@ public class AdminPagesTests : IClassFixture<AppFactory>
     public AdminPagesTests(AppFactory f) => _f = f;
 
     /// <summary>Admin-only pages. <c>/Admin/Sync</c> is readable by IT too (D7, see the sync history tests below).</summary>
-    public static TheoryData<string> AdminPages => ["/Admin/Sites", "/Admin/Grants", "/Admin/Settings"];
+    public static TheoryData<string> AdminPages => ["/Admin/Sites", "/Admin/SystemRoles", "/Admin/Settings"];
 
     [Theory]
     [MemberData(nameof(AdminPages))]
@@ -94,7 +94,7 @@ public class AdminPagesTests : IClassFixture<AppFactory>
     [Fact]
     public async Task Admin_grants_and_removes_site_access_and_removal_revokes_manager_access()
     {
-        var mgr = new TestUser(@"CORP\grant.mgr", "S-1-5-21-1000-1000-1000-2101", TestGroups.Manager);
+        var mgr = new TestUser(@"CORP\grant.mgr", "S-1-5-21-1000-1000-1000-2101", AppRoles.Manager);
         var (site, person) = await _f.WithDbAsync(async db =>
         {
             var s = await Seed.SiteAsync(db, "GRT1");
@@ -103,11 +103,15 @@ public class AdminPagesTests : IClassFixture<AppFactory>
         });
         var c = _f.CreateClientAs(TestUser.Admin);
 
-        var search = await (await c.GetAsync("/Admin/Grants?q=GRANT.M")).Content.ReadAsStringAsync();
+        // Grants live on System roles now; the old page redirects there.
+        var old = await c.GetAsync("/Admin/Grants?q=GRANT.M");
+        Assert.Equal(HttpStatusCode.Redirect, old.StatusCode);
+        Assert.Equal("/Admin/SystemRoles?q=GRANT.M", old.Headers.Location!.OriginalString);
+        var search = await (await c.GetAsync("/Admin/SystemRoles?q=GRANT.M")).Content.ReadAsStringAsync();
         Assert.Contains("grant.mgr", search);
 
-        var res = await FormHelper.PostFormAsync(c, "/Admin/Grants?q=grant.mgr", "/Admin/Grants?handler=Add",
-            ("personId", person.Id.ToString()), ("siteId", site.Id.ToString()));
+        var res = await FormHelper.PostFormAsync(c, "/Admin/SystemRoles?q=grant.mgr", "/Admin/SystemRoles?handler=Save",
+            ("directoryId", person.DirectoryId), ("roles", "Manager"), ("siteIds", site.Id.ToString()));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         var grant = await _f.WithDbAsync(db => db.ManagerSiteGrants.AsNoTracking().SingleAsync(g => g.SiteId == site.Id));
         Assert.Equal(person.DirectoryId, grant.PrincipalDirectoryId);
@@ -116,12 +120,15 @@ public class AdminPagesTests : IClassFixture<AppFactory>
         var access = await _f.RunAsAsync(mgr, sp => sp.GetRequiredService<AccessScope>().GetAsync());
         Assert.True(access.CanRead(site.Id));
 
-        // Same grant twice is a conflict.
-        res = await FormHelper.PostFormAsync(c, "/Admin/Grants?q=grant.mgr", "/Admin/Grants?handler=Add",
-            ("personId", person.Id.ToString()), ("siteId", site.Id.ToString()));
-        Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
+        // Saving the same row again changes nothing (no second grant).
+        res = await FormHelper.PostFormAsync(c, "/Admin/SystemRoles", "/Admin/SystemRoles?handler=Save",
+            ("directoryId", person.DirectoryId), ("roles", "Manager"), ("siteIds", site.Id.ToString()));
+        Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+        Assert.Equal(1, await _f.WithDbAsync(db => db.ManagerSiteGrants.CountAsync(g => g.SiteId == site.Id)));
 
-        res = await FormHelper.PostFormAsync(c, "/Admin/Grants", $"/Admin/Grants?handler=Remove&grantId={grant.Id}");
+        // Untick the site (the Manager role stays).
+        res = await FormHelper.PostFormAsync(c, "/Admin/SystemRoles", "/Admin/SystemRoles?handler=Save",
+            ("directoryId", person.DirectoryId), ("roles", "Manager"));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         Assert.False(await _f.WithDbAsync(db => db.ManagerSiteGrants.AnyAsync(g => g.Id == grant.Id)));
 

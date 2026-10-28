@@ -2,7 +2,7 @@ namespace AssetTracker.Core.Domain;
 
 /// <summary>
 /// Grants a manager (identified by Windows account / AD identity) read access to a site.
-/// Has no effect unless the principal is currently in the manager AD group.
+/// Has no effect unless the person currently has the Manager role and is active in the directory snapshot (D9).
 /// </summary>
 public class ManagerSiteGrant
 {

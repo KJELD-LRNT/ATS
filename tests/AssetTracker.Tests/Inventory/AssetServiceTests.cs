@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using AssetTracker.Core.Common;
 using AssetTracker.Core.Domain;
 using AssetTracker.Core.Inventory;
@@ -183,7 +184,7 @@ public class AssetServiceTests : IClassFixture<AppFactory>
         var asIt = await AsIt(s => s.GetAsync(line.Id));
         Assert.Contains(asIt.Values, v => v.Value == "87654321");
 
-        var manager = new TestUser(@"CORP\mgr.as06c", "S-1-5-21-1000-1000-1000-3066", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.as06c", "S-1-5-21-1000-1000-1000-3066", AppRoles.Manager);
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, site));
         var seen = await _f.RunAsAsync(manager, sp => sp.GetRequiredService<AssetService>().GetAsync(line.Id));
         Assert.DoesNotContain(seen.Values, v => v.Value == "87654321");
@@ -301,7 +302,7 @@ public class AssetServiceTests : IClassFixture<AppFactory>
         await AsIt(s => s.CreateAsync(new CreateAssetInput("BR-1201", BuiltIn.Desktop, granted.Id, "Headset [spare]")));
         Assert.Equal("BR-1201", Assert.Single((await AsIt(s => s.SearchAsync(new AssetSearch("[spare]")))).Items).Tag);
 
-        var manager = new TestUser(@"CORP\mgr.as12", "S-1-5-21-1000-1000-1000-3012", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.as12", "S-1-5-21-1000-1000-1000-3012", AppRoles.Manager);
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, granted));
         var seen = await _f.RunAsAsync(manager, sp => sp.GetRequiredService<AssetService>().SearchAsync(new AssetSearch("Searchable")));
         Assert.Equal("PH-1201", Assert.Single(seen.Items).Tag);

@@ -127,6 +127,9 @@ public sealed class DemoDataManager(
         }
     }
 
+    /// <summary>Version of the demo seed data; part of <see cref="SchemaVersion"/>.</summary>
+    public const int SeedVersion = 2;
+
     /// <summary>
     /// The app's demo schema version: derived from the SQLite create script of the current EF model, so any model change
     /// (a new table, column or index) gives a new version without anyone having to remember to bump a number. Stored in
@@ -134,7 +137,9 @@ public sealed class DemoDataManager(
     /// </summary>
     public static int SchemaVersion(AppDbContext db)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(db.Database.GenerateCreateScript()));
+        // SeedVersion: bump when the demo seed changes in a way an existing demo.db must pick up (for example the
+        // personas' roles moving into RoleAssignments), so the demo rebuilds even though the schema stayed the same.
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(db.Database.GenerateCreateScript() + "\n-- seed " + SeedVersion));
         var version = BitConverter.ToInt32(hash, 0) & int.MaxValue;
         return version == 0 ? 1 : version;
     }

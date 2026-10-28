@@ -86,11 +86,18 @@
         <p class="page-subtitle">
             Values saved here are stored in the database and override the configuration files; leave a field empty to remove
             the override (the config file value or the default applies again). Changes reach the web app immediately and the
-            worker within <code>Settings:ReloadInterval</code> (30 seconds by default). Connection strings, role groups and
-            the Data Protection key folder stay in <code>appsettings.Production.json</code>.
+            worker within <code>Settings:ReloadInterval</code> (30 seconds by default). Connection strings and the Data Protection
+            key folder stay in <code>appsettings.Production.json</code>. Roles are given under <a asp-page="/Admin/SystemRoles">System roles</a>.
         </p>
     </div>
 </header>
+@if (Model.LegacyRoleSettingsPresent)
+{
+    <div class="alert alert--warning" id="legacy-roles-note" role="note">
+        @Ui.Icon("warning", 18, 2)
+        <div class="alert-body">@AssetTracker.Web.Security.LegacyRoleSettings.Notice</div>
+    </div>
+}
 @if (HttpContext.RequestServices.GetService(typeof(AssetTracker.Infrastructure.Demo.DemoOptions)) is not null)
 {
     <div class="alert alert--warning" id="demo-settings-note" role="note">

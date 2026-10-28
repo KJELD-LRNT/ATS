@@ -1,47 +1,154 @@
 @page
 @model AssetTracker.Web.Pages.Admin.SystemRolesModel
+@using AssetTracker.Core.Admin
+@using AssetTracker.Web.Pages.Admin
 @{
     ViewData["Title"] = "System roles";
+
+    async Task Row(PersonRolesRow r, string formId)
+    {
+        <tr id="@("row-" + formId)">
+            <td>
+                <div class="cell-stack">
+                    <span class="cell-row"><strong class="person-name">@r.DisplayName</strong>
+                        @if (r.IsCurrentUser) { <span class="badge badge--info">You</span> }
+                        @if (!r.InSnapshot) { <span class="badge badge--muted">Not in the directory</span> }
+                        else if (!r.IsActive) { <span class="badge badge--muted">Inactive</span> }
+                        @if (r.InSnapshot && !r.HasSid) { <span class="badge badge--warning">No Windows account</span> }
+                    </span>
+                    <span class="cell-sub">@r.Username@(r.JobTitle is null ? "" : " · " + r.JobTitle)@(r.SiteKey is null ? "" : " · " + r.SiteKey)</span>
+                </div>
+            </td>
+            @foreach (var c in SystemRolesModel.RoleColumns)
+            {
+                var has = r.Roles.HasFlag(c.Role);
+                var ownAdmin = has && r.IsCurrentUser && c.Role == AppRoles.Admin;
+                <td class="num">
+                    @if (ownAdmin)
+                    {
+                        <input type="hidden" name="roles" value="@c.Role" form="@formId" />
+                        <label class="check check--cell" title="You can't remove your own Admin role"><input type="checkbox" checked disabled aria-label="@c.Label for @r.DisplayName (you can't remove your own Admin role)" /></label>
+                    }
+                    else
+                    {
+                        <label class="check check--cell"><input type="checkbox" name="roles" value="@c.Role" form="@formId" checked="@has" disabled="@(!has && !r.CanGetRole)" aria-label="@c.Label for @r.DisplayName" /></label>
+                    }
+                </td>
+            }
+            <td>
+                <fieldset class="site-ticks">
+                    <legend class="visually-hidden">Sites @r.DisplayName may see as a manager</legend>
+                    <div class="site-ticks-list">
+                        @foreach (var s in Model.SitesFor(r))
+                        {
+                            var granted = r.Grants.Any(g => g.SiteId == s.Id);
+                            <label class="check" title="@s.Name"><input type="checkbox" name="siteIds" value="@s.Id" form="@formId" checked="@granted" disabled="@(!granted && !r.CanGetGrant)" /> <span class="mono">@s.Key</span></label>
+                        }
+                    </div>
+                </fieldset>
+                @if (r.Grants.Count > 0 && !r.Roles.HasFlag(AppRoles.Manager))
+                {
+                    <small class="hint">No effect without the Manager role.</small>
+                }
+            </td>
+            <td class="actions-cell">
+                <form method="post" id="@formId" asp-page-handler="Save" asp-route-role="@Model.Role" asp-route-site="@Model.Site"
+                      asp-route-inactive="@(Model.Inactive ? "true" : null)" asp-route-q="@Model.Q">
+                    <input type="hidden" name="directoryId" value="@r.DirectoryId" />
+                    <button type="submit" class="btn--sm btn--primary" aria-label="Save roles of @r.DisplayName">Save</button>
+                </form>
+            </td>
+        </tr>
+    }
+
+    void Head()
+    {
+        <thead>
+            <tr>
+                <th scope="col">Person</th>
+                @foreach (var c in SystemRolesModel.RoleColumns)
+                {
+                    <th scope="col" class="num" title="@c.Help">@c.Label</th>
+                }
+                <th scope="col">Manager sites</th>
+                <th scope="col"><span class="visually-hidden">Save</span></th>
+            </tr>
+        </thead>
+    }
 }
 <header class="page-header">
     <div class="page-heading">
         <h1>System roles</h1>
-        <p class="page-subtitle">IT, manager and admin come from AD groups. The <strong>Facility</strong> role is given here, inside the application: facility and operations staff can work with the Workplace floor plans (import maps, workspots, zones). It gives no access to assets, loans or reports. It only counts while the person is active in the directory.</p>
+        <div class="prose">
+            <p>Give people their roles here. <strong>IT</strong> works with inventory, loans, reports, floor plans and the audit log.
+                A <strong>Manager</strong> reads the inventory of the sites ticked on their row. <strong>Admin</strong> manages settings,
+                roles, sites, directory sync, asset types and privacy, but sees no inventory by itself. <strong>Facility</strong> works with the floor plans only.</p>
+            <p>A role needs a person who is active in the directory and has a Windows account. Roles of people who become inactive
+                stay here but do nothing until they are active again. A change takes effect on the person's next page view.</p>
+        </div>
     </div>
 </header>
 
 @if (Model.Message is not null)
 {
-    <div class="alert alert--success" role="status">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
+    <div class="alert alert--success" role="status" id="roles-message">@Ui.Icon("check", 18, 2.4)<div class="alert-body">@Model.Message</div></div>
 }
-<div asp-validation-summary="ModelOnly" class="alert alert--error"></div>
+@if (Model.Warning is not null)
+{
+    <div class="alert alert--warning" role="alert" id="roles-warning">@Ui.Icon("warning", 18, 2)<div class="alert-body">@Model.Warning</div></div>
+}
+else if (!Model.AnyAdmin)
+{
+    <div class="alert alert--warning" role="note" id="roles-no-admin">@Ui.Icon("warning", 18, 2)<div class="alert-body">Nobody has the Admin role. Until someone has it, only the super admin can give roles.</div></div>
+}
+<div asp-validation-summary="ModelOnly" class="alert alert--error" id="roles-error"></div>
+
+<form method="get" class="filters" role="search" aria-label="Filter people">
+    <div class="field">
+        <label for="role">Role</label>
+        <select id="role" name="role">
+            <option value="">Any role or site</option>
+            @foreach (var c in SystemRolesModel.RoleColumns)
+            {
+                <option value="@c.Role" selected="@(Model.RoleFilter == c.Role)">@c.Label</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label for="site">Site</label>
+        <select id="site" name="site">
+            <option value="">All sites</option>
+            @foreach (var s in Model.AllSites)
+            {
+                <option value="@s.Id" selected="@(Model.Site == s.Id)">@s.Key - @s.Name</option>
+            }
+        </select>
+    </div>
+    <label class="check"><input type="checkbox" name="inactive" value="true" checked="@Model.Inactive" /> Show inactive people</label>
+    <div class="filters-actions">
+        <button type="submit">Filter</button>
+        @if (Model.Filtered)
+        {
+            <a class="btn" asp-page="/Admin/SystemRoles">Clear</a>
+        }
+    </div>
+</form>
 
 <section class="card card--flush" aria-labelledby="roles-h">
-    <div class="card-header"><h2 id="roles-h">Facility role</h2></div>
-    @if (Model.Assignments.Count == 0)
+    <div class="card-header"><h2 id="roles-h">People with a role or site (@Model.Rows.Count)</h2></div>
+    @if (Model.Rows.Count == 0)
     {
-        <div class="empty-state"><strong>Nobody has the Facility role.</strong><span>Search a person below to give it.</span></div>
+        <div class="empty-state"><strong>@(Model.Filtered ? "Nobody matches these filters." : "Nobody has a role yet.")</strong><span>Use <em>Add a person</em> below to give a role.</span></div>
     }
     else
     {
         <div class="table-wrap">
-            <table>
-                <thead><tr><th scope="col">Person</th><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Given</th><th scope="col">By</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <table class="roles-table" id="roles-table">
+                @{ Head(); }
                 <tbody>
-                @foreach (var r in Model.Assignments)
+                @for (var i = 0; i < Model.Rows.Count; i++)
                 {
-                    <tr>
-                        <td><span class="cell-row">@(r.PersonDisplayName ?? "(not in directory snapshot)")@if (r.PersonActive == false) { <span class="badge badge--muted">Inactive</span> }</span></td>
-                        <td>@(r.PersonUsername ?? r.PrincipalName)</td>
-                        <td>@r.Role</td>
-                        <td class="nowrap">@r.GrantedAt.ToString("yyyy-MM-dd HH:mm") UTC</td>
-                        <td>@r.GrantedBy</td>
-                        <td class="actions-cell">
-                            <form method="post" asp-page-handler="Remove" asp-route-id="@r.Id">
-                                <button type="submit" class="btn--danger btn--sm">Remove</button>
-                            </form>
-                        </td>
-                    </tr>
+                    await Row(Model.Rows[i], "r" + i);
                 }
                 </tbody>
             </table>
@@ -49,12 +156,15 @@
     }
 </section>
 
-<section class="card card--flush" aria-labelledby="add-h">
-    <div class="card-header"><h2 id="add-h">Give the Facility role</h2></div>
+<section class="card card--flush" aria-labelledby="add-h" id="add-person">
+    <div class="card-header"><h2 id="add-h">Add a person</h2></div>
     <div class="card-body">
         <form method="get" class="search-row" role="search">
+            <input type="hidden" name="role" value="@Model.Role" />
+            <input type="hidden" name="site" value="@Model.Site" />
+            @if (Model.Inactive) { <input type="hidden" name="inactive" value="true" /> }
             <div class="field field--grow">
-                <label for="q">Find person (name or username)</label>
+                <label for="q">Find a person in the directory (name or username)</label>
                 <input id="q" name="q" value="@Model.Q" minlength="2" type="search" />
             </div>
             <button type="submit">Search</button>
@@ -63,37 +173,24 @@
 
     @if (!string.IsNullOrWhiteSpace(Model.Q))
     {
-        @if (Model.People.Count == 0)
+        @if (Model.Found.Count == 0)
         {
             <div class="empty-state"><strong>No matching people.</strong></div>
         }
         else
         {
             <div class="table-wrap">
-                <table>
-                    <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Job title</th><th scope="col">AD site</th><th scope="col"><span class="visually-hidden">Action</span></th></tr></thead>
+                <table class="roles-table" id="found-table">
+                    @{ Head(); }
                     <tbody>
-                    @foreach (var p in Model.People)
+                    @for (var i = 0; i < Model.Found.Count; i++)
                     {
-                        <tr>
-                            <td><span class="cell-row">@p.DisplayName@if (!p.IsActive) { <span class="badge badge--muted">Inactive</span> }</span></td>
-                            <td>@p.Username</td>
-                            <td>@p.JobTitle</td>
-                            <td>@p.SiteKey</td>
-                            <td>
-                                @if (p.IsActive)
-                                {
-                                    <form method="post" asp-page-handler="Add" asp-route-q="@Model.Q" class="inline-form">
-                                        <input type="hidden" name="personId" value="@p.Id" />
-                                        <button type="submit" class="btn--primary">Give Facility role</button>
-                                    </form>
-                                }
-                            </td>
-                        </tr>
+                        await Row(Model.Found[i], "f" + i);
                     }
                     </tbody>
                 </table>
             </div>
+            <div class="card-body"><p class="hint">Tick the roles and sites, then <em>Save</em> on that row. People without a Windows account can only get sites; inactive people get nothing new.</p></div>
         }
     }
 </section>
