@@ -756,20 +756,47 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
    Workplace: floor plans. The drawing's own rules are scoped to ".floorplan" with "fp-" class names (see FloorplanCss);
    these are the application's rules for the map, the seats and the side panel. */
 .wp { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-.wp-stage { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; position: sticky; top: 12px; }
+.wp-stage { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; position: sticky; top: 72px; }
 .wp-toolbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .wp-find { flex: 1 1 260px; min-width: 0; }
 .wp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .wp-tools button { min-width: 40px; }
 .wp-tools button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
-.wp-canvas { position: relative; height: min(calc(100vh - 220px), 760px); min-height: 360px; border: 1px solid var(--line); border-radius: var(--radius);
+/* The canvas fills the window below the top bar and the header (site.js sets the height; at least 480 px). */
+.wp-canvas-wrap { position: relative; height: calc(100vh - 220px); min-height: 480px; }
+.wp-canvas { position: relative; height: 100%; border: 1px solid var(--line); border-radius: var(--radius);
     background: var(--canvas); overflow: hidden; touch-action: none; cursor: grab; user-select: none; }
+/* Floating map controls (top right): zoom level, zoom in and out, Fit, Select area, full screen. Only with JavaScript. */
+.wp-mapctl { position: absolute; z-index: 6; top: 10px; right: 10px; display: none; align-items: center; gap: 4px; padding: 4px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.wp.is-live .wp-mapctl { display: flex; }
+.wp-mapctl button { min-height: 36px; min-width: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.wp-mapctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.wp-zoom-level { min-width: 48px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+/* The key to the callout numbers (names that do not fit at this zoom). */
+.wp-callouts { position: absolute; z-index: 5; left: 10px; bottom: 10px; max-width: min(460px, calc(100% - 20px)); max-height: 40%; overflow: auto;
+    padding: 6px 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); font-size: 12.5px; }
+.wp-callouts[hidden] { display: none; }
+.wp-callouts summary { cursor: pointer; font-weight: 600; }
+.wp-callout-key { list-style: none; margin: 4px 0 0; padding: 0; columns: 2 180px; column-gap: 16px; }
+.wp-callout-key li { break-inside: avoid; overflow-wrap: anywhere; }
+.wp-key-n { display: inline-block; min-width: 2.2em; font-weight: 700; font-variant-numeric: tabular-nums; }
 .wp-canvas:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 1px; }
 .wp-canvas.is-area { cursor: crosshair; }
 .wp-canvas svg { display: block; width: 100%; height: 100%; }
 .wp-band { position: absolute; z-index: 5; border: 1.5px dashed var(--accent); background: rgba(11, 107, 102, 0.12); pointer-events: none; }
 .wp-hint { margin: 0; }
-.wp-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* The side panel scrolls on its own next to the map. */
+.wp-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; position: sticky; top: 72px; max-height: calc(100vh - 84px); overflow-y: auto;
+    overscroll-behavior: contain; padding-bottom: 4px; }
+/* Full screen inside the page: the map takes the whole window; the panel comes back on the right while something is selected. */
+:root.wp-full-open { overflow: hidden; }
+.wp.is-full .wp-stage { position: fixed; inset: 0; z-index: 60; border-radius: 0; border: 0; }
+.wp.is-full .wp-canvas-wrap { min-height: 0; }
+.wp.is-full .wp-hint, .wp.is-full .wp-panel { display: none; }
+.wp.is-full.has-selection .wp-panel { display: flex; position: fixed; z-index: 61; top: 64px; right: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px));
+    max-height: none; padding: 8px; background: var(--ground); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.wp.is-full.has-selection .wp-mapctl { right: calc(min(360px, 100vw - 24px) + 12px); }
 .wp-box { padding: 14px 16px; }
 .wp-box h2 { font-size: 15px; margin: 0 0 8px; }
 .wp-box p { margin: 0 0 8px; }
@@ -829,6 +856,8 @@ tr.row--leaver td:first-child { box-shadow: inset 3px 0 0 var(--bad-dot); }
 .floorplan .fp-label-up text, .floorplan .fp-label-down text { text-anchor: middle; }
 .floorplan .fp-label-left text { text-anchor: end; }
 .floorplan .fp-label-right text { text-anchor: start; }
+.floorplan .fp-callout circle { fill: #111827; stroke: #FFFFFF; stroke-width: 1.5px; }
+.floorplan .fp-callout text { fill: #FFFFFF; font-family: var(--font-sans); font-weight: 700; text-anchor: middle; stroke: none; }
 /* Selection, search hits, drop target and the highlights of free desks or seats to check. */
 .floorplan :is(.fp-ws.is-hit, g.fp-ws.is-hit > :not(text, title)) { stroke: #D6336C; stroke-width: 2.4px; vector-effect: non-scaling-stroke; }
 .floorplan :is(.fp-ws.is-selected, g.fp-ws.is-selected > :not(text, title)), .floorplan [id]:not(.fp-ws).is-selected { stroke: #D6336C; stroke-width: 2.4px; vector-effect: non-scaling-stroke; }
@@ -930,35 +959,67 @@ button.wp-stat:hover { background: var(--ground); }
 .wp-print-menu button { justify-content: flex-start; text-align: left; }
 .wp-canvas.is-print-area { cursor: crosshair; }
 
-/* Print page: one landscape A4 sheet for the map (277 × 190 mm printable at 96 dpi), the desk list on the next page. */
+/* Print page: page 1 is one landscape sheet with the map (A4: 277 × 190 mm printable at 96 dpi; A3: 400 × 277 mm), the
+   desk list follows on the next pages. The A3 switch adds .print-sheet--a3, which picks the second named page. */
 .print-body { background: #E5E7EB; padding: 16px; }
 .print-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 1047px; margin: 0 auto 12px; }
-.print-sheet { width: 1047px; max-width: 100%; margin: 0 auto; background: #FFFFFF; padding: 0; color: #111827; }
-.print-head { display: flex; flex-direction: column; gap: 2px; padding: 0 0 6px; border-bottom: 2px solid #111827; margin-bottom: 8px; }
+.print-paper { display: inline-flex; align-items: center; gap: 4px; }
+.print-paper-label { font-size: 13px; color: #374151; margin-right: 2px; }
+.print-paper a[aria-current="true"] { background: #3D5AFE; border-color: #3D5AFE; color: #FFFFFF; }
+.print-a3-hint { flex: 1 1 100%; margin: 0; }
+.print-a3-hint[hidden] { display: none; }
+.print-sheet { width: 1047px; max-width: 100%; margin: 0 auto; background: #FFFFFF; padding: 0; color: #111827; page: floorplan; }
+.print-sheet--a3 { width: 1512px; page: floorplan-a3; }
+.print-body:has(.print-sheet--a3) .print-bar { max-width: 1512px; }
+.print-page { display: flex; flex-direction: column; aspect-ratio: 277 / 186; }
+.print-sheet--a3 .print-page { aspect-ratio: 400 / 273; }
+.print-head { display: flex; flex-direction: column; gap: 2px; padding: 0 0 6px; border-bottom: 2px solid #111827; margin-bottom: 8px; flex: none; }
 .print-head h1 { font-size: 20px; margin: 0; }
 .print-head p { margin: 0; font-size: 12px; color: #374151; }
 .print-site { font-size: 14px; font-weight: 400; color: #374151; margin-left: 8px; }
-.print-map { height: 600px; border: 1px solid #D1D5DB; background: #F7F6F2; }
+.print-map { flex: 1 1 auto; min-height: 0; border: 1px solid #D1D5DB; background: #F7F6F2; }
 .print-map svg { display: block; width: 100%; height: 100%; }
-.print-sheet .wp-legend { margin: 6px 0 0; font-size: 11px; color: #374151; }
+.print-sheet .wp-legend { margin: 6px 0 0; font-size: 11px; color: #374151; flex: none; }
+.print-callouts { flex: none; margin-top: 6px; font-size: 9.5px; color: #111827; }
+.print-callouts[hidden] { display: none; }
+.print-callouts .wp-callout-key { columns: 5 150px; margin: 0; }
+.print-sheet--a3 .print-callouts .wp-callout-key { columns: 7 150px; }
 .print-list { break-before: page; page-break-before: always; padding-top: 4px; }
 .print-list h2 { font-size: 16px; margin: 0 0 6px; }
-.print-list table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.print-zone { margin-bottom: 10px; }
+.print-zone h3 { font-size: 13px; margin: 8px 0 4px; }
+.print-list table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+.print-list thead th:nth-child(1) { width: 30%; }
+.print-list thead th:nth-child(2) { width: 18%; }
+.print-list thead th:nth-child(3) { width: 8%; }
 .print-list th, .print-list td { border-bottom: 1px solid #E5E7EB; padding: 3px 6px; text-align: left; vertical-align: top; }
+.print-list thead th { color: #4B5563; font-weight: 500; }
 .print-list td.num, .print-list th.num { text-align: right; }
-.print-sheet { page: floorplan; }
+.print-list .print-room-h th { padding-top: 6px; font-weight: 600; color: #111827; background: #F3F4F6; }
+.print-list .print-free td { color: #166534; }
 @page floorplan { size: A4 landscape; margin: 10mm; }
+@page floorplan-a3 { size: A3 landscape; margin: 10mm; }
+.is-printing .print-sheet { width: 1047px; max-width: none; }
+.is-printing .print-sheet--a3 { width: 1512px; }
 @media print {
     .print-body { background: #FFFFFF; padding: 0; }
     .print-bar { display: none; }
     .print-sheet { width: 1047px; max-width: none; margin: 0; }
+    .print-sheet--a3 { width: 1512px; }
     .print-map { border-color: #9CA3AF; }
     .print-list tr { break-inside: avoid; }
+    .print-zone h3 { break-after: avoid; }
 }
 
 @media (max-width: 960px) {
     .wp { grid-template-columns: minmax(0, 1fr); }
-    .wp-canvas { height: 62vh; }
+    .wp-stage, .wp-panel { position: static; max-height: none; overflow: visible; }
+}
+@media (max-width: 640px) {
+    .wp-mapctl { top: 6px; right: 6px; }
+    .wp-mapctl [data-ctl-label] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .wp-mapctl button { padding: 0 8px; }
+    .wp-callout-key { columns: 1; }
 }
 
 /* Short messages after a drop or a release on the floor plan. */

@@ -69,6 +69,24 @@ public class WorkplacePagesTests : IClassFixture<AppFactory>
     }
 
     [Fact]
+    public async Task The_floor_page_has_floating_map_controls_and_tells_the_map_what_to_fit()
+    {
+        var (_, floor, _) = await SeedFloorAsync("WP15");
+        var html = await _f.CreateClientAs(TestUser.It).GetStringAsync($"/Workplace/Floor/{floor.Id}");
+
+        // zoom in and out, Fit, Select area and full screen, with the zoom level, in one group over the map
+        var controls = System.Text.RegularExpressions.Regex.Match(html, "<div class=\"wp-mapctl\"[\\s\\S]*?</div>").Value;
+        foreach (var part in new[] { "data-zoom-level", "data-zoom=\"in\"", "data-zoom=\"out\"", "data-zoom=\"fit\"", "data-area", "data-fullscreen" })
+            Assert.Contains(part, controls);
+        // the box around the rooms and seats (Fit), the site prefix the labels may drop, and the key to callout numbers
+        Assert.Matches("<svg[^>]*data-content=\"[-0-9. ]+\"", html);
+        Assert.Contains("data-tag-prefix=\"WP15-\"", html);
+        Assert.Matches("data-callout-box hidden", html);
+        // the print menu stays in the toolbar
+        Assert.Contains("data-print=\"floor\"", System.Text.RegularExpressions.Regex.Match(html, "<div class=\"wp-toolbar\">[\\s\\S]*?</details>").Value);
+    }
+
+    [Fact]
     public async Task A_hostile_drawing_cannot_put_script_or_inline_style_on_the_page()
     {
         var site = await _f.WithDbAsync(db => Seed.SiteAsync(db, "WP02"));
