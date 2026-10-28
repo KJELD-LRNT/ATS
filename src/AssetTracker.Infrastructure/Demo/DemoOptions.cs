@@ -64,24 +64,19 @@ public static class DemoDefaults
     /// <summary>Fictional domain SID prefix (not a real domain).</summary>
     public const string SidPrefix = "S-1-5-21-1000000001-1000000002-1000000003-";
 
-    public const string ItGroupSid = SidPrefix + "9101";
-    public const string ManagerGroupSid = SidPrefix + "9102";
-    public const string AdminGroupSid = SidPrefix + "9103";
-
     public const string Domain = "DEMO";
     public const string YouUserName = Domain + @"\you";
 
-    /// <summary>The demo "you" person (no manager grants).</summary>
+    /// <summary>The demo "you" person: IT and Admin (<see cref="DefaultRoles"/>), no manager grants.</summary>
     public const string YouUsername = "you";
     public const string YouSid = SidPrefix + "5001";
 
-    /// <summary>The demo manager person, granted site AMS only.</summary>
+    /// <summary>The demo manager person: the Manager role and a grant for site AMS only.</summary>
     public const string ManagerUsername = "manager.ams";
     public const string ManagerSid = SidPrefix + "5002";
 
     /// <summary>
-    /// A regular demo person who is given the Facility role inside the application (no AD group involved). Sign in as
-    /// them with "Act as person" on /Demo and no roles ticked.
+    /// A regular demo person who has the Facility role. Sign in as them with "Act as person" on /Demo.
     /// </summary>
     public static string FacilityUsername => DemoDirectorySource.Username(12);
 
@@ -91,21 +86,23 @@ public static class DemoDefaults
 
     public const string TimeZoneId = "Europe/Amsterdam";
 
-    /// <summary>Roles of a fresh demo session (before anything is chosen on /Demo).</summary>
+    /// <summary>
+    /// Roles the seed gives the demo "you" person (the default demo user), and what <i>Reset demo data</i> puts back.
+    /// </summary>
     public const AppRoles DefaultRoles = AppRoles.It | AppRoles.Admin;
 
     /// <summary>Actor recorded for demo seeding.</summary>
     public const string SeedActor = "system:demo-seed";
 
+    /// <summary>Audit actor of the /Demo role switcher, which writes <c>RoleAssignments</c> directly.</summary>
+    public const string SwitcherActor = "system:demo-role-switcher";
+
     /// <summary>
-    /// Configuration applied in demo mode (in memory, not in the database): fictional role group SIDs, short job
-    /// intervals and the default timezone. Settings saved on Admin → Settings still override these.
+    /// Configuration applied in demo mode (in memory, not in the database): short job intervals and the default
+    /// timezone. Settings saved on Admin → Settings still override these.
     /// </summary>
     public static Dictionary<string, string?> Configuration() => new()
     {
-        ["Roles:ItGroupSids:0"] = ItGroupSid,
-        ["Roles:ManagerGroupSids:0"] = ManagerGroupSid,
-        ["Roles:AdminGroupSids:0"] = AdminGroupSid,
         ["Clock:TimeZoneId"] = TimeZoneId,
         ["Notifications:PollInterval"] = "00:00:10",
         ["Notifications:ReminderPollInterval"] = "00:01:00",
