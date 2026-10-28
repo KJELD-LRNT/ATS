@@ -921,20 +921,25 @@ button.wp-stat:hover { background: var(--ground); }
 .wp-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
 .wp-palette .searchbox { margin-bottom: 6px; }
 .wp-palette-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; }
-/* Every row the same way: icon, name, muted second line, all left-aligned (a button centres its content by default). */
-.wp-pal-item { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; padding: 6px 10px; border: 1px solid var(--line);
-    border-radius: var(--radius); background: var(--surface); font: inherit; color: inherit; text-align: left; cursor: grab; touch-action: none;
-    min-height: 48px; white-space: normal; }
-.wp-pal-item:hover { border-color: var(--accent); background: var(--accent-tint); }
+/* Every row the same way, on one line: icon, name (always visible), the job title or model faded in on hover or keyboard
+   focus, and the site at the right edge. Fixed height, so the list reads as a tidy column. */
+.wp-pal-item { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; column-gap: 10px; width: 100%;
+    height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+    font: inherit; color: inherit; text-align: left; cursor: grab; touch-action: none; white-space: nowrap; }
+.wp-pal-item:hover, .wp-pal-item:focus-visible { border-color: var(--accent); background: var(--accent-tint); }
 .wp-pal-item:active { cursor: grabbing; }
-.wp-pal-icon { width: 26px; height: 26px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; }
+.wp-pal-icon { width: 24px; height: 24px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; }
 .wp-pal-icon--person { background: #1F4E79; }
 .wp-pal-icon--desktop { background: #334155; }
 .wp-pal-icon--screen { background: #0E7490; }
-.wp-pal-text { display: flex; flex-direction: column; align-items: flex-start; flex: 1 1 auto; min-width: 0; text-align: left; }
-.wp-pal-text strong, .wp-pal-text span { max-width: 100%; }
-.wp-pal-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wp-pal-text span { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-pal-text { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; }
+.wp-pal-name { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.wp-pal-hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; color: var(--ink-3);
+    opacity: 0; transition: opacity 120ms ease 150ms; }
+.wp-pal-item:hover .wp-pal-hint, .wp-pal-item:focus-visible .wp-pal-hint { opacity: 1; }
+.wp-pal-site { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; color: var(--ink-3); padding: 1px 6px;
+    border: 1px solid var(--line); border-radius: 4px; }
+@media (hover: none) and (pointer: coarse) { .wp-pal-hint { opacity: 1; } }
 .wp-pal-empty { color: var(--ink-3); font-size: 14px; padding: 6px 2px; }
 .wp-ghost { position: fixed; z-index: 1000; pointer-events: none; padding: 6px 10px; border-radius: var(--radius); background: var(--surface);
     border: 1px solid var(--accent); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); font-size: 13px; font-weight: 600; white-space: nowrap; }

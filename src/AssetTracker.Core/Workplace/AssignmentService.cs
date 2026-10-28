@@ -220,8 +220,8 @@ public class AssignmentService(AppDbContext db, AccessScope scope, AuditWriter a
                 : people.Where(p => EF.Functions.Like(p.DisplayName, pattern, @"\") || EF.Functions.Like(p.Username, pattern, @"\") ||
                                     (p.JobTitle != null && EF.Functions.Like(p.JobTitle, pattern, @"\")));
             return await people.OrderBy(p => p.DisplayName).Take(PaletteLimit)
-                .Select(p => new PlaceCandidate("person", p.Id, p.DisplayName,
-                    p.JobTitle == null ? p.Username : p.Username + " · " + p.JobTitle, p.Site == null ? null : p.Site.Key, null, null))
+                // The list shows the name and site; the job title appears on hover (Subtitle), the username is not needed there.
+                .Select(p => new PlaceCandidate("person", p.Id, p.DisplayName, p.JobTitle, p.Site == null ? null : p.Site.Key, null, null))
                 .ToListAsync(ct);
         }
 

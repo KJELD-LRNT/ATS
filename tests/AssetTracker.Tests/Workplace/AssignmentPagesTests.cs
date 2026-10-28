@@ -179,6 +179,23 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
     }
 
     [Fact]
+    public async Task The_palette_gives_the_job_title_as_the_hover_line_and_the_site_separately()
+    {
+        var s = await NewFloorAsync("AP31");
+        await _f.WithDbAsync(async db =>
+        {
+            var p = await Seed.PersonAsync(db, "ap31.yara", s.Site);
+            p.JobTitle = "Accountant";
+            await db.SaveChangesAsync();
+        });
+        var client = _f.CreateClientAs(TestUser.It);
+        using var people = JsonDocument.Parse(await client.GetStringAsync($"/Workplace/Floor/{s.Floor.Id}?handler=Palette&kind=person"));
+        var row = people.RootElement.EnumerateArray().Single(r => r.GetProperty("title").GetString() == "ap31.yara");
+        Assert.Equal("Accountant", row.GetProperty("subtitle").GetString());
+        Assert.Equal(s.Site.Key, row.GetProperty("siteKey").GetString());
+    }
+
+    [Fact]
     public async Task Editors_make_seats_desks_or_not_through_the_page()
     {
         var s = await NewFloorAsync("AP10");

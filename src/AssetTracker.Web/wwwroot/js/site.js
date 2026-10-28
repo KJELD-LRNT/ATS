@@ -1711,11 +1711,13 @@ function userBox(svg, el) {
                     b.setAttribute("data-drag-id", String(r.id));
                     b.setAttribute("data-drag-title", r.title);
                     b.appendChild(icon(r.kind));
+                    // One line per entry: name (or tag), the job title (or model) faded in on hover or focus, the site.
                     var text = node("span", "wp-pal-text");
-                    text.appendChild(node("strong", null, r.title));
-                    var meta = [r.subtitle, r.siteKey].filter(Boolean).join(" · ");
-                    if (meta) text.appendChild(node("span", null, meta));
+                    text.appendChild(node("strong", "wp-pal-name", r.title));
+                    if (r.subtitle) text.appendChild(node("span", "wp-pal-hint", r.subtitle));
                     b.appendChild(text);
+                    if (r.siteKey) b.appendChild(node("span", "wp-pal-site", r.siteKey));
+                    b.setAttribute("aria-label", [r.title, r.subtitle, r.siteKey].filter(Boolean).join(", "));
                     li.appendChild(b);
                     palList.appendChild(li);
                 });
