@@ -13,7 +13,9 @@ public static class DemoFloorplans
 {
     private static string N(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
 
-    public sealed record Room(string Id, string Name, string Type, double X, double Y, double W, double H, int Tables, int SeatsPerTable);
+    /// <param name="Tables">Rows of tables (one under the other).</param>
+    /// <param name="Columns">Tables side by side in each row.</param>
+    public sealed record Room(string Id, string Name, string Type, double X, double Y, double W, double H, int Tables, int SeatsPerTable, int Columns = 1);
 
     public static string Build(int floor, string title, IReadOnlyList<Room> rooms)
     {
@@ -43,12 +45,14 @@ public static class DemoFloorplans
         sb.Append("</g><g id=\"tables\">");
         foreach (var r in rooms.Where(r => r.Tables > 0))
         {
-            var tableW = Math.Min(r.W - 16, r.SeatsPerTable / 2 * 18 + 8);
+            var columnW = r.W / r.Columns;
+            var tableW = Math.Min(columnW - 16, r.SeatsPerTable / 2 * 18 + 8);
             var gap = (r.H - 22) / r.Tables;
             for (var t = 1; t <= r.Tables; t++)
+            for (var c = 0; c < r.Columns; c++)
             {
-                var tid = $"{r.Id}-T{t:00}";
-                var tx = r.X + (r.W - tableW) / 2;
+                var tid = $"{r.Id}-T{(t - 1) * r.Columns + c + 1:00}";
+                var tx = r.X + c * columnW + (columnW - tableW) / 2;
                 var ty = r.Y + 22 + (t - 1) * gap + gap / 2 - 5;
                 sb.Append($"<g class=\"table {r.Type}\" id=\"f{floor}-table-{tid}\" data-kind=\"table\" data-id=\"{tid}\" data-type=\"{r.Type}\" data-parent=\"{r.Id}\" data-name=\"{r.Type}\">");
                 sb.Append($"<title>{tid}</title><rect x=\"{N(tx)}\" y=\"{N(ty)}\" width=\"{N(tableW)}\" height=\"10\" rx=\"1.2\"/>");
@@ -84,6 +88,17 @@ public static class DemoFloorplans
         new("2.01", "Open space north", "office", 20, 40, 300, 120, 3, 8),
         new("2.02", "Open space south", "office", 324, 40, 296, 120, 3, 8),
         new("2.03", "Project room", "meeting", 20, 170, 200, 130, 1, 8),
+    ]);
+
+    /// <summary>
+    /// A dense floor: an open plan of twelve 8-seat tables close together, a focus room and a huddle room. The demo puts
+    /// many people and desktops here (some with long names), so crowded labels on the map and in the PDF can be checked.
+    /// </summary>
+    public static string Amsterdam3() => Build(3, "Amsterdam · Floor 3",
+    [
+        new("3.01", "Open plan", "office", 20, 40, 600, 180, 3, 8, 4),
+        new("3.02", "Focus room", "office", 20, 226, 290, 84, 1, 8, 2),
+        new("3.03", "Huddle", "meeting", 314, 226, 306, 84, 1, 8),
     ]);
 
     public static string NewYork1() => Build(1, "New York · Floor 1",
