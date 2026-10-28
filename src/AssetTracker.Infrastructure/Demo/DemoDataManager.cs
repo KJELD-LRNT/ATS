@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Directory;
 using AssetTracker.Core.Notifications;
@@ -36,14 +39,28 @@ public sealed class DemoDataManager(
             using (var scope = scopes.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                // EnsureCreated does nothing on an existing file, so a demo.db from an older version of the app would
+                // miss new tables and columns: rebuild it when its schema version differs from this app's.
+                var version = SchemaVersion(db);
+                if (File.Exists(options.DatabasePath) && await ReadSchemaVersionAsync(ct) != version)
+                {
+                    logger.LogWarning("The demo database at {Path} was made by another version of the app; rebuilding it.",
+                        options.DatabasePath);
+                    DeleteDatabaseFiles();
+                    mailbox.Clear();
+                }
                 if (await db.Database.EnsureCreatedAsync(ct))
+                {
                     logger.LogInformation("Demo database created at {Path}.", options.DatabasePath);
+                    await WriteSchemaVersionAsync(version, ct);
+                }
                 // Write-ahead logging: pages and background jobs read while another connection writes.
                 await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
             }
             await clock.LoadAsync(ct);
             if (await seeder.SeedIfEmptyAsync(ct))
                 logger.LogInformation("Demo data seeded (fictional people, sites, assets, pools and loans).");
+            await seeder.EnsureSuperAdminAsync(ct);
             await settings.ReloadAsync(ct);
         }
         finally
@@ -66,6 +83,7 @@ public sealed class DemoDataManager(
             clock.ResetInMemory();
             mailbox.Clear();
             await seeder.SeedIfEmptyAsync(ct);
+            await seeder.EnsureSuperAdminAsync(ct);
             await settings.ReloadAsync(ct);
             logger.LogInformation("Demo data reset.");
         }
@@ -106,6 +124,47 @@ public sealed class DemoDataManager(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Reminder pass after {After} failed; the reminder job will retry.", after);
+        }
+    }
+
+    /// <summary>
+    /// The app's demo schema version: derived from the SQLite create script of the current EF model, so any model change
+    /// (a new table, column or index) gives a new version without anyone having to remember to bump a number. Stored in
+    /// the database file's <c>PRAGMA user_version</c> (0 for files made before this existed).
+    /// </summary>
+    public static int SchemaVersion(AppDbContext db)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(db.Database.GenerateCreateScript()));
+        var version = BitConverter.ToInt32(hash, 0) & int.MaxValue;
+        return version == 0 ? 1 : version;
+    }
+
+    /// <summary>The schema version stored in the demo database file (0 when none was stored).</summary>
+    public async Task<int> ReadSchemaVersionAsync(CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection($"Data Source={options.DatabasePath};Mode=ReadOnly;Pooling=False");
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
+    }
+
+    private async Task WriteSchemaVersionAsync(int version, CancellationToken ct)
+    {
+        await using var connection = new SqliteConnection($"Data Source={options.DatabasePath};Pooling=False");
+        await connection.OpenAsync(ct);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version = " + version.ToString(CultureInfo.InvariantCulture) + ";";
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    private void DeleteDatabaseFiles()
+    {
+        SqliteConnection.ClearAllPools();
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
+        {
+            var path = options.DatabasePath + suffix;
+            if (File.Exists(path)) File.Delete(path);
         }
     }
 

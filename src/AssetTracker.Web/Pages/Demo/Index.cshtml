@@ -79,6 +79,15 @@
             </div>
         </section>
 
+        <section class="demo-panel" id="demo-superadmin" aria-labelledby="demo-superadmin-h">
+            <h2 id="demo-superadmin-h">Super admin (not an AD account)</h2>
+            <p>Sign in on <a href="/superadmin">/superadmin</a> with username <code id="demo-superadmin-user">@AssetTracker.Core.Security.SuperAdmin.UserName</code>
+                and password <code id="demo-superadmin-password">@AssetTracker.Core.Security.SuperAdmin.DemoPassword</code>.
+                It has the Admin role only (settings, roles, sites, sync, privacy) and replaces the demo user in this browser until you sign out.</p>
+            <p class="hint">This password exists only in the demo. On a server the password is set with the setup command, which refuses it,
+                as does the password change in the app. <em>Reset demo data</em> puts it back.</p>
+        </section>
+
         <section class="demo-panel" id="demo-data" aria-labelledby="demo-data-h">
             <h2 id="demo-data-h">Demo data</h2>
             <p>Data folder: <code>@Model.DataDirectory</code> (database <code>demo.db</code>, mail in <code>mail</code>, keys in <code>keys</code>).

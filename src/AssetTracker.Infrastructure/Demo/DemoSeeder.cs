@@ -1,4 +1,5 @@
 using AssetTracker.Core.Admin;
+using AssetTracker.Core.Auditing;
 using AssetTracker.Core.Catalog;
 using AssetTracker.Core.Data;
 using AssetTracker.Core.Directory;
@@ -438,6 +439,32 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
             using var scope = scopes.CreateScope();
             return await action(scope.ServiceProvider);
         });
+
+    /// <summary>
+    /// The demo super admin (demo mode only): username <c>superadmin</c>, password <see cref="SuperAdmin.DemoPassword"/>,
+    /// switched on. Created when the account does not exist yet (first run and after a reset). The setup command and the
+    /// in-app password change refuse this password, so it cannot be carried over to a server.
+    /// </summary>
+    public async Task<bool> EnsureSuperAdminAsync(CancellationToken ct = default)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        if (await db.LocalAccounts.AnyAsync(a => a.UserName == SuperAdmin.UserName, ct)) return false;
+        var account = new LocalAccount
+        {
+            UserName = SuperAdmin.UserName,
+            PasswordHash = SuperAdmin.HashPassword(SuperAdmin.DemoPassword),
+            PasswordChangedAt = clock.UtcNow,
+            IsEnabled = true,
+            SecurityStamp = SuperAdmin.NewSecurityStamp(),
+        };
+        db.LocalAccounts.Add(account);
+        await db.SaveChangesAsync(ct);
+        scope.ServiceProvider.GetRequiredService<AuditWriter>().RecordAs(DemoDefaults.SeedActor, "superadmin.password-set",
+            nameof(LocalAccount), account.Id, null, details: new { action = "demo-seed" });
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
 
     private async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> action)
     {
