@@ -84,6 +84,17 @@ public partial class UiStyleTests : IClassFixture<AppFactory>
     }
 
     [Fact]
+    public async Task The_print_sheet_keeps_its_paper_size_for_a_tall_area()
+    {
+        // aspect-ratio alone lets a tall map (a narrow printed area) grow the sheet over several pages
+        var css = await _f.CreateClient().GetStringAsync("/css/site.css");
+        var rule = Regex.Match(css, @"\n\.print-page \{([^}]*)\}").Groups[1].Value;
+        Assert.Contains("aspect-ratio: 277 / 186", rule);
+        Assert.Contains("min-height: 0", rule);
+        Assert.Contains("overflow: hidden", rule);
+    }
+
+    [Fact]
     public async Task Top_bar_search_is_the_find_lookup_for_it_and_a_plain_search_for_managers()
     {
         var it = await _f.CreateClientAs(TestUser.It).GetStringAsync("/Loans");

@@ -48,7 +48,7 @@ public static class FloorplanRenderer
         "<symbol id=\"fp-i-warn\" viewBox=\"0 0 24 24\"><path d=\"M12 2 1 21h22zm-1.2 7h2.4l-.4 6h-1.6zm1.2 7.6a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z\"/></symbol>";
 
     public static string Render(Floor floor, IReadOnlyCollection<Workspot> spots, IReadOnlyCollection<FloorZone> zones,
-        IReadOnlyDictionary<int, SpotState>? states = null, Area? viewBox = null)
+        IReadOnlyDictionary<int, SpotState>? states = null, Area? viewBox = null, bool clipToViewBox = false)
     {
         var root = XElement.Parse(floor.Svg);
         var byId = new Dictionary<string, XElement>(StringComparer.Ordinal);
@@ -122,8 +122,26 @@ public static class FloorplanRenderer
         // The box around the rooms, tables and seats (not the paper margins of the drawing): the map fits this.
         if (ContentOf(root, spots) is { } content) root.SetAttributeValue("data-content", content.ToString());
         root.AddFirst(new XElement(Svg + "defs", XElement.Parse("<x xmlns=\"http://www.w3.org/2000/svg\">" + Icons + "</x>").Elements()));
-        if (viewBox is { } vb) root.SetAttributeValue("viewBox", vb.ToString());
+        if (viewBox is { } vb)
+        {
+            root.SetAttributeValue("viewBox", vb.ToString());
+            // A printed area whose shape differs from the paper is letterboxed; without a clip the drawing around the
+            // area would show in that space, with people who are not in the printed list.
+            if (clipToViewBox) ClipTo(root, vb);
+        }
         return root.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static void ClipTo(XElement root, Area area)
+    {
+        var defs = root.Element(Svg + "defs")!;
+        var f = CultureInfo.InvariantCulture;
+        defs.Add(new XElement(Svg + "clipPath", new XAttribute("id", "fp-print-area"),
+            new XElement(Svg + "rect", new XAttribute("x", area.X.ToString("0.###", f)), new XAttribute("y", area.Y.ToString("0.###", f)),
+                new XAttribute("width", area.Width.ToString("0.###", f)), new XAttribute("height", area.Height.ToString("0.###", f)))));
+        var content = root.Nodes().Where(n => n != defs).ToList();
+        foreach (var n in content) n.Remove();
+        root.Add(new XElement(Svg + "g", new XAttribute("class", "fp-print-area"), new XAttribute("clip-path", "url(#fp-print-area)"), content));
     }
 
     /// <summary>
