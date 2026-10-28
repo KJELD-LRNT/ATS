@@ -265,6 +265,6 @@ public partial class AdminService(
         return sync.RunAsync(user.Name, ct);
     }
 
-    private static string EscapeLike(string s) =>
+    internal static string EscapeLike(string s) =>
         s.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 }

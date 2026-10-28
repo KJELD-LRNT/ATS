@@ -14,8 +14,11 @@ namespace AssetTracker.Web.Pages.Admin;
 /// first and changes nothing on any error. The SMTP password is write-only.
 /// </summary>
 [Authorize(Policy = Policies.AdminOnly)]
-public class SettingsModel(SettingsService settings) : PageModel
+public class SettingsModel(SettingsService settings, IConfiguration configuration) : PageModel
 {
+    /// <summary>The config file still has the old <c>Roles:*GroupSids</c> keys (ignored now; roles are given in the app).</summary>
+    public bool LegacyRoleSettingsPresent => AssetTracker.Web.Security.LegacyRoleSettings.ArePresent(configuration);
+
     public const string ClearPasswordField = "Mail:Password.Clear";
 
     private static readonly Lazy<IReadOnlyList<string>> TimeZones = new(() =>
