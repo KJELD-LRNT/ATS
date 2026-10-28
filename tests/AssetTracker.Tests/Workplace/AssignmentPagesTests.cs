@@ -237,7 +237,10 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         Assert.Contains("Whole floor", whole);
         Assert.Contains("data-print-map", whole);
         Assert.Contains("ap11.anna", whole);
-        Assert.Equal(4, System.Text.RegularExpressions.Regex.Matches(whole, "<td>Bay</td>").Count);
+        // the list groups by zone and room; the three free desks are one line
+        Assert.Contains("<h3>No zone</h3>", whole);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(whole, "<tr class=\"print-room-h\"><th scope=\"rowgroup\" colspan=\"4\">Bay</th></tr>"));
+        Assert.Contains("<tr class=\"print-free\"><td colspan=\"4\">Bay: 3 free</td></tr>", whole);
         Assert.DoesNotContain(">B1-T01-S0", whole); // the drawing's seat ids are never shown as text
         Assert.DoesNotContain("class=\"sidebar\"", whole); // the print layout has no menu
         Assert.DoesNotMatch("""\sstyle\s*=""", whole);
@@ -246,13 +249,75 @@ public class AssignmentPagesTests : IClassFixture<AppFactory>
         var part = await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=60,70,40,30&what=Window+side");
         Assert.Contains("Window side", part);
         Assert.Contains("viewBox=\"60 70 40 30\"", part);
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(part, "<td>Bay</td>").Count);
+        Assert.Contains("ap11.anna", part);
+        Assert.Contains("Bay: 1 free", part);
         // a bad area prints the whole floor
         Assert.Contains("Whole floor", await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=nonsense"));
 
         var manager = new TestUser(@"CORP\mgr.ap11", "S-1-5-21-1000-1000-1000-3911", TestGroups.Manager);
         Assert.Equal(HttpStatusCode.NotFound, (await _f.CreateClientAs(manager).GetAsync($"/Workplace/Print/{s.Floor.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await _f.CreateClientAs(TestUser.Nobody).GetAsync($"/Workplace/Print/{s.Floor.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task The_print_page_is_A4_by_default_and_switches_to_A3()
+    {
+        var s = await NewFloorAsync("AP12");
+        var client = _f.CreateClientAs(TestUser.It);
+
+        var a4 = await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?area=60,70,40,30&what=Window+side&auto=true");
+        Assert.Contains("class=\"print-sheet\" data-print-sheet data-paper=\"a4\"", a4);
+        Assert.Contains("<strong>A4 landscape</strong>", a4);
+        Assert.DoesNotContain("Safari", System.Text.RegularExpressions.Regex.Match(a4, "data-paper-hint>.*?</span>").Value);
+        // the switch keeps the printed part, does not print by itself, and is also offered by the hint (shown by site.js
+        // when names only fit as numbers on A4)
+        var toA3 = $"data-paper-switch=\"a3\" href=\"/Workplace/Print/{s.Floor.Id}?area=60,70,40,30&amp;what=Window%20side&amp;paper=a3\"";
+        Assert.Contains(toA3, a4);
+        Assert.Contains("aria-current=\"true\" data-paper-switch=\"a4\"", a4);
+        Assert.Matches("data-a3-hint hidden>[\\s\\S]*?This floor is easier to read on A3[\\s\\S]*?Switch to A3", a4);
+        Assert.Contains("data-tag-prefix=\"AP12-\"", a4);
+
+        var a3 = await client.GetStringAsync($"/Workplace/Print/{s.Floor.Id}?paper=a3");
+        Assert.Contains("class=\"print-sheet print-sheet--a3\" data-print-sheet data-paper=\"a3\"", a3);
+        Assert.Contains("<strong>A3 landscape</strong>", a3);
+        Assert.Contains("Safari does not take the paper size from the page: choose A3 in its print dialog yourself.", a3);
+        Assert.Contains($"data-paper-switch=\"a4\" href=\"/Workplace/Print/{s.Floor.Id}\"", a3);
+        Assert.Contains("aria-current=\"true\" data-paper-switch=\"a3\"", a3);
+        Assert.Contains(" · A3 · printed ", a3);
+        // the whole floor prints the plan, not the paper around it: the drawing's 400 × 200 viewBox is cropped
+        Assert.DoesNotContain("viewBox=\"0 0 400 200\"", a3);
+        Assert.Contains("viewBox=\"3 3 294 194\"", a3);
+    }
+
+    [Fact]
+    public async Task The_print_list_is_grouped_by_zone_and_room_with_free_desks_on_one_line()
+    {
+        var s = await NewFloorAsync("AP13", seats: 6);
+        await _f.RunAsAsync(TestUser.It, sp => sp.GetRequiredService<ZoneService>().CreateAsync("Alpha", [s.Spots[0].Id, s.Spots[1].Id, s.Spots[2].Id]));
+        var anna = await _f.WithDbAsync(db => Seed.PersonAsync(db, "ap13.anna"));
+        var bo = await _f.WithDbAsync(db => Seed.PersonAsync(db, "ap13.bo"));
+        var desktop = await _f.WithDbAsync(db => Seed.AssetAsync(db, "AP13-DT-1", s.Site, BuiltIn.Desktop));
+        await AssignAsync(async a =>
+        {
+            await a.AssignPersonAsync(s.Spots[0].Id, anna.Id);
+            await a.AssignPersonAsync(s.Spots[4].Id, bo.Id);
+            await a.AssignAssetAsync(s.Spots[5].Id, desktop.Id); // a free desk with a desktop is listed, not counted
+        });
+
+        var html = await _f.CreateClientAs(TestUser.It).GetStringAsync($"/Workplace/Print/{s.Floor.Id}");
+        var alpha = html.IndexOf("<h3>Zone Alpha</h3>", StringComparison.Ordinal);
+        var none = html.IndexOf("<h3>No zone</h3>", StringComparison.Ordinal);
+        Assert.True(alpha > 0 && none > alpha, "zones in order, desks in no zone last");
+        var alphaPart = html[alpha..none];
+        var nonePart = html[none..];
+        Assert.Contains("ap13.anna", alphaPart);
+        Assert.Contains("<td colspan=\"4\">Bay: 2 free</td>", alphaPart);
+        Assert.Contains("ap13.bo", nonePart);
+        Assert.Contains("AP13-DT-1", nonePart);
+        Assert.Contains("<td colspan=\"4\">Bay: 1 free</td>", nonePart);
+        // plain free desks are never a row of their own; only the free desk with a desktop is
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<td>Free</td>"));
+        Assert.Contains("2 taken, 4 free", html);
     }
 
     [Fact]
