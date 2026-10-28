@@ -1037,17 +1037,11 @@ button.wp-stat:hover { background: var(--ground); }
 .print-sheet--a3 .print-callouts .wp-callout-key { columns: 7 150px; }
 .print-list { break-before: page; page-break-before: always; padding-top: 4px; }
 .print-list h2 { font-size: 16px; margin: 0 0 6px; }
-.print-zone { margin-bottom: 10px; }
-.print-zone h3 { font-size: 13px; margin: 8px 0 4px; }
 .print-list table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
-.print-list thead th:nth-child(1) { width: 30%; }
-.print-list thead th:nth-child(2) { width: 18%; }
-.print-list thead th:nth-child(3) { width: 8%; }
+.print-list thead th:nth-child(1) { width: 45%; }
+.print-list thead th:nth-child(2) { width: 30%; }
 .print-list th, .print-list td { border-bottom: 1px solid #E5E7EB; padding: 3px 6px; text-align: left; vertical-align: top; }
 .print-list thead th { color: #4B5563; font-weight: 500; }
-.print-list td.num, .print-list th.num { text-align: right; }
-.print-list .print-room-h th { padding-top: 6px; font-weight: 600; color: #111827; background: #F3F4F6; }
-.print-list .print-free td { color: #166534; }
 @page floorplan { size: A4 landscape; margin: 10mm; }
 @page floorplan-a3 { size: A3 landscape; margin: 10mm; }
 .is-printing .print-sheet { width: 1047px; max-width: none; }
