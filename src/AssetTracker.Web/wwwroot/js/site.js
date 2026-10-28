@@ -1091,11 +1091,16 @@ function userBox(svg, el) {
     }
 
     // The canvas fills the window below the top bar and the page header (at least 480 px); in full screen, all of it.
+    // A wide drawing would leave empty bands above and below it at Fit, so outside full screen the canvas is no taller
+    // than the drawing's content box at the canvas's width (still at least 480 px).
     function sizeCanvas() {
         var top = wrap.getBoundingClientRect().top + (full ? 0 : window.scrollY);
         var below = full ? 12 + (root.querySelector(".wp-stage > .wp-legend") || { offsetHeight: 0 }).offsetHeight + 10 : 16;
         var h = window.innerHeight - top - below;
-        wrap.style.height = Math.round(full ? Math.max(240, h) : Math.max(480, h)) + "px";
+        if (full) { wrap.style.height = Math.round(Math.max(240, h)) + "px"; return; }
+        var width = wrap.getBoundingClientRect().width;
+        var drawing = width > 0 ? width * content.h / content.w + 2 : h;
+        wrap.style.height = Math.round(Math.max(480, Math.min(h, drawing))) + "px";
     }
 
     function userPoint(clientX, clientY) {
