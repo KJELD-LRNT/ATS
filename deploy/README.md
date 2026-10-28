@@ -4,7 +4,8 @@ Operational procedures are in [`docs/runbook.md`](../docs/runbook.md). This fold
 
 | File | Purpose |
 | --- | --- |
-| `web.config` | IIS in-process hosting, Windows Authentication on, anonymous off except `/health*`. `build/publish.ps1` copies it into the web publish folder. |
+| `web.config` | IIS in-process hosting, Windows Authentication **and** anonymous authentication on for the whole site (needed for the super admin page `/superadmin`; the app still requires sign-in on every other page except `/health*`). `build/publish.ps1` copies it into the web publish folder. |
+| `Set-SuperAdmin.ps1` | Sets, generates, unlocks, disables or shows the super admin account (the one account outside AD) through a one-off scheduled task under the worker's gMSA. See [runbook §15](../docs/runbook.md#15-super-admin-account-outside-ad). |
 | `web.appsettings.Production.template.json` | Copy to `<web folder>\appsettings.Production.json` and replace every `<PLACEHOLDER>`. |
 | `worker.appsettings.Production.template.json` | Copy to `<worker folder>\appsettings.Production.json` and replace every `<PLACEHOLDER>`. |
 | `Install-Worker.ps1` | Creates/updates the `AssetTrackerWorker` Windows service under a gMSA with restart-on-failure recovery. |
@@ -74,3 +75,19 @@ and **Send test email** (sends directly through the relay), both audited.
 
 Environment: IIS sets `ASPNETCORE_ENVIRONMENT=Production` via `web.config`; the worker defaults to `Production`,
 so both load `appsettings.Production.json` next to the executable.
+
+## Super admin account
+
+The app has one account outside AD, `superadmin`, for running it without a domain account and for repairing the AD and
+mail settings when they break (sponsor decision D12). It has no password after installation: set one with
+`Set-SuperAdmin.ps1` on the server ([runbook §15](../docs/runbook.md#15-super-admin-account-outside-ad)). It needs no
+configuration keys. What it needs on the server:
+
+- **IIS:** anonymous authentication enabled for the whole site next to Windows authentication (`web.config` does this;
+  the `anonymousAuthentication` section must be unlocked, runbook §2). Do the IIS smoke test in runbook §15.2.
+- **The worker's gMSA:** *Log on as a batch job*, because `Set-SuperAdmin.ps1` runs `AssetTracker.Worker.exe superadmin
+  apply` as a one-off scheduled task under it.
+- **Request folder:** created by the script (default `SuperAdmin-Requests` next to the `DataProtection:KeyPath`
+  folder, else `%ProgramData%\AssetTracker\SuperAdmin-Requests`), ACL Administrators + the gMSA only.
+
+The cookie is `__Host-ats-superadmin` (HTTPS only). Sessions end after 30 minutes idle and 8 hours after sign-in.
