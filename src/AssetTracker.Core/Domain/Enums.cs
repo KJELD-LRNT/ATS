@@ -32,6 +32,7 @@ public enum NotificationKind
     Correction = 3,
     OverdueReminder = 4,
     SystemAlert = 5,
+    KeyAccess = 6,
 }
 
 public enum NotificationStatus

@@ -1,0 +1,41 @@
+@page
+@model AssetTracker.Web.Pages.Keys.IndexModel
+@using AssetTracker.Core.Domain
+@{ ViewData["Title"] = "Keys & digital access"; var b = Model.Board; }
+<header class="page-header"><div class="page-heading"><h1>Keys & digital access</h1><p class="secondary">Physical custody, room access and digital permissions for Facility.</p></div></header>
+<partial name="_Nav" />
+<div class="card"><p><strong>@b.Copies.Count(x => x.State == KeyCopyState.Available && !b.Loans.Any(l => l.CopyId == x.Id && l.ClosedAt == null)) available</strong> · @b.Loans.Count(x => x.ClosedAt == null) open reservations / loans · @b.Loans.Count(b.Overdue) due / overdue · @b.Copies.Count(x => x.State == KeyCopyState.Lost) lost · @b.Permissions.Count(b.NeedsAttention) digital permissions to check</p></div>
+<section class="card"><h2>Who can access a room?</h2>
+<form method="get" class="fields"><div class="field"><label for="room">Room</label><select id="room" name="RoomId"><option value="">Select a room</option>@foreach(var r in b.Rooms){<option value="@r.Id" selected="@(Model.RoomId == r.Id)">@b.RoomLabel(r.Id)</option>}</select></div><div class="form-actions"><button>Show access</button></div></form>
+@if(Model.RoomId is {} roomId && b.Rooms.Any(x => x.Id == roomId))
+{
+    var definitions = b.Definitions.Where(x => b.RoomsFor(x.Id).Contains(roomId)).OrderBy(x => b.RoomsFor(x.Id).Count).ToList();
+    var copies = b.Copies.Where(x => definitions.Any(d => d.Id == x.KeyDefinitionId)).ToList();
+    <h3>@b.RoomLabel(roomId)</h3>
+    @foreach(var d in definitions){<p><a asp-page="Definition" asp-route-id="@d.Id">@d.Code — @d.Name</a> · opens @b.RoomsFor(d.Id).Count room(s)</p>}
+    <h3>Current physical holders</h3>
+    @foreach(var l in b.Loans.Where(x => x.ClosedAt == null && x.State != KeyLoanState.Reserved && copies.Any(c => c.Id == x.CopyId))){<p>@l.Person!.DisplayName · @l.Copy!.Tag · @l.State @(l.Copy.State == KeyCopyState.Lost ? "· LOST — review room impact" : "")</p>}
+    <h3>Digital door permissions and potential access through lockboxes</h3>
+    @foreach(var p in b.Permissions.Where(x => x.State != DigitalPermissionState.Revoked && (x.Device!.RoomId == roomId && x.Device.Kind == DigitalLockKind.Door || copies.Any(c => c.LockboxId == x.DeviceId && c.State == KeyCopyState.Available))))
+    {<p>@p.Person!.DisplayName · @p.Device!.Name · @b.PermissionLabel(p) · @(p.Device.Kind == DigitalLockKind.Lockbox ? "Potential access through a stored key; possession unconfirmed" : "Door access")</p>}
+    <p class="hint">Expired, failed and pending revocations remain visible because device access may still exist.</p>
+}
+</section>
+<section class="card"><h2>Find a person's keys and permissions</h2>
+<form method="get" class="fields"><div class="field"><label for="person-search">Name or username (at least 2 characters)</label><input id="person-search" name="Q" value="@Model.Q" /></div><div class="form-actions"><button>Find person</button></div></form>
+@foreach(var p in Model.People){<p><a asp-page="Index" asp-route-personId="@p.Id">@p.DisplayName — @p.Username</a> @(!p.IsActive ? "(inactive — recover keys and revoke access)" : "")</p>}
+@if(Model.PersonId is {} personId)
+{
+    <h3>Key loans</h3>
+    @foreach(var l in b.Loans.Where(x => x.PersonId == personId)){<p>@l.Person!.DisplayName · @l.Copy!.Tag · @l.State · due @(l.DueDate?.ToString("yyyy-MM-dd") ?? "long-term")</p>}
+    <h3>Digital permissions</h3>
+    @foreach(var p in b.Permissions.Where(x => x.PersonId == personId)){<p>@p.Person!.DisplayName · <a asp-page="Devices" asp-route-id="@p.DeviceId">@p.Device!.Name</a> · @b.PermissionLabel(p)</p>}
+}
+</section>
+<section class="card"><h2>Offboarding & follow-up</h2>
+@foreach(var l in b.Loans.Where(x => x.ClosedAt == null && (!x.Person!.IsActive || b.Overdue(x)))){<p>@l.Copy!.Tag · @l.Person!.DisplayName · @(!l.Person.IsActive ? "Inactive user — recover key" : "Due / overdue") · <a asp-page="Loans">Manage loan</a></p>}
+@foreach(var p in b.Permissions.Where(b.NeedsAttention)){<p>@p.Person!.DisplayName · @p.Device!.Name · @b.PermissionLabel(p) · <a asp-page="Devices" asp-route-id="@p.DeviceId">Manage access</a></p>}
+</section>
+<section class="card"><h2>Facility history</h2><p class="hint">Latest 200 key/access events. References contain no PIN secrets.</p><div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Employee</th><th>Action</th><th>Record</th></tr></thead><tbody>
+@foreach(var h in b.History){<tr><td>@h.OccurredAt.ToString("u")</td><td>@h.Actor</td><td>@h.Action</td><td><details><summary>@h.EntityType · @h.EntityId</summary><pre>@h.DetailsJson</pre></details></td></tr>}
+</tbody></table></div></section>

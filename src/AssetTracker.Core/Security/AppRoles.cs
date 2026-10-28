@@ -13,7 +13,7 @@ public enum AppRoles
     Manager = 2,
     Admin = 4,
 
-    /// <summary>Facility / operations: works with the Workplace floor plans only.</summary>
+    /// <summary>Facility / operations: floor plans, physical keys and digital access.</summary>
     Facility = 8,
 }
 
@@ -28,6 +28,7 @@ public static class AppClaimTypes
 
 public static class Policies
 {
+    public const string FacilityOnly = "FacilityOnly";
     /// <summary>IT/editor: inventory and loan mutations.</summary>
     public const string ItOnly = "ItOnly";
 

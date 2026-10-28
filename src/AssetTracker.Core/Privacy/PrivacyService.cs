@@ -57,7 +57,9 @@ public class PrivacyService(AppDbContext db, AccessScope access, AuditWriter aud
             .Take(SearchLimit)
             .Select(p => new AnonymizationCandidate(p.Id, p.Username, p.DisplayName, p.Email,
                 p.Site == null ? null : p.Site.Key, p.LastSyncedAt,
-                db.Loans.Count(l => l.HolderId == p.Id && l.ClosedAt == null),
+                db.Loans.Count(l => l.HolderId == p.Id && l.ClosedAt == null) +
+                db.KeyLoans.Count(l => l.PersonId == p.Id && l.ClosedAt == null) +
+                db.DigitalPermissions.Count(g => g.PersonId == p.Id && g.State != DigitalPermissionState.Revoked),
                 db.Loans.Count(l => l.HolderId == p.Id)))
             .ToListAsync(ct);
     }
@@ -83,6 +85,10 @@ public class PrivacyService(AppDbContext db, AccessScope access, AuditWriter aud
             throw new ConflictException("privacy.open_loans",
                 "This person still has open loans. Return or correct them before anonymizing.");
 
+        if (await db.KeyLoans.AnyAsync(l => l.PersonId == personId && l.ClosedAt == null, ct) ||
+            await db.DigitalPermissions.AnyAsync(p => p.PersonId == personId && p.State != DigitalPermissionState.Revoked, ct))
+            throw new ConflictException("privacy.open_key_access", "Close key loans and verify digital revocations before anonymizing.");
+
         var pseudonym = PseudonymFor(person.Id);
         var oldEmail = person.Email?.Trim().ToLowerInvariant();
 
@@ -97,7 +103,7 @@ public class PrivacyService(AppDbContext db, AccessScope access, AuditWriter aud
 
         // Outbox rows about the person's loans (holder and IT copies) or addressed to the person.
         var rows = await db.Outbox
-            .Where(x => (x.LoanId != null && loanIds.Contains(x.LoanId.Value)) ||
+            .Where(x => x.DedupeKey.StartsWith("key-access:" + personId + ":") || (x.LoanId != null && loanIds.Contains(x.LoanId.Value)) ||
                         (oldEmail != null && x.RecipientEmail != null && x.RecipientEmail.ToLower() == oldEmail))
             .ToListAsync(ct);
         var skipped = 0;

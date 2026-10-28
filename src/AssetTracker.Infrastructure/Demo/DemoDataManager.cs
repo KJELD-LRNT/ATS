@@ -128,7 +128,7 @@ public sealed class DemoDataManager(
     }
 
     /// <summary>Version of the demo seed data; part of <see cref="SchemaVersion"/>.</summary>
-    public const int SeedVersion = 2;
+    public const int SeedVersion = 3;
 
     /// <summary>
     /// The app's demo schema version: derived from the SQLite create script of the current EF model, so any model change
@@ -195,6 +195,9 @@ public sealed class DemoDataManager(
                 {
                     // No AUTOINCREMENT table yet.
                 }
+                // EnsureCreated does not rerun model seed data when an existing database is emptied.
+                db.KeyAccessRevisions.Add(new AssetTracker.Core.Domain.KeyAccessRevision { Id = 1, Version = 0 });
+                await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
             await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;", ct);

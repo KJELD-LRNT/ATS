@@ -13,7 +13,7 @@
                 details on their loans and related notifications, and removes their manager grants. Loan quantities, dates and
                 stock balances are kept. It <strong>cannot be undone</strong>. Audit records are retained unchanged.
             </p>
-            <p>Only people who are inactive in the directory snapshot and have no open loans can be anonymized.</p>
+            <p>Only inactive people with no open asset/key loans and no unresolved digital permissions can be anonymized.</p>
         </div>
     </div>
 </header>
@@ -46,7 +46,7 @@
         {
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Site</th><th scope="col">Last synced</th><th scope="col">Loans (open)</th><th scope="col">Anonymize</th></tr></thead>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Site</th><th scope="col">Last synced</th><th scope="col">Asset loans (open loans / access)</th><th scope="col">Anonymize</th></tr></thead>
                     <tbody>
                     @foreach (var c in Model.Candidates)
                     {
@@ -60,7 +60,7 @@
                             <td>
                                 @if (c.OpenLoans > 0)
                                 {
-                                    <span class="muted">Resolve open loans first</span>
+                                    <span class="muted">Resolve open loans / digital access first</span>
                                 }
                                 else
                                 {

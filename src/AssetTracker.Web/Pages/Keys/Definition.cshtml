@@ -1,0 +1,50 @@
+@page "{id:guid}"
+@model AssetTracker.Web.Pages.Keys.DefinitionModel
+@using AssetTracker.Core.Domain
+@{ ViewData["Title"] = "Key details"; var b = Model.Board; var key = b.Definitions.SingleOrDefault(x => x.Id == Model.Id); }
+<partial name="_Nav" />
+@if(key is null){<h1>Key not found</h1>return;}
+<header class="page-header"><div class="page-heading"><h1>@key.Code — @key.Name</h1><p>@key.Building!.Name · opens <strong>@b.RoomsFor(key.Id).Count room(s)</strong></p></div></header>
+@if(Model.Message is {} message){<div class="alert alert--success" role="status">@message</div>}
+<section class="card"><h2>Effective room access & lost-key impact</h2>
+@foreach(var room in b.RoomsFor(key.Id))
+{
+    var sources = b.RoomLinks.Where(x => x.RoomId == room && b.RoomsFor(key.Id).Contains(room) && b.Definitions.Any(d => d.Id == x.KeyDefinitionId && AssetTracker.Core.Keys.KeyAccessBoardExtensions.Inherits(b, key.Id, d.Id))).Select(x => b.Definitions.Single(d => d.Id == x.KeyDefinitionId).Code);
+    <p><a asp-page="Index" asp-route-roomId="@room">@b.RoomLabel(room)</a> · through @string.Join(", ", sources)</p>
+}
+<p class="hint">A lost copy exposes every room above. Changing access records here does not rekey physical locks.</p>
+<h3>Outstanding copies affected by access changes</h3>
+@foreach(var l in b.Loans.Where(x => x.ClosedAt == null && (AssetTracker.Core.Keys.KeyAccessBoardExtensions.Inherits(b, x.Copy!.KeyDefinitionId, key.Id) || b.RoomsFor(x.Copy.KeyDefinitionId).Overlaps(b.RoomsFor(key.Id)))))
+{<p>@l.Copy!.Tag · @l.Person!.DisplayName · @l.State</p>}
+<p class="hint">Review this list before confirming an access change. The previous access map remains in Facility history.</p>
+</section>
+<section class="card"><h2>Direct room assignments</h2>
+@foreach(var room in b.Rooms.Where(x => x.BuildingId == key.BuildingId && x.IsActive))
+{
+    var assigned = b.RoomLinks.Any(x => x.KeyDefinitionId == key.Id && x.RoomId == room.Id);
+    <form method="post" asp-page-handler="Room" data-confirm="Confirm the room access change after reviewing affected rooms and outstanding copies." class="form-actions"><input type="hidden" name="roomId" value="@room.Id"/><input type="hidden" name="revision" value="@b.Revision"/><input type="hidden" name="enabled" value="@(!assigned ? "true" : "false")"/><span>@room.Code — @room.Name · @(assigned ? "Assigned directly" : "Not assigned directly")</span><button>@(assigned ? "Remove" : "Assign room")</button></form>
+}
+</section>
+<section class="card"><h2>Master relationships</h2><p>This key also opens everything opened by each selected subordinate key.</p>
+@foreach(var sub in b.Definitions.Where(x => x.BuildingId == key.BuildingId && x.Id != key.Id && x.IsActive))
+{
+    var assigned = b.Masters.Any(x => x.MasterId == key.Id && x.SubordinateId == sub.Id);
+    <p>Rooms opened by @sub.Code: @string.Join("; ", b.RoomsFor(sub.Id).Select(b.RoomLabel))</p>
+    <form method="post" asp-page-handler="Master" data-confirm="Confirm this master relationship after reviewing affected rooms and holders." class="form-actions"><input type="hidden" name="subordinateId" value="@sub.Id"/><input type="hidden" name="revision" value="@b.Revision"/><input type="hidden" name="enabled" value="@(!assigned ? "true" : "false")"/><a asp-page="Definition" asp-route-id="@sub.Id">@sub.Code — @sub.Name</a><span>opens @b.RoomsFor(sub.Id).Count room(s)</span><button>@(assigned ? "Remove subordinate" : "Add subordinate")</button></form>
+}
+</section>
+<section class="card"><h2>Physical copies</h2>
+@foreach(var copy in b.Copies.Where(x => x.KeyDefinitionId == key.Id))
+{
+    var open = b.Loans.SingleOrDefault(x => x.CopyId == copy.Id && x.ClosedAt == null);
+    <details><summary>@copy.Tag · @copy.State @(open is null ? "" : $"· {open.State}: {open.Person!.DisplayName}")</summary>
+    <p>Storage: @copy.StorageLocation · @(copy.Lockbox?.Name ?? "Facility storage")</p>
+    @if(open is null)
+    {
+        <form method="post" asp-page-handler="Copy" class="fields"><input type="hidden" name="copyId" value="@copy.Id"/><div class="field"><label for="tag-@copy.Id">Tag</label><input id="tag-@copy.Id" name="tag" value="@copy.Tag" required maxlength="64"/></div><div class="field"><label for="loc-@copy.Id">Storage location</label><input id="loc-@copy.Id" name="location" value="@copy.StorageLocation" required maxlength="200"/></div><div class="field"><label for="box-@copy.Id">Lockbox</label><select id="box-@copy.Id" name="lockboxId"><option value="">Facility storage</option>@foreach(var box in b.Devices.Where(x => x.BuildingId == key.BuildingId && x.Kind == DigitalLockKind.Lockbox && x.IsActive)){<option value="@box.Id" selected="@(copy.LockboxId == box.Id)">@box.Name</option>}</select></div><div class="field"><label for="state-@copy.Id">Verified state</label><select id="state-@copy.Id" name="state"><option value="Available">Available — physically verified</option><option value="Unavailable">Unavailable</option><option value="Retired">Retired</option></select></div><button>Save verified copy</button></form>
+    }
+    <a asp-page="Loans" asp-route-copyId="@copy.Id">Lend or manage loan</a></details>
+}
+<form method="post" asp-page-handler="Copy" class="fields"><input type="hidden" name="state" value="Available"/><div class="field"><label for="new-tag">New copy tag</label><input id="new-tag" name="tag" required maxlength="64"/></div><div class="field"><label for="new-location">Storage location</label><input id="new-location" name="location" required maxlength="200"/></div><div class="field"><label for="new-box">Lockbox (optional)</label><select id="new-box" name="lockboxId"><option value="">Facility storage</option>@foreach(var box in b.Devices.Where(x => x.BuildingId == key.BuildingId && x.Kind == DigitalLockKind.Lockbox && x.IsActive)){<option value="@box.Id">@box.Name</option>}</select></div><div class="form-actions"><button>Add physical copy</button></div></form>
+</section>
+<details class="card"><summary>Edit key definition</summary><form method="post" asp-page-handler="Edit" class="fields"><input type="hidden" name="buildingId" value="@key.BuildingId"/><div class="field"><label for="code">Code</label><input id="code" name="code" value="@key.Code" required maxlength="64"/></div><div class="field"><label for="name">Name</label><input id="name" name="name" value="@key.Name" required maxlength="200"/></div><label class="check"><input type="checkbox" name="active" value="true" checked="@key.IsActive"/> Active</label><button>Save definition</button></form></details>

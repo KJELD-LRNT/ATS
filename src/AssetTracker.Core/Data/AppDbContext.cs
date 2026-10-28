@@ -34,6 +34,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<LocalAccount> LocalAccounts => Set<LocalAccount>();
+    public DbSet<AccessBuilding> AccessBuildings => Set<AccessBuilding>();
+    public DbSet<AccessRoom> AccessRooms => Set<AccessRoom>();
+    public DbSet<KeyDefinition> KeyDefinitions => Set<KeyDefinition>();
+    public DbSet<KeyRoom> KeyRooms => Set<KeyRoom>();
+    public DbSet<KeyLink> KeyLinks => Set<KeyLink>();
+    public DbSet<KeyCopy> KeyCopies => Set<KeyCopy>();
+    public DbSet<KeyLoan> KeyLoans => Set<KeyLoan>();
+    public DbSet<DigitalLock> DigitalLocks => Set<DigitalLock>();
+    public DbSet<DigitalPermission> DigitalPermissions => Set<DigitalPermission>();
+    public DbSet<KeyAccessRevision> KeyAccessRevisions => Set<KeyAccessRevision>();
 
     /// <summary>Entities whose rows may only ever be inserted (audit trail and event ledgers).</summary>
     private static readonly Type[] AppendOnlyTypes = [typeof(AuditEvent), typeof(LoanEvent), typeof(StockEvent)];
@@ -92,6 +102,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        KeyAccessModel.Configure(b);
         b.Entity<Site>(e =>
         {
             e.Property(x => x.Key).HasMaxLength(32);

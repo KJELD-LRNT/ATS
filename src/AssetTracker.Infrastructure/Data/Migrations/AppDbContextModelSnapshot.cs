@@ -22,6 +22,70 @@ namespace AssetTracker.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.AccessBuilding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SiteId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("AccessBuildings");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AccessRoom", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("DrawingRoomId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("FloorId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FloorId");
+
+                    b.HasIndex("BuildingId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("AccessRooms");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AppSetting", b =>
                 {
                     b.Property<string>("Key")
@@ -266,6 +330,118 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.ToTable("AuditEvents");
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.DigitalLock", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Manufacturer")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Methods")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("BuildingId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("DigitalLocks");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.DigitalPermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("IssuedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("Method")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VerificationReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("PersonId", "State");
+
+                    b.ToTable("DigitalPermissions", t =>
+                        {
+                            t.HasCheckConstraint("CK_DigitalPermission_Window", "[EndsAt] > [StartsAt]");
+                        });
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
                 {
                     b.Property<int>("Id")
@@ -411,6 +587,195 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.HasIndex("SiteId", "TypeId", "State");
 
                     b.ToTable("IndividualAssets", (string)null);
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyAccessRevision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("KeyAccessRevisions");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Version = 0L
+                        });
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyCopy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("KeyDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("LockboxId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StorageLocation")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyDefinitionId");
+
+                    b.HasIndex("LockboxId");
+
+                    b.HasIndex("Tag")
+                        .IsUnique();
+
+                    b.ToTable("KeyCopies");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BuildingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("KeyDefinitions");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyLink", b =>
+                {
+                    b.Property<Guid>("MasterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SubordinateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("MasterId", "SubordinateId");
+
+                    b.HasIndex("SubordinateId");
+
+                    b.ToTable("KeyLinks");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyLoan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AccessSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("CollectedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CopyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("IssuedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("PermissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ReceivedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ReturnCondition")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("ReturnReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CopyId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_KeyLoan_OpenCopy")
+                        .HasFilter("[ClosedAt] IS NULL");
+
+                    b.HasIndex("PermissionId");
+
+                    b.HasIndex("PersonId", "ClosedAt");
+
+                    b.ToTable("KeyLoans");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyRoom", b =>
+                {
+                    b.Property<Guid>("KeyDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("KeyDefinitionId", "RoomId");
+
+                    b.HasIndex("RoomId");
+
+                    b.ToTable("KeyRooms");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Loan", b =>
@@ -1195,6 +1560,35 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AssetTracker.Core.Domain.AccessBuilding", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.Site", "Site")
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.AccessRoom", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.AccessBuilding", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.Floor", "Floor")
+                        .WithMany()
+                        .HasForeignKey("FloorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Building");
+
+                    b.Navigation("Floor");
+                });
+
             modelBuilder.Entity("AssetTracker.Core.Domain.AssetFieldDefinition", b =>
                 {
                     b.HasOne("AssetTracker.Core.Domain.AssetType", "Type")
@@ -1242,6 +1636,43 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Type");
 
                     b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.DigitalLock", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.AccessBuilding", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.AccessRoom", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Building");
+
+                    b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.DigitalPermission", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.DigitalLock", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Device");
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Floor", b =>
@@ -1297,6 +1728,91 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Navigation("Type");
 
                     b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyCopy", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.KeyDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("KeyDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.DigitalLock", "Lockbox")
+                        .WithMany()
+                        .HasForeignKey("LockboxId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("Lockbox");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyDefinition", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.AccessBuilding", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Building");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyLink", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.KeyDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("MasterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.KeyDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("SubordinateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyLoan", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.KeyCopy", "Copy")
+                        .WithMany()
+                        .HasForeignKey("CopyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.DigitalPermission", "Permission")
+                        .WithMany()
+                        .HasForeignKey("PermissionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetTracker.Core.Domain.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Copy");
+
+                    b.Navigation("Permission");
+
+                    b.Navigation("Person");
+                });
+
+            modelBuilder.Entity("AssetTracker.Core.Domain.KeyRoom", b =>
+                {
+                    b.HasOne("AssetTracker.Core.Domain.KeyDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("KeyDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetTracker.Core.Domain.AccessRoom", null)
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AssetTracker.Core.Domain.Loan", b =>

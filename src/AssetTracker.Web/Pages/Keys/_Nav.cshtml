@@ -1,0 +1,8 @@
+@model AssetTracker.Web.Pages.Keys.KeyPage
+@if(Model.Error is {} error){<div class="alert alert--error" role="alert">@error</div>}
+<nav class="form-actions" aria-label="Key access module">
+    <a class="btn" asp-page="/Keys/Index">Overview & access lookup</a>
+    <a class="btn" asp-page="/Keys/Register">Buildings & keys</a>
+    <a class="btn" asp-page="/Keys/Loans">Lend & return</a>
+    <a class="btn" asp-page="/Keys/Devices">Digital locks & lockboxes</a>
+</nav>

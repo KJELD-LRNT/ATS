@@ -14,6 +14,7 @@ public static class BackgroundJobsServiceCollectionExtensions
     {
         services.AddHostedService<OutboxSenderJob>();
         services.AddHostedService<OverdueReminderJob>();
+        services.AddHostedService<KeyAccessMaintenanceJob>();
         services.AddHostedService<DirectorySyncJob>();
         services.Configure<WorkerOptions>(config.GetSection(WorkerOptions.SectionName));
         services.AddHostedService<WorkerHeartbeatJob>();

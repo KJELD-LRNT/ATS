@@ -44,7 +44,7 @@ public class SystemRolesModel(RoleAssignmentService service, AdminService admin)
         (AppRoles.It, "IT", "Works with inventory, loans, reports, floor plans and the audit log."),
         (AppRoles.Manager, "Manager", "Reads the inventory of the sites ticked on the row."),
         (AppRoles.Admin, "Admin", "Settings, roles, sites, directory sync, asset types and privacy. No inventory by itself."),
-        (AppRoles.Facility, "Facility", "Works with the floor plans only."),
+        (AppRoles.Facility, "Facility", "Works with the floor plans, physical keys and digital access."),
     ];
 
     public AppRoles RoleFilter => Enum.TryParse<AppRoles>(Role, out var r) && RoleAssignmentService.Assignable.Contains(r) ? r : AppRoles.None;
