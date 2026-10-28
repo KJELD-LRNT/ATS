@@ -90,6 +90,11 @@ public class SuperAdminLockoutTests : IClassFixture<AppFactory>
     {
         _f.Clock.Advance(TimeSpan.FromHours(1));
         await ResetAccountAsync(_f);
+        // SQLite only (production is SQL Server): write-ahead logging, so 20 concurrent writers wait for each other
+        // instead of failing with "database is locked" while upgrading a read lock (the journal mode stays with this
+        // class's database file).
+        if (!AppFactory.UsingSqlServer)
+            await _f.WithDbAsync(async db => { await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;"); });
         var since = await LastAuditIdAsync();
         var attempts = Enumerable.Range(0, 20).Select(i => Task.Run(() => _f.RunAsAsync(TestUser.Nobody, async sp =>
             (await sp.GetRequiredService<SuperAdminService>().SignInAsync(SuperAdmin.UserName, Wrong, $"10.8.0.{i}")).Result)));
