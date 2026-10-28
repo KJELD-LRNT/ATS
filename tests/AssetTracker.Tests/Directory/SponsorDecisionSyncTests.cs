@@ -13,7 +13,7 @@ namespace AssetTracker.Tests.Directory;
 
 /// <summary>
 /// Directory-related sponsor decisions (<c>docs/decisions.md</c>): D6 sync failure alert, D8 unmapped-site people
-/// can borrow, D9 manager grants survive deactivation but have no effect. One factory per test (a full sync
+/// can borrow, D9 manager grants survive deactivation or losing the Manager role but then have no effect. One factory per test (a full sync
 /// deactivates everyone else in the database).
 /// </summary>
 public class SponsorDecisionSyncTests
@@ -102,7 +102,7 @@ public class SponsorDecisionSyncTests
     }
 
     [Fact]
-    public async Task D9_grant_is_kept_but_has_no_effect_after_the_manager_turns_inactive_or_leaves_the_group()
+    public async Task D9_grant_is_kept_but_has_no_effect_after_the_manager_turns_inactive_or_loses_the_manager_role()
     {
         using var f = await NewFactoryAsync();
         var managerEntry = Entries.Person("id-mgr", "manager.user", sid: TestUser.Manager.Sid);
@@ -113,11 +113,16 @@ public class SponsorDecisionSyncTests
         await f.RunAsAsync(TestUser.Admin, sp => sp.GetRequiredService<AdminService>().AddGrantAsync(person.Id, site.Id));
 
         Task<SiteAccess> AccessAsync(TestUser user) => f.RunAsAsync(user, sp => sp.GetRequiredService<AccessScope>().GetAsync());
+        Task SetRolesAsync(AppRoles roles) => f.RunAsAsync(TestUser.Admin,
+            sp => sp.GetRequiredService<RoleAssignmentService>().SaveAsync("id-mgr", roles, [site.Id]));
         Assert.True((await AccessAsync(TestUser.Manager)).CanRead(site.Id));
 
-        // Leaves the manager AD group (same account, no manager group): the grant row stays but grants nothing.
-        var formerManager = TestUser.Manager with { GroupSids = [] };
-        Assert.False((await AccessAsync(formerManager)).CanReadInventory);
+        // Loses the Manager role (same account, same grant): the grant row stays but grants nothing.
+        await SetRolesAsync(AppRoles.None);
+        Assert.False((await AccessAsync(TestUser.Manager)).CanReadInventory);
+        Assert.True(await f.WithDbAsync(db => db.ManagerSiteGrants.AnyAsync(g => g.PrincipalDirectoryId == "id-mgr")));
+        await SetRolesAsync(AppRoles.Manager);
+        Assert.True((await AccessAsync(TestUser.Manager)).CanRead(site.Id));
 
         // Turns inactive in a sync (absent from the result): the grant row is kept, and grants nothing.
         f.Directory.Entries = Entries.Many(4);
@@ -126,7 +131,7 @@ public class SponsorDecisionSyncTests
         Assert.True(await f.WithDbAsync(db => db.ManagerSiteGrants.AnyAsync(g => g.PrincipalDirectoryId == "id-mgr")));
         Assert.False((await AccessAsync(TestUser.Manager)).CanRead(site.Id));
 
-        // Back in the directory: the kept grant applies again without an admin re-granting it.
+        // Back in the directory: the kept grant and role apply again without an admin giving them again.
         f.Directory.Entries = [.. Entries.Many(4), managerEntry];
         await f.SyncAsync();
         Assert.True((await AccessAsync(TestUser.Manager)).CanRead(site.Id));

@@ -1,3 +1,4 @@
+using AssetTracker.Core.Security;
 using System.Net;
 using System.Text.Json;
 using AssetTracker.Core.Catalog;
@@ -255,7 +256,7 @@ public class CatalogPagesTests : IClassFixture<AppFactory>
 
         // The PUC is shown to IT and hidden from a manager of the site.
         Assert.Contains("55501234", WebUtility.HtmlDecode(await it.GetStringAsync($"/Assets/Details/{line.Id}")));
-        var manager = new TestUser(@"CORP\mgr.cp05", "S-1-5-21-1000-1000-1000-3405", TestGroups.Manager);
+        var manager = new TestUser(@"CORP\mgr.cp05", "S-1-5-21-1000-1000-1000-3405", AppRoles.Manager);
         await _f.WithDbAsync(db => Seed.ManagerWithGrantsAsync(db, manager, site));
         var seen = WebUtility.HtmlDecode(await _f.CreateClientAs(manager).GetStringAsync($"/Assets/Details/{line.Id}"));
         Assert.Contains("+31612340072", seen);

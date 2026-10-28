@@ -42,9 +42,6 @@ public class AppFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration(c => c.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Clock:TimeZoneId"] = "UTC",
-            ["Roles:ItGroupSids:0"] = TestGroups.It,
-            ["Roles:ManagerGroupSids:0"] = TestGroups.Manager,
-            ["Roles:AdminGroupSids:0"] = TestGroups.Admin,
         }));
 
         builder.ConfigureTestServices(services =>
@@ -111,10 +108,58 @@ public class AppFactory : WebApplicationFactory<Program>
     public HttpClient CreateClientAs(TestUser user)
     {
         var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        EnsureUserAsync(user).GetAwaiter().GetResult();
         client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, user.Name);
         client.DefaultRequestHeaders.Add(TestAuthHandler.SidHeader, user.Sid);
-        client.DefaultRequestHeaders.Add(TestAuthHandler.GroupsHeader, string.Join(',', user.GroupSids));
         return client;
+    }
+
+    private readonly SemaphoreSlim _usersGate = new(1, 1);
+    private readonly HashSet<string> _ensuredUsers = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Roles come from <c>RoleAssignments</c>: the first time a test user with roles signs in on this factory, makes it
+    /// an active person (or uses the person that already has its SID) and gives it its roles. A person made here is
+    /// added to the fake directory, so a test sync never makes it inactive. Runs once per user and factory, so a test
+    /// can take roles away afterwards.
+    /// </summary>
+    public async Task EnsureUserAsync(TestUser user)
+    {
+        if (user.Roles == AssetTracker.Core.Security.AppRoles.None) return;
+        await _usersGate.WaitAsync();
+        try
+        {
+            if (!_ensuredUsers.Add(user.Name)) return;
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var person = await db.People.SingleOrDefaultAsync(p => p.Sid == user.Sid);
+            if (person is null)
+            {
+                person = new AssetTracker.Core.Domain.Person
+                {
+                    DirectoryId = "test-user-" + user.Username, Sid = user.Sid, Username = user.Username,
+                    DisplayName = "Test " + user.Username, Email = user.Username + "@example.test", IsActive = true,
+                    FirstSeenAt = Clock.UtcNow, LastSyncedAt = Clock.UtcNow,
+                };
+                db.People.Add(person);
+                Directory.Permanent[person.DirectoryId] = new DirectoryEntry(person.DirectoryId, person.Sid, person.Username,
+                    person.DisplayName, null, person.Email, null, true);
+            }
+            var has = await db.RoleAssignments.Where(r => r.PrincipalDirectoryId == person.DirectoryId).Select(r => r.Role)
+                .ToListAsync();
+            foreach (var role in AssetTracker.Core.Admin.RoleAssignmentService.Assignable
+                         .Where(r => user.Roles.HasFlag(r) && !has.Contains(r)))
+                db.RoleAssignments.Add(new AssetTracker.Core.Domain.RoleAssignment
+                {
+                    Role = role, PrincipalDirectoryId = person.DirectoryId, PrincipalName = person.Username,
+                    GrantedAt = Clock.UtcNow, GrantedBy = "test",
+                });
+            await db.SaveChangesAsync();
+        }
+        finally
+        {
+            _usersGate.Release();
+        }
     }
 
     /// <summary>
@@ -145,7 +190,8 @@ public class AppFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         var sp = scope.ServiceProvider;
-        var principal = TestAuthHandler.BuildPrincipal(user.Name, user.Sid, user.GroupSids);
+        await EnsureUserAsync(user);
+        var principal = TestAuthHandler.BuildPrincipal(user.Name, user.Sid);
         principal = await sp.GetRequiredService<IClaimsTransformation>().TransformAsync(principal);
         var accessor = sp.GetRequiredService<IHttpContextAccessor>();
         var previous = accessor.HttpContext;

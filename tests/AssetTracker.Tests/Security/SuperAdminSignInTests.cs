@@ -65,7 +65,7 @@ public class SuperAdminSignInTests : IClassFixture<AppFactory>
 
     public static TheoryData<string> AdminPages =>
     [
-        "/", "/Admin/Settings", "/Admin/SystemRoles", "/Admin/Sites", "/Admin/Sync", "/Admin/Privacy", "/Admin/Grants",
+        "/", "/Admin/Settings", "/Admin/SystemRoles", "/Admin/Sites", "/Admin/Sync", "/Admin/Privacy", "/Admin/SystemRoles?q=zz&role=Admin&inactive=true",
         "/Admin/Types", $"/Admin/TypeEdit/{BuiltIn.Laptop}", "/Admin/Vendors", "/Admin/Models", "/Admin/OverviewTiles",
         "/superadmin/account",
     ];
@@ -113,7 +113,7 @@ public class SuperAdminSignInTests : IClassFixture<AppFactory>
         // System roles: the super admin gives a role; "granted by" is its name.
         var person = await _f.WithDbAsync(db => Seed.PersonAsync(db, "supa.facility", sid: "S-1-5-21-77-77-77-7701"));
         res = await FormHelper.PostFormAsync(client, "/Admin/SystemRoles?q=supa.facility",
-            "/Admin/SystemRoles?handler=Add&q=supa.facility", ("personId", person.Id.ToString()));
+            "/Admin/SystemRoles?handler=Save&q=supa.facility", ("directoryId", person.DirectoryId), ("roles", "Facility"));
         Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
         Assert.Equal(SuperAdmin.DisplayName, await _f.WithDbAsync(db => db.RoleAssignments
             .Where(r => r.PrincipalDirectoryId == person.DirectoryId).Select(r => r.GrantedBy).SingleAsync()));
@@ -322,9 +322,8 @@ public class SuperAdminSignInTests : IClassFixture<AppFactory>
     {
         var principal = AppAuthentication.CreatePrincipal("stamp", _f.Clock.UtcNow);
         // Even with group SID claims added, nothing but Admin; a null DbContext proves there is no lookup.
-        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(ClaimTypes.GroupSid, TestGroups.It));
-        var options = _f.Services.GetRequiredService<IOptionsMonitor<RoleGroupOptions>>();
-        var result = await new AppRoleClaimsTransformation(options, null!).TransformAsync(principal);
+        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(ClaimTypes.GroupSid, "S-1-5-21-1000-1000-1000-5001"));
+        var result = await new AppRoleClaimsTransformation(null!).TransformAsync(principal);
         Assert.Equal([nameof(AppRoles.Admin)], result.FindAll(AppClaimTypes.Role).Select(c => c.Value));
         Assert.Null(result.FindFirst(ClaimTypes.PrimarySid));
         Assert.Equal(SuperAdmin.DisplayName, result.Identity!.Name);
