@@ -1,5 +1,7 @@
 # Testing guide: local demo mode
 
+For the Facility **Keys & digital access** module, see [`key-access.md`](key-access.md). In Demo controls, act as **Max Demoson (Facility)**. Try room lookup, master keys, lockbox reservation, reported versus verified return, and recording/removing digital access. Digital access is a register of who has access, with optional expiry; no hardware integration is involved.
+
 This guide lets you try the whole asset tracker on your own computer: lending, returns, corrections, mail, reminders, reports, roles, settings and operations. You need no Active Directory, mail relay, SQL Server, IIS or Windows sign-in. Everything runs in one local process with **fictional data only**.
 
 > The demo is for evaluation. It behaves like production in everything that matters for the scenarios below (same pages, services, permissions, audit and mail outbox). Only the parts around the app are simulated: sign-in, the database engine, the directory, the mail relay, the clock and the background worker. Those parts are tested on a real server separately (see [Testing on a real Windows server](#testing-on-a-real-windows-server)).

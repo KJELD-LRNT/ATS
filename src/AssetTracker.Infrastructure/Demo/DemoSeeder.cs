@@ -283,6 +283,8 @@ public sealed class DemoSeeder(IServiceScopeFactory scopes, DemoClock clock, ILo
 
         // 7. Current directory snapshot (the leaver is now disabled), then mark the historical mail as sent.
         await RunAsync(now, sp => sp.GetRequiredService<DirectorySyncService>().RunAsync(DemoDefaults.SeedActor, ct));
+        await AmbientCurrentUser.RunAsAsync(DemoDefaults.SeedActor, AppRoles.Facility,
+            () => RunAsync(now, async sp => { await DemoKeyAccessSeed.SeedAsync(sp, sites.Ams, ct); return 0; }));
         await WithDbAsync(async db =>
         {
             var pending = await db.Outbox.Where(o => o.Status == NotificationStatus.Pending).ToListAsync(ct);

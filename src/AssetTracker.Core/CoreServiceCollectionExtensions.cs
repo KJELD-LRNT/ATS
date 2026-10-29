@@ -23,6 +23,8 @@ public static class CoreServiceCollectionExtensions
     public static IServiceCollection AddAssetTrackerCore(this IServiceCollection services)
     {
         services.AddScoped<AccessScope>();
+        services.AddScoped<AssetTracker.Core.Keys.KeyAccessService>();
+        services.AddScoped<AssetTracker.Core.Keys.KeyAccessMaintenance>();
         // Per-site calendar (WP4.2). ClockOptions are bound from "Clock" by the infrastructure layer.
         services.AddOptions<ClockOptions>();
         services.AddScoped<SiteCalendar>();

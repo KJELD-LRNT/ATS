@@ -4,6 +4,7 @@ A browser-based internal asset tracker for tagged devices and site quantity pool
 
 - **Stack:** ASP.NET Core (.NET 10, Razor Pages) on IIS with Windows Authentication, SQL Server (Express), and a Windows Worker Service.
 - **Plan:** [`docs/mvp-plan.md`](docs/mvp-plan.md)
+- **Keys & digital access (Facility):** [`docs/key-access.md`](docs/key-access.md) — key lending, master relationships and a register of who has digital lock/lockbox access.
 - **Development guide:** [`docs/development.md`](docs/development.md)
 - **Try it locally (demo mode, fictional data, no server needed):** [`docs/testing-guide.md`](docs/testing-guide.md): `dotnet run --project src/AssetTracker.Web --launch-profile Demo`
 - **Sponsor decisions:** [`docs/decisions.md`](docs/decisions.md)

@@ -1,0 +1,47 @@
+@page
+@model AssetTracker.Web.Pages.Keys.LoansModel
+@using AssetTracker.Core.Domain
+@{ ViewData["Title"] = "Lend & return keys"; var b = Model.Board; var copy = b.Copies.SingleOrDefault(x => x.Id == Model.CopyId); }
+<header class="page-header"><div class="page-heading"><h1>Lend & return keys</h1><p class="secondary">Review room access before handing over a key. Dates are in the building site's calendar; collection windows are UTC.</p></div></header>
+<partial name="_Nav" />
+@if(Model.Message is {} message){<div class="alert alert--success" role="status">@message</div>}
+<section class="card"><h2>1. Find a copy and borrower</h2><form method="get" class="fields"><div class="field"><label for="q">Borrower name or username</label><input id="q" name="Q" value="@Model.Q" minlength="2"/></div><div class="field"><label for="room">Required room (optional)</label><select id="room" name="RoomId"><option value="">Any room</option>@foreach(var r in b.Rooms.Where(x => x.IsActive)){<option value="@r.Id" selected="@(Model.RoomId == r.Id)">@b.RoomLabel(r.Id)</option>}</select></div><div class="field"><label for="copy">Physical copy</label><select id="copy" name="CopyId"><option value="">Select a copy</option>@foreach(var c in b.Copies.Where(x => Model.RoomId is null || b.RoomsFor(x.KeyDefinitionId).Contains(Model.RoomId.Value)).OrderBy(x => b.RoomsFor(x.KeyDefinitionId).Count)){<option value="@c.Id" selected="@(Model.CopyId == c.Id)">@c.Tag — @c.Definition!.Name — opens @b.RoomsFor(c.KeyDefinitionId).Count rooms — @c.State</option>}</select></div><div class="form-actions"><button>Review key access</button></div></form></section>
+@if(copy is not null)
+{
+<section class="card"><h2>2. Review @copy.Tag</h2><p><strong>This key opens @b.RoomsFor(copy.KeyDefinitionId).Count room(s):</strong></p>
+@foreach(var r in b.RoomsFor(copy.KeyDefinitionId)){<p>@b.RoomLabel(r)</p>}
+<p>Stored at @copy.StorageLocation · @(copy.Lockbox?.Name ?? "Facility storage")</p>
+@if(copy.LockboxId is {} box && b.Permissions.Any(x => x.DeviceId == box && b.NeedsAttention(x))){<p class="alert alert--warning">This lockbox has unresolved permissions. Review potential access before issuing its contents.</p>}
+@if(copy.State == KeyCopyState.Available && !b.Loans.Any(x => x.CopyId == copy.Id && x.ClosedAt == null))
+{
+<form method="post" asp-page-handler="Lend" class="fields" data-confirm="I have reviewed all rooms opened by this key and confirm this issue or reservation."><input type="hidden" name="copyId" value="@copy.Id"/><input type="hidden" name="revision" value="@b.Revision"/>
+<div class="field"><label for="person">Borrower (search above to populate)</label><select id="person" name="personId" required><option value="">Select a user</option>@foreach(var p in Model.People.Where(x => x.IsActive)){<option value="@p.Id">@p.DisplayName — @p.Username</option>}</select></div>
+<div class="field"><label for="due">Due date (empty = long-term issue)</label><input id="due" name="dueDate" type="date"/></div><div class="field"><label for="reason">Reason</label><input id="reason" name="reason" required maxlength="500"/></div>
+@if(copy.LockboxId is not null)
+{
+<label class="check"><input type="checkbox" name="reserve" value="true"/> Reserve for collection from lockbox</label>
+<div class="field"><label for="start">Collection starts (UTC)</label><input id="start" name="collectionStart" type="datetime-local"/></div><div class="field"><label for="end">Collection ends (UTC)</label><input id="end" name="collectionEnd" type="datetime-local"/></div><div class="field"><label for="method">Opening method</label><select id="method" name="method">@if(copy.Lockbox!.Methods.HasFlag(LockOpeningMethod.Pin)){<option value="Pin">PIN</option>}@if(copy.Lockbox!.Methods.HasFlag(LockOpeningMethod.BluetoothApp)){<option value="BluetoothApp">Bluetooth app</option>}</select></div>
+<p class="hint">A reservation requests digital access. Facility configures and verifies it on Digital locks & lockboxes. Opening the box alone never starts a key loan.</p>
+}
+<div class="form-actions"><button class="btn--primary">Confirm issue / reservation</button></div></form>
+}
+else {<p>This copy is unavailable or already has an open loan / reservation.</p>}
+</section>
+}
+<section class="card"><h2>Open loans & reservations</h2>
+@foreach(var l in b.Loans.Where(x => x.ClosedAt == null))
+{
+<details open="@(Model.CopyId == l.CopyId)"><summary>@l.Copy!.Tag · @l.Person!.DisplayName · @l.State @(l.Copy.State == KeyCopyState.Lost ? "· LOST" : "") @(b.Overdue(l) ? "· DUE / OVERDUE" : "")</summary>
+<p>Issued by @l.IssuedBy · @l.CreatedAt.ToString("u") · due @(l.DueDate?.ToString("yyyy-MM-dd") ?? "long-term") · @l.Reason</p>
+<p>Room IDs at issue: @l.AccessSnapshotJson</p>
+@if(!l.Person!.IsActive){<p class="alert alert--warning">Borrower inactive — recover key and revoke digital access.</p>}
+<form method="post" asp-page-handler="Action" class="fields" data-confirm="Confirm the selected key action. Verify the physical copy before recording a return."><input type="hidden" name="id" value="@l.Id"/>
+<div class="field"><label for="action-@l.Id">Action</label><select id="action-@l.Id" name="action">
+@if(l.State == KeyLoanState.Reserved){<option value="collect">Verify key collected — start loan</option><option value="cancel">Cancel reservation — request digital revocation</option>}
+else {<option value="verify-return">Physically verify return — make available</option>@if(l.State == KeyLoanState.OnLoan){<option value="report-return">Report return — awaiting verification</option>}<option value="lost">Mark lost — keep responsibility open</option>@if(l.Copy.State == KeyCopyState.Lost){<option value="close-loss">Close loss case — key remains lost</option>}}
+<option value="extend">Change due date</option></select></div>
+<div class="field"><label for="note-@l.Id">Condition / reason / verification note</label><input id="note-@l.Id" name="note" maxlength="200"/></div><div class="field"><label for="due-@l.Id">New due date (for extension)</label><input id="due-@l.Id" name="dueDate" type="date"/></div><div class="form-actions"><button>Record action</button></div></form>
+</details>
+}
+</section>
+<section class="card"><h2>Closed loan history</h2><div class="table-wrap"><table><thead><tr><th>Key</th><th>Borrower</th><th>Outcome</th><th>Closed (UTC)</th><th>Received by</th></tr></thead><tbody>@foreach(var l in b.Loans.Where(x => x.ClosedAt is not null)){<tr><td>@l.Copy!.Tag</td><td>@l.Person!.DisplayName</td><td>@l.State</td><td>@l.ClosedAt?.ToString("u")</td><td>@l.ReceivedBy</td></tr>}</tbody></table></div></section>

@@ -40,6 +40,7 @@ builder.Services.AddAuthorization(o =>
 {
     // Every page requires an authenticated Windows user unless explicitly opted out.
     o.FallbackPolicy = o.DefaultPolicy;
+    o.AddPolicy(Policies.FacilityOnly, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.Facility)));
     o.AddPolicy(Policies.ItOnly, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.It)));
     o.AddPolicy(Policies.InventoryRead, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.It), nameof(AppRoles.Manager)));
     o.AddPolicy(Policies.AdminOnly, p => p.RequireClaim(AppClaimTypes.Role, nameof(AppRoles.Admin)));

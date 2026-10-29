@@ -1,0 +1,49 @@
+@page
+@model AssetTracker.Web.Pages.Keys.DevicesModel
+@using AssetTracker.Core.Domain
+@{ ViewData["Title"] = "Digital locks & lockboxes"; var b = Model.Board; var device = b.Devices.SingleOrDefault(x => x.Id == Model.Id); }
+<header class="page-header"><div class="page-heading"><h1>Digital locks & lockboxes</h1><p class="secondary">Record who has Bluetooth app or PIN access to each digital lock and lockbox.</p></div></header>
+<partial name="_Nav" />
+@if(Model.Message is {} message){<div class="alert alert--success" role="status">@message</div>}
+<p class="hint">Keep this register up to date when access is given or removed outside ATS. Record the access method, not the PIN or password.</p>
+<section class="card"><h2>Device register</h2><div class="table-wrap"><table><thead><tr><th>Device</th><th>Building</th><th>Type</th><th>Methods</th><th>Recorded access</th></tr></thead><tbody>
+@foreach(var d in b.Devices){<tr><td><a asp-page="Devices" asp-route-id="@d.Id">@d.Name</a> @(!d.IsActive ? "(archived)" : "")</td><td>@d.Building!.Name</td><td>@d.Kind</td><td>@d.Methods</td><td>@b.Permissions.Count(p => p.DeviceId == d.Id && p.State == DigitalPermissionState.Confirmed && p.StartsAt <= b.Now && (p.EndsAt is null || p.EndsAt > b.Now))</td></tr>}
+</tbody></table></div><a class="btn" asp-page="Devices" asp-route-id="">Add a device</a></section>
+@if(device is not null)
+{
+<section class="card"><h2>@device.Name</h2><p>@device.Manufacturer @device.Model · external ID @device.ExternalId · @device.Location</p>
+@if(device.Kind == DigitalLockKind.Lockbox)
+{
+<h3>Registered contents</h3>
+@foreach(var c in b.Copies.Where(x => x.LockboxId == device.Id)){<p><a asp-page="Definition" asp-route-id="@c.KeyDefinitionId">@c.Tag — @c.Definition!.Name</a> · @c.State · opens @b.RoomsFor(c.KeyDefinitionId).Count room(s) @(b.Loans.Any(x => x.CopyId == c.Id && x.ClosedAt == null && x.State == KeyLoanState.Reserved) ? "· reserved" : "")</p>}
+<p class="hint">Only available copies are recorded as stored in the box. Issued and reported-returned copies remain outside verified stock. A box opening never proves collection or return.</p>
+}
+<h3>Record who has access</h3><form method="get" class="fields"><input type="hidden" name="id" value="@device.Id"/><div class="field"><label for="q">Find user by name / username</label><input id="q" name="q" value="@Model.Q" minlength="2" required/></div><div class="form-actions"><button>Find user</button></div></form>
+<form method="post" asp-page-handler="Record" class="fields"><input type="hidden" name="deviceId" value="@device.Id"/><div class="field"><label for="person">User</label><select id="person" name="personId" required><option value="">Select a user</option>@foreach(var p in Model.People){<option value="@p.Id">@p.DisplayName — @p.Username @(!p.IsActive ? "(inactive — review access)" : "")</option>}</select></div><div class="field"><label for="start">Access starts (UTC, empty = now)</label><input id="start" name="start" type="datetime-local"/></div><div class="field"><label for="end">Access ends (UTC, empty = ongoing)</label><input id="end" name="end" type="datetime-local"/></div><div class="field"><label for="method">Opening method</label><select id="method" name="method">@if(device.Methods.HasFlag(LockOpeningMethod.Pin)){<option value="Pin">Individual PIN</option>}@if(device.Methods.HasFlag(LockOpeningMethod.BluetoothApp)){<option value="BluetoothApp">Manufacturer Bluetooth app</option>}</select></div><div class="field"><label for="reason">Reason</label><input id="reason" name="reason" required maxlength="500"/></div><div class="field"><label for="reference">Reference (optional, never a PIN)</label><input id="reference" name="reference" maxlength="200"/></div><div class="form-actions"><button>Record access</button></div></form>
+<h3>Access register</h3>
+@foreach(var p in b.Permissions.Where(x => x.DeviceId == device.Id))
+{
+<details open="@b.NeedsAttention(p)"><summary>@p.Person!.DisplayName · @p.Method · @b.PermissionLabel(p)</summary><p>@p.StartsAt.ToString("u") — @(p.EndsAt?.ToString("u") ?? "Ongoing") · recorded by @p.IssuedBy · @p.Reason</p><p>Reference: @(p.VerificationReference ?? "None recorded")</p>
+@if(p.State != DigitalPermissionState.Revoked)
+{
+<form method="post" asp-page-handler="Permission" class="fields" data-confirm="Confirm this access record update. Access itself is managed outside ATS."><input type="hidden" name="permissionId" value="@p.Id"/><input type="hidden" name="Id" value="@device.Id"/><div class="field"><label for="action-@p.Id">Action</label><select id="action-@p.Id" name="action"><option value="remove">Record that access has been removed</option>@if(p.State is DigitalPermissionState.Pending or DigitalPermissionState.Failed){<option value="confirm">Record access as granted</option>}<option value="request-revoke">Flag access for removal</option>@if(p.State == DigitalPermissionState.RevocationPending){<option value="verify-revoke">Confirm previously flagged removal</option>}<option value="fail">Flag access for checking</option></select></div><div class="field"><label for="ref-@p.Id">Reference or note (never a PIN)</label><input id="ref-@p.Id" name="reference" maxlength="200"/></div><div class="form-actions"><button>Save access update</button></div></form>
+}
+</details>
+}
+</section>
+}
+<section class="card"><h2>@(device is null ? "Add digital device" : "Edit device")</h2>
+<form method="post" asp-page-handler="Device" class="fields"><input type="hidden" name="deviceId" value="@device?.Id"/>
+<div class="field"><label for="building">Building</label><select id="building" name="buildingId" required>@foreach(var x in b.Buildings.Where(x => x.IsActive)){<option value="@x.Id" selected="@(device?.BuildingId == x.Id)">@x.Name</option>}</select></div>
+<div class="field"><label for="name">Device name</label><input id="name" name="name" value="@device?.Name" maxlength="200" required/></div>
+<div class="field"><label for="kind">Type</label><select id="kind" name="kind"><option value="Door" selected="@(device?.Kind == DigitalLockKind.Door)">Door lock</option><option value="Lockbox" selected="@(device?.Kind == DigitalLockKind.Lockbox)">Lockbox</option></select></div>
+<div class="field"><label for="room">Door opens room / lockbox located in room</label><select id="room" name="roomId"><option value="">No room (lockbox only)</option>@foreach(var x in b.Rooms.Where(x => x.IsActive)){<option value="@x.Id" selected="@(device?.RoomId == x.Id)">@b.RoomLabel(x.Id)</option>}</select></div>
+<div class="field"><label for="manufacturer">Manufacturer (optional)</label><input id="manufacturer" name="manufacturer" value="@device?.Manufacturer" maxlength="100"/></div>
+<div class="field"><label for="model">Model (optional)</label><input id="model" name="model" value="@device?.Model" maxlength="100"/></div>
+<div class="field"><label for="external">Device reference (optional)</label><input id="external" name="externalId" value="@device?.ExternalId" maxlength="200"/></div>
+<div class="field"><label for="location">Location</label><input id="location" name="location" value="@device?.Location" maxlength="200" required/></div>
+<label class="check"><input type="checkbox" name="pin" value="true" checked="@(device?.Methods.HasFlag(LockOpeningMethod.Pin) ?? true)"/> PIN supported</label>
+<label class="check"><input type="checkbox" name="bluetooth" value="true" checked="@(device?.Methods.HasFlag(LockOpeningMethod.BluetoothApp) ?? false)"/> Bluetooth app supported</label>
+<label class="check"><input type="checkbox" name="active" value="true" checked="@(device?.IsActive ?? true)"/> Active</label>
+<div class="form-actions"><button>Save device</button></div></form>
+</section>
