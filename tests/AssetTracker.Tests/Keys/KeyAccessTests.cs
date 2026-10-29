@@ -223,4 +223,61 @@ public class KeyAccessTests(AppFactory f) : IClassFixture<AppFactory>
         await Assert.ThrowsAsync<DomainException>(() => Run(s => s.SetMasterAsync(a.Definition, b.Definition, true, revision)));
         await Assert.ThrowsAsync<DomainException>(() => Run(s => s.LoanActionAsync(Guid.NewGuid(), "collect")));
     }
+
+    [Fact]
+    public async Task Existing_digital_access_is_recorded_directly_without_hardware_details_or_expiry()
+    {
+        var x = await Setup();
+        var person = await f.WithDbAsync(db => Seed.PersonAsync(db, "record-" + Guid.NewGuid().ToString("N"), email: null));
+        var device = await Run(s => s.SaveDeviceAsync(null, x.Building, x.Room, "Digital door", null, null, null,
+            "Finance", DigitalLockKind.Door, LockOpeningMethod.BluetoothApp));
+        var id = await Run(s => s.RecordAccessAsync(device, person.Id, null, null, LockOpeningMethod.BluetoothApp, "Existing employee access"));
+        var saved = await f.WithDbAsync(db => db.DigitalPermissions.AsNoTracking().SingleAsync(p => p.Id == id));
+        Assert.Equal(DigitalPermissionState.Confirmed, saved.State);
+        Assert.Equal(f.Clock.UtcNow, saved.StartsAt);
+        Assert.Null(saved.EndsAt);
+        Assert.Null(saved.VerificationReference);
+        await f.RunAsAsync(TestUser.Facility, async sp => { await sp.GetRequiredService<KeyAccessMaintenance>().RunAsync(); return 0; });
+        var board = await Run(s => s.BoardAsync());
+        Assert.Equal("Has access — recorded", board.PermissionLabel(board.Permissions.Single(p => p.Id == id)));
+        Assert.False(board.NeedsAttention(board.Permissions.Single(p => p.Id == id)));
+        Assert.True(await f.WithDbAsync(db => db.AuditEvents.AnyAsync(a => a.Action == "keys.permission.record" && a.EntityId == id.ToString())));
+        await Run(s => s.PermissionActionAsync(id, "remove", null));
+        saved = await f.WithDbAsync(db => db.DigitalPermissions.AsNoTracking().SingleAsync(p => p.Id == id));
+        Assert.Equal(DigitalPermissionState.Revoked, saved.State);
+        Assert.Equal(f.Clock.UtcNow, saved.RevokedAt);
+    }
+
+    [Fact]
+    public async Task Existing_access_of_an_inactive_user_can_be_recorded_for_offboarding()
+    {
+        var x = await Setup();
+        var person = await f.WithDbAsync(db => Seed.PersonAsync(db, "leaver-" + Guid.NewGuid().ToString("N"), active: false, email: null));
+        var device = await Run(s => s.SaveDeviceAsync(null, x.Building, x.Room, "Leaver door", null, null, null, "Finance", DigitalLockKind.Door, LockOpeningMethod.Pin));
+        var id = await Run(s => s.RecordAccessAsync(device, person.Id, null, null, LockOpeningMethod.Pin, "Discovered during offboarding"));
+        var board = await Run(s => s.BoardAsync());
+        Assert.True(board.NeedsAttention(board.Permissions.Single(p => p.Id == id)));
+        await f.RunAsAsync(TestUser.Facility, async sp => { await sp.GetRequiredService<KeyAccessMaintenance>().RunAsync(); return 0; });
+        Assert.Equal(DigitalPermissionState.RevocationPending, await f.WithDbAsync(db => db.DigitalPermissions.Where(p => p.Id == id).Select(p => p.State).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Browser_records_existing_digital_access_in_one_step_with_optional_dates()
+    {
+        var x = await Setup();
+        var device = await Run(s => s.SaveDeviceAsync(null, x.Building, x.Room, "Browser door", null, null, null, "Finance", DigitalLockKind.Door, LockOpeningMethod.Pin));
+        using var client = f.CreateClientAs(TestUser.Facility);
+        var url = "/Keys/Devices?id=" + device;
+        var html = await client.GetStringAsync(url);
+        Assert.Contains("Record who has access", html);
+        Assert.DoesNotContain("Request digital access", html);
+        var response = await AntiforgeryHelper.PostFormAsync(client, url, new Dictionary<string, string>
+        {
+            ["deviceId"] = device.ToString(), ["personId"] = x.Person.ToString(), ["method"] = "Pin", ["reason"] = "Staff access",
+        }, url + "&handler=Record");
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var record = await f.WithDbAsync(db => db.DigitalPermissions.AsNoTracking().SingleAsync(p => p.DeviceId == device));
+        Assert.Equal(DigitalPermissionState.Confirmed, record.State);
+        Assert.Null(record.EndsAt);
+    }
 }

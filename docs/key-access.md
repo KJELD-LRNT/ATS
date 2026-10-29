@@ -1,6 +1,6 @@
 # Keys & digital access
 
-Facility → **Keys & digital access** (`/Keys`) manages physical keys and records digital door/lockbox permissions.
+Facility → **Keys & digital access** (`/Keys`) manages physical keys and records who has access to digital doors and lockboxes. Digital access is a manual register; hardware integration is outside the module's scope.
 Facility is required in pages and services. Admin, IT and Manager alone do not grant access. Facility covers all sites, matching Workplace. Admin → System roles assigns it.
 
 ## Physical keys
@@ -18,25 +18,25 @@ Due dates follow the building site's timezone and ATS's existing rule: due/overd
 
 ## Digital locks and lockboxes
 
-This release uses **manual manufacturer management**. It does not connect to hardware, generate/deliver PINs, open locks or supply a mobile app. Configure Bluetooth permissions and individual PINs in the manufacturer's system; deliver credentials through its secure channel. ATS stores operational references, never PINs, provider passwords or activation links.
+Facility selects a lock, finds a user and chooses **Record access**. This immediately records that the person has Bluetooth-app or PIN access arranged outside ATS. Start is optional (defaults to now); end is optional for ongoing access. An optional reference can identify the relevant facility record. Record the method, never the PIN or password itself.
 
-Register manufacturer, model, external ID, opening methods (Bluetooth app and/or PIN), location and type. Door locks require a room. Lockboxes may have a location room and hold multiple registered key copies. Permissions belong to existing active ATS users, with a method, reason and UTC start/expiry instants. Browser datetime fields explicitly mean UTC, independent of the host timezone.
+Register the device name, location, type and methods (Bluetooth app and/or PIN). Manufacturer, model and device reference are optional details. Door locks require a room. Lockboxes may have a location room and hold registered physical copies. Records reference existing ATS people; existing access can also be recorded for inactive people or people without email so offboarding is complete. Anonymized people cannot be selected. Dates, when supplied, are UTC regardless of the host timezone.
 
 | State | Meaning |
 | --- | --- |
-| Pending | Facility must configure access and expiry in the manufacturer app. |
-| Confirmed | Facility verified activation/configured expiry and recorded a reference. Displayed as Scheduled, Active or Expired according to the window. |
-| Revocation pending | Removal requested, including after expiry/deactivation. Actual device access may remain. |
-| Revoked | Facility verified removal and recorded a reference. Cannot reopen; create a new grant. |
-| Failed | Provisioning failed or provider state is uncertain. Failed revocation remains Revocation pending. |
+| Pending | Planned access, used for lockbox reservations until Facility records it as granted. |
+| Confirmed | Facility recorded access. Displayed as Has access or Scheduled, or flagged if its dated period ended. Normal Record access uses this state immediately. |
+| Revocation pending | Removal needs confirmation, including after expiry/deactivation. |
+| Revoked | Facility recorded that access was removed outside ATS. Cannot reopen; create a new access record. |
+| Failed | Access needs checking. A removal issue remains flagged until resolved. |
 
-Expiry never claims verified removal. An independent worker checks expired/inactive access every minute and requests revocation. Offline Bluetooth locks may retain credentials until synchronisation: verify the provider/device state before completing revocation. The overview flags expired/failed/inactive access even when the worker is stopped.
+Use **Record that access has been removed** to close an access record directly, or **Flag access for removal** if someone still needs to arrange removal. References are optional. ATS retains who recorded each change and when. Ending a dated period does not itself prove access was removed: an independent worker flags expired/inactive access every minute, and the overview also highlights it when the worker is stopped. Ongoing access is not expired automatically.
 
-Recurring schedules, one-use PINs, provider opening logs and automatic provisioning are not implemented. A first integration requires the selected manufacturer/model, supported API/SDK, authentication configuration and event/credential delivery design. Keep request and hardware-confirmation states separate. A box opening must not prove key collection/return without key-identifying hardware.
+ATS has no hardware connection, PIN generation/delivery, remote opening, mobile app or provider opening log. No manufacturer or hardware selection is required to use the register.
 
 ## Lockbox collection and room lookup
 
-Reserve an available copy stored in a lockbox, with a UTC collection window and method. This atomically creates a key reservation and pending digital permission. Configure/verify access on **Digital locks & lockboxes**. Facility explicitly verifies collection within that permission's window to start the physical loan; collection requests revocation of collection access.
+Reserve an available copy stored in a lockbox, with a UTC collection window and method. This atomically creates a key reservation and planned digital-access record. After access is arranged outside ATS, Facility records it as granted under **Digital locks & lockboxes**. Facility explicitly verifies key collection within that window to start the physical loan; collection flags pickup access for removal.
 
 For a later unattended return, create separate temporary box access if needed, report return, then have Facility verify the physical key. Cancellation/expiry never proves physical movement or removal of digital access.
 
@@ -56,9 +56,9 @@ Core: `Domain/KeyAccess.cs`, `Keys/KeyAccessService*.cs`, `Keys/KeyAccessMainten
 
 Writes acquire the singleton `KeyAccessRevisions` row in a serializable transaction before reading mutable state. Audit/outbox save in that transaction. This also protects cycle checks and collection/return transitions. Idle maintenance rolls back its gate increment, preserving pending access reviews.
 
-Apply SQL Server migration **KeyAccess** through the normal ATS deployment process before running the new web/worker. It adds tables/indexes without altering existing inventory/loans. The SQL Server upgrade test checks upgrade and rollback; CI checks the model snapshot. Rollback drops module data: take the normal backup first.
+Apply SQL Server migrations **KeyAccess** and **DigitalAccessRegister** through the normal ATS deployment process before running the new web/worker. They add module tables/indexes and allow ongoing digital access without altering existing inventory/loans. The SQL Server test checks upgrade and rollback; CI checks the snapshot. Downgrading DigitalAccessRegister maps ongoing access to the latest possible expiry to satisfy the earlier schema; rolling back KeyAccess drops module data. Take the normal backup first.
 
-Demo schema/seed detection rebuilds outdated demo databases. Fixtures include Building A, Finance/Server rooms, a two-room grand master, numbered copies, a due key, a lost key, a lockbox reservation and confirmed digital door access. On Demo controls, act as **Max Demoson (Facility)** and open the Facility navigation entry.
+Demo schema/seed detection rebuilds outdated demo databases. Fixtures include Building A, Finance/Server rooms, a two-room grand master, numbered copies, a due key, a lost key, a lockbox reservation and ongoing recorded digital door access. On Demo controls, act as **Max Demoson (Facility)** and open the Facility navigation entry.
 
 The initial implementation loads the module graph and complete loan/permission lists for cross-reference calculations; history is bounded to 200 events. Large estates will need indexed search/paging and bounded graph queries.
 

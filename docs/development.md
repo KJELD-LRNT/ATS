@@ -12,7 +12,7 @@
 
 ## Running locally
 
-The Facility **Keys & digital access** module is documented in [`key-access.md`](key-access.md), including its write gate, physical custody model, manual digital verification boundary and SQL Server migration. Its operational permissions are independent of IT asset lending.
+The Facility **Keys & digital access** module is documented in [`key-access.md`](key-access.md), including its write gate, physical custody model, manual digital access register and SQL Server migrations. Its operational permissions are independent of IT asset lending. Digital access records have optional expiry and require no hardware connection.
 
 ```bash
 dotnet test                               # SQLite temp-file DB per test class

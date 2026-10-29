@@ -1,6 +1,6 @@
 # Testing guide: local demo mode
 
-For the Facility **Keys & digital access** module, see [`key-access.md`](key-access.md). In Demo controls, act as **Max Demoson (Facility)**. Try the room lookup, master key details, lockbox reservation, reported versus verified return and digital activation/revocation verification. Digital devices are manually managed in the manufacturer's app; the demo never opens hardware or sends real credentials.
+For the Facility **Keys & digital access** module, see [`key-access.md`](key-access.md). In Demo controls, act as **Max Demoson (Facility)**. Try room lookup, master keys, lockbox reservation, reported versus verified return, and recording/removing digital access. Digital access is a register of who has access, with optional expiry; no hardware integration is involved.
 
 This guide lets you try the whole asset tracker on your own computer: lending, returns, corrections, mail, reminders, reports, roles, settings and operations. You need no Active Directory, mail relay, SQL Server, IIS or Windows sign-in. Everything runs in one local process with **fictional data only**.
 

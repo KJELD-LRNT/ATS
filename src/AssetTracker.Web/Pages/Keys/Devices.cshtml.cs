@@ -18,17 +18,19 @@ public class DevicesModel(KeyAccessService keys) : KeyPage(keys)
         People = await Keys.SearchPeopleAsync(Q, ct);
     }
     public Task<IActionResult> OnPostDeviceAsync(Guid? deviceId, Guid buildingId, Guid? roomId, string name,
-        string manufacturer, string model, string externalId, string location, DigitalLockKind kind,
+        string? manufacturer, string? model, string? externalId, string location, DigitalLockKind kind,
         bool pin, bool bluetooth, bool active, CancellationToken ct) => Save(async () =>
         {
             await Keys.SaveDeviceAsync(deviceId, buildingId, roomId, name, manufacturer, model, externalId, location, kind,
                 (pin ? LockOpeningMethod.Pin : LockOpeningMethod.None) | (bluetooth ? LockOpeningMethod.BluetoothApp : LockOpeningMethod.None), active, ct);
         });
-    public Task<IActionResult> OnPostGrantAsync(Guid deviceId, int personId, DateTime start, DateTime end,
-        LockOpeningMethod method, string reason, CancellationToken ct) => Save(async () =>
+    public Task<IActionResult> OnPostRecordAsync(Guid deviceId, int personId, DateTime? start, DateTime? end,
+        LockOpeningMethod method, string reason, string? reference, CancellationToken ct) => Save(async () =>
         {
-            await Keys.GrantAsync(deviceId, personId, new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc)),
-                new DateTimeOffset(DateTime.SpecifyKind(end, DateTimeKind.Utc)), method, reason, ct);
+            await Keys.RecordAccessAsync(deviceId, personId,
+                start is {} from ? new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc)) : null,
+                end is {} until ? new DateTimeOffset(DateTime.SpecifyKind(until, DateTimeKind.Utc)) : null,
+                method, reason, reference, ct);
         });
     public Task<IActionResult> OnPostPermissionAsync(Guid permissionId, string action, string? reference, CancellationToken ct) =>
         Save(async () => { await Keys.PermissionActionAsync(permissionId, action, reference, ct); });

@@ -39,6 +39,18 @@ public class KeyAccessMigrationTests
             db.KeyCopies.Add(new KeyCopy { Definition = definition, Tag = "FIN-001", StorageLocation = "Cabinet" });
             await db.SaveChangesAsync();
             Assert.Single(await db.KeyCopies.ToListAsync());
+            var person = await Seed.PersonAsync(db, "KEY-HOLDER");
+            var device = new DigitalLock { BuildingId = building.Id, RoomId = room.Id, Name = "Door", Kind = DigitalLockKind.Door, Methods = LockOpeningMethod.Pin };
+            db.DigitalLocks.Add(device);
+            var permission = new DigitalPermission { DeviceId = device.Id, PersonId = person.Id, StartsAt = DateTimeOffset.UtcNow,
+                EndsAt = null, State = DigitalPermissionState.Confirmed, Method = LockOpeningMethod.Pin };
+            db.DigitalPermissions.Add(permission);
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+            // A downgrade maps ongoing access to the furthest expiry, satisfying the original window constraint.
+            await migrator.MigrateAsync("20261028153105_KeyAccess");
+            Assert.Equal(DateTimeOffset.MaxValue, await db.DigitalPermissions.Where(p => p.Id == permission.Id).Select(p => p.EndsAt).SingleAsync());
+            await migrator.MigrateAsync();
             db.ChangeTracker.Clear();
             await migrator.MigrateAsync(before);
             Assert.Equal(0, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.tables WHERE [name] = 'KeyLoans'").SingleAsync());

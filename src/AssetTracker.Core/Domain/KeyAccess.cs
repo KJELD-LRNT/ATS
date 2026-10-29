@@ -112,7 +112,7 @@ public class DigitalPermission
     public LockOpeningMethod Method { get; set; }
     public DigitalPermissionState State { get; set; }
     public DateTimeOffset StartsAt { get; set; }
-    public DateTimeOffset EndsAt { get; set; }
+    public DateTimeOffset? EndsAt { get; set; }
     public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
     public string IssuedBy { get; set; } = "";

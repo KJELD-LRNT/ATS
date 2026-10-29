@@ -398,7 +398,7 @@ namespace AssetTracker.Infrastructure.Data.Migrations
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTimeOffset>("EndsAt")
+                    b.Property<DateTimeOffset?>("EndsAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("IssuedBy")

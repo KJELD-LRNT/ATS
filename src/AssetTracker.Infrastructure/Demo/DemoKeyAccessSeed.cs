@@ -41,7 +41,7 @@ internal static class DemoKeyAccessSeed
         var lost = await keys.SaveCopyAsync(null, sk, "AMS-TECH-001", "Facility cabinet", null, ct: ct);
         var loan = await keys.LendAsync(lost, person.Id, null, "Technical duty (demo)", false, expectedRevision: await Revision(), ct: ct);
         await keys.LoanActionAsync(loan, "lost", "Reported missing; review room impact (demo)", ct: ct);
-        var permission = await keys.GrantAsync(door, person.Id, now.AddMinutes(-5), now.AddDays(1), LockOpeningMethod.Pin, "Server maintenance (demo)", ct);
-        await keys.PermissionActionAsync(permission, "confirm", "Fictional provider verification DEMO-01", ct);
+        await keys.RecordAccessAsync(door, person.Id, now.AddMinutes(-5), null, LockOpeningMethod.Pin,
+            "Server access (demo)", "Facility register DEMO-01", ct);
     }
 }

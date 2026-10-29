@@ -21,13 +21,13 @@ public sealed record KeyAccessBoard(long Revision, IReadOnlyList<Site> Sites, IR
 
     public string PermissionLabel(DigitalPermission p) => p.State switch
     {
-        DigitalPermissionState.Revoked => "Revoked — verified",
-        DigitalPermissionState.RevocationPending => "Revocation pending — device access may remain",
-        DigitalPermissionState.Failed => "Failed — verify provider state",
-        _ when p.EndsAt <= Now => "Expired window — revocation unverified",
-        DigitalPermissionState.Pending => "Pending — configure in manufacturer app",
-        _ when p.StartsAt > Now => "Scheduled — activation verified",
-        _ => "Active — activation verified",
+        DigitalPermissionState.Revoked => "Access removed — recorded",
+        DigitalPermissionState.RevocationPending => "Removal to confirm",
+        DigitalPermissionState.Failed => "Access needs checking",
+        _ when p.EndsAt <= Now => "Access period ended — confirm removal",
+        DigitalPermissionState.Pending => "Planned — access not yet recorded as granted",
+        _ when p.StartsAt > Now => "Scheduled — recorded",
+        _ => "Has access — recorded",
     };
 
     public bool Overdue(KeyLoan loan) => loan.ClosedAt is null && loan.State != KeyLoanState.Reserved

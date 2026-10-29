@@ -128,7 +128,7 @@ public sealed class DemoDataManager(
     }
 
     /// <summary>Version of the demo seed data; part of <see cref="SchemaVersion"/>.</summary>
-    public const int SeedVersion = 3;
+    public const int SeedVersion = 4;
 
     /// <summary>
     /// The app's demo schema version: derived from the SQLite create script of the current EF model, so any model change
