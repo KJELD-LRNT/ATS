@@ -279,5 +279,8 @@ public class KeyAccessTests(AppFactory f) : IClassFixture<AppFactory>
         var record = await f.WithDbAsync(db => db.DigitalPermissions.AsNoTracking().SingleAsync(p => p.DeviceId == device));
         Assert.Equal(DigitalPermissionState.Confirmed, record.State);
         Assert.Null(record.EndsAt);
+        Assert.Contains(device.ToString(), response.Headers.Location!.ToString());
+        var savedPage = await client.GetStringAsync(response.Headers.Location);
+        Assert.Contains("Has access — recorded", System.Net.WebUtility.HtmlDecode(savedPage));
     }
 }
